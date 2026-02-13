@@ -135,7 +135,7 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
                     isTooSoon,
                     isAnimatorUnavailable,
                     dateString: toYYYYMMDD(date),
-                    fullDateLabel: date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+                    fullDateLabel: date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
                 });
             }
         }
@@ -145,33 +145,32 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
     const timeSlots = settings.availableTimeSlots || [9, 10, 14, 15];
 
     return (
-        <div className="max-w-6xl mx-auto px-4 pb-20">
-            {/* Sélecteur de mois */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-10 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 pb-12">
+            {/* Sélecteur de mois plus compact */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6 flex items-center justify-between">
                 <button 
                     onClick={() => changeMonth(-1)}
-                    className="p-3 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-blue-600 disabled:opacity-20"
+                    className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-blue-600 disabled:opacity-20"
                     disabled={year === startYear && month === 9}
                 >
-                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <div className="text-center">
-                    <h2 className="text-3xl font-black text-gray-800 uppercase tracking-tight">
+                    <h2 className="text-xl sm:text-2xl font-black text-gray-800 uppercase tracking-tight">
                         {monthNames[month]} <span className="text-blue-600">{year}</span>
                     </h2>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Disponibilités de l'animation</p>
                 </div>
                 <button 
                     onClick={() => changeMonth(1)}
-                    className="p-3 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-blue-600 disabled:opacity-20"
+                    className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-blue-600 disabled:opacity-20"
                     disabled={year === endYear && month === 5}
                 >
-                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
                 </button>
             </div>
 
-            {/* Liste des jours en 2 colonnes sur desktop */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Liste des jours optimisée : 3 colonnes sur desktop */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {availableDaysInMonth.length > 0 ? (
                     availableDaysInMonth.map((dayObj) => {
                         const isDayBlocked = dayObj.isTooSoon || dayObj.isAnimatorUnavailable;
@@ -180,25 +179,25 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
                             <div 
                                 key={dayObj.dateString}
                                 className={`bg-white rounded-2xl shadow-sm border transition-all overflow-hidden h-full flex flex-col ${
-                                    isDayBlocked ? 'border-gray-100' : 'border-blue-100 hover:shadow-md'
+                                    isDayBlocked ? 'border-gray-100 opacity-80' : 'border-blue-100 hover:shadow-md'
                                 }`}
                             >
-                                <div className={`p-5 flex flex-col flex-grow ${isDayBlocked ? 'bg-gray-50/50' : 'bg-white'}`}>
-                                    <div className="flex items-start gap-4 mb-6">
-                                        <div className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center font-black flex-shrink-0 ${
-                                            isDayBlocked ? 'bg-gray-200 text-gray-500' : 'bg-blue-600 text-white shadow-lg shadow-blue-100'
+                                <div className={`p-4 flex flex-col flex-grow ${isDayBlocked ? 'bg-gray-50/50' : 'bg-white'}`}>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className={`w-11 h-11 rounded-lg flex flex-col items-center justify-center font-black flex-shrink-0 ${
+                                            isDayBlocked ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white shadow-sm'
                                         }`}>
-                                            <span className="text-[10px] leading-none mb-0.5 uppercase">{dayObj.date.toLocaleDateString('fr-FR', { weekday: 'short' })}</span>
-                                            <span className="text-xl leading-none">{dayObj.date.getDate()}</span>
+                                            <span className="text-[9px] leading-none mb-0.5 uppercase">{dayObj.date.toLocaleDateString('fr-FR', { weekday: 'short' })}</span>
+                                            <span className="text-lg leading-none">{dayObj.date.getDate()}</span>
                                         </div>
-                                        <div>
-                                            <h3 className={`text-lg font-bold capitalize leading-tight ${isDayBlocked ? 'text-gray-400' : 'text-gray-900'}`}>
+                                        <div className="min-w-0">
+                                            <h3 className={`text-sm font-bold capitalize truncate ${isDayBlocked ? 'text-gray-400' : 'text-gray-900'}`}>
                                                 {dayObj.fullDateLabel}
                                             </h3>
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-3 mt-auto">
+                                    <div className="grid grid-cols-2 gap-2 mt-auto">
                                         {timeSlots.map(time => {
                                             const available = !isDayBlocked && isSlotAvailable(dayObj.date, time);
                                             return (
@@ -206,13 +205,13 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
                                                     key={time}
                                                     disabled={!available}
                                                     onClick={() => onBookSlot(dayObj.date, time)}
-                                                    className={`px-4 py-3 rounded-xl font-bold text-sm transition-all transform active:scale-95 border-2 ${
+                                                    className={`px-2 py-2 rounded-lg font-bold text-xs transition-all transform active:scale-95 border ${
                                                         available 
-                                                        ? 'bg-white border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white shadow-sm' 
-                                                        : 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-100'
+                                                        ? 'bg-white border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white' 
+                                                        : 'bg-gray-50 text-gray-300 cursor-not-allowed border-gray-100'
                                                     }`}
                                                 >
-                                                    {available ? `${time}h00` : 'Indisponible'}
+                                                    {available ? `${time}h00` : 'Complet'}
                                                 </button>
                                             );
                                         })}
@@ -222,13 +221,13 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
                         );
                     })
                 ) : (
-                    <div className="col-span-full bg-white rounded-3xl p-16 text-center border-2 border-dashed border-gray-200">
-                        <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <div className="col-span-full bg-white rounded-3xl p-12 text-center border-2 border-dashed border-gray-100">
+                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         </div>
-                        <h3 className="text-2xl font-bold text-gray-800">Aucun créneau disponible</h3>
-                        <p className="text-gray-500 mt-2 max-w-sm mx-auto font-medium">
-                            Il n'y a pas de jours d'ouverture ou les dates sont déjà complètes pour ce mois-ci.
+                        <h3 className="text-xl font-bold text-gray-700">Aucun créneau ce mois-ci</h3>
+                        <p className="text-gray-400 mt-2 max-w-sm mx-auto text-sm font-medium">
+                            Les réservations pour cette période sont complètes ou non autorisées.
                         </p>
                     </div>
                 )}
