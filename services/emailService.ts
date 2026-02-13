@@ -3,13 +3,14 @@ import { Booking, Animator } from '../types';
 
 /**
  * CONFIGURATION EMAILJS
+ * Remplacez les valeurs ci-dessous par vos nouveaux identifiants EmailJS
  */
-const SERVICE_ID = 'service_v0h6cyl'; 
-const PUBLIC_KEY = 'EgZeMU9QYhE3keC0w'; 
+const SERVICE_ID = 'service_o5lbm0b'; 
+const PUBLIC_KEY = 'f3k30dsN4n8aHPNzR'; 
 
 const TEMPLATE_ID_RECOVERY = 'template_recovery';
-const TEMPLATE_ID_CONFIRMATION_TEACHER = 'template_confirmation';
-const TEMPLATE_ID_NOTIFICATION_ANIMATOR = 'template_notification';
+const TEMPLATE_ID_CONFIRMATION_TEACHER = 'VOTRE_ID_TEMPLATE_CONFIRMATION';
+const TEMPLATE_ID_NOTIFICATION_ANIMATOR = 'template_animateur';
 
 declare global {
     interface Window {
@@ -18,8 +19,7 @@ declare global {
 }
 
 /**
- * Formate une date YYYY-MM-DD en DD/MM/YYYY sans passer par l'objet Date
- * pour éviter les problèmes de fuseau horaire et d'encodage complexe.
+ * Formate une date YYYY-MM-DD en DD/MM/YYYY
  */
 const formatDateFR = (dateStr: string) => {
     const parts = dateStr.split('-');
@@ -44,7 +44,7 @@ export const emailService = {
         const templateParams = {
             to_email: targetEmail,
             username: adminUsername,
-            password: adminPassword, // On envoie le mot de passe au template
+            password: adminPassword,
             app_url: window.location.origin,
             app_name: "Gestion des Réservations",
             reply_to: targetEmail
@@ -52,7 +52,7 @@ export const emailService = {
 
         try {
             await window.emailjs.send(SERVICE_ID, TEMPLATE_ID_RECOVERY, templateParams);
-            console.log('EmailJS: E-mail de récupération (mot de passe) envoyé à', targetEmail);
+            console.log('EmailJS: E-mail de récupération envoyé.');
         } catch (error) {
             console.error('EmailJS Error (Récupération):', error);
             throw error;
@@ -63,7 +63,6 @@ export const emailService = {
         if (!window.emailjs) return;
         
         if (!booking.email || booking.email.trim() === "") {
-            console.warn("EmailJS: L'adresse e-mail de l'enseignant est vide. Envoi annulé.");
             return;
         }
 
@@ -78,13 +77,11 @@ export const emailService = {
             commune: booking.commune
         };
 
-        console.log("EmailJS: Tentative d'envoi confirmation à", targetEmail);
-
         try {
             await window.emailjs.send(SERVICE_ID, TEMPLATE_ID_CONFIRMATION_TEACHER, templateParams);
-            console.log('EmailJS: Confirmation envoyée avec succès à', targetEmail);
+            console.log('EmailJS: Confirmation enseignant envoyée.');
         } catch (error) {
-            console.error('EmailJS Error (Confirmation Enseignant):', error);
+            console.error('EmailJS Error (Confirmation):', error);
         }
     },
 
@@ -92,15 +89,13 @@ export const emailService = {
         if (!window.emailjs) return;
         
         if (!animator.email || animator.email.trim() === "") {
-            console.warn(`EmailJS: L'animateur ${animator.name} n'a pas d'adresse e-mail configurée. Notification annulée.`);
             return;
         }
 
         const targetEmail = animator.email.trim();
-        
         const busInfoLabel = booking.noBusRequired 
-            ? "Aucune prise en charge bus demandée (l'école se déplace par ses propres moyens)." 
-            : (booking.busInfo || "Prise en charge bus demandée (détails non renseignés).");
+            ? "Aucune prise en charge bus demandée." 
+            : (booking.busInfo || "Prise en charge bus demandée.");
 
         const templateParams = {
             to_email: targetEmail,
@@ -121,7 +116,7 @@ export const emailService = {
 
         try {
             await window.emailjs.send(SERVICE_ID, TEMPLATE_ID_NOTIFICATION_ANIMATOR, templateParams);
-            console.log('EmailJS: Notification envoyée avec succès à l\'animateur', targetEmail);
+            console.log('EmailJS: Notification animateur envoyée.');
         } catch (error) {
             console.error('EmailJS Error (Notification Animateur):', error);
         }
