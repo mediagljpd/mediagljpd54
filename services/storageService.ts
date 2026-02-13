@@ -1,15 +1,14 @@
 
-
 /**
  * SERVICE DE STOCKAGE CLOUDINARY
  * 
- * Configuration actuelle :
- * Cloud Name : djiw7uooc
- * Upload Preset : cloudinary_storage (Unsigned)
+ * Instructions de migration :
+ * 1. Remplacez CLOUDINARY_CLOUD_NAME par votre nouveau "Cloud Name".
+ * 2. Remplacez CLOUDINARY_UPLOAD_PRESET par le nom de votre nouveau "Upload Preset" (configuré en mode 'Unsigned').
  */
 
-const CLOUDINARY_CLOUD_NAME = "djiw7uooc"; 
-const CLOUDINARY_UPLOAD_PRESET = "cloudinary_storage";
+const dq0m5r59m = "VOTRE_NOUVEAU_CLOUD_NAME"; 
+const image_storage = "VOTRE_NOUVEAU_PRESET_NAME";
 
 export const storageService = {
     /**
@@ -21,17 +20,14 @@ export const storageService = {
             throw new Error("Le fichier doit être une image.");
         }
 
-        // DO: Fix comparison error where '"djiw7uooc"' and '"votre_cloud_name"' have no overlap.
-        // The service is already configured, so we remove the placeholder check.
-
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+        formData.append('upload_preset', image_storage);
         formData.append('folder', path.split('/')[0]); // Organise dans des dossiers (ex: avatars)
 
         try {
             const response = await fetch(
-                `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+                `https://api.cloudinary.com/v1_1/${dq0m5r59m}/image/upload`,
                 {
                     method: 'POST',
                     body: formData,
