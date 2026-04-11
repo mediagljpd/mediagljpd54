@@ -1,6 +1,6 @@
 
 import React, { useState, useContext, useEffect } from 'react';
-import { AppContext } from '../App';
+import { AppContext } from '../AppContext';
 import { Animation, View, Booking } from '../types';
 import AdminLogin from './AdminLogin';
 import AppFooter from './shared/AppFooter';
@@ -11,16 +11,29 @@ import BookingConfirmation from './booking/BookingConfirmation';
 import { formatPhoneNumber } from '../utils/formatters';
 import { emailService } from '../services/emailService';
 
+import LegalPage from './shared/LegalPage';
+
 interface BookingSystemProps {
   view: View;
   selectedAnimation: Animation | null;
+  selectedCustomPageId?: string | null;
   onSelectAnimation: (animation: Animation) => void;
   onBackToHome: () => void;
   onNavigateToAdmin: () => void;
   onAdminLogin: () => void;
+  onNavigate: (view: View, customPageId?: string) => void;
 }
 
-const BookingSystem: React.FC<BookingSystemProps> = ({ view, selectedAnimation, onSelectAnimation, onBackToHome, onNavigateToAdmin, onAdminLogin }) => {
+const BookingSystem: React.FC<BookingSystemProps> = ({ 
+  view, 
+  selectedAnimation, 
+  selectedCustomPageId,
+  onSelectAnimation, 
+  onBackToHome, 
+  onNavigateToAdmin, 
+  onAdminLogin, 
+  onNavigate 
+}) => {
   const { saveBooking, settings } = useContext(AppContext);
   const [bookingDetails, setBookingDetails] = useState<{ date: Date, time: number } | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
@@ -76,6 +89,45 @@ const BookingSystem: React.FC<BookingSystemProps> = ({ view, selectedAnimation, 
     return <AdminLogin settings={settings} onLoginSuccess={onAdminLogin} onBackToHome={onBackToHome} />;
   }
 
+  if (view === View.LEGAL_NOTICE) {
+    return (
+      <LegalPage 
+        title={settings.legalNoticeTitle || "Mentions légales"} 
+        content={settings.legalNotice || ''} 
+        onBack={onBackToHome} 
+        headerBgColor={settings.legalHeaderBgColor}
+        headerTextColor={settings.legalHeaderTextColor}
+      />
+    );
+  }
+
+  if (view === View.PRIVACY_POLICY) {
+    return (
+      <LegalPage 
+        title={settings.privacyPolicyTitle || "Politique de confidentialité"} 
+        content={settings.privacyPolicy || ''} 
+        onBack={onBackToHome} 
+        headerBgColor={settings.legalHeaderBgColor}
+        headerTextColor={settings.legalHeaderTextColor}
+      />
+    );
+  }
+
+  if (view === View.CUSTOM_PAGE && selectedCustomPageId) {
+    const page = settings.customLegalPages?.find(p => p.id === selectedCustomPageId);
+    if (page) {
+      return (
+        <LegalPage 
+          title={page.title} 
+          content={page.content || ''} 
+          onBack={onBackToHome} 
+          headerBgColor={settings.legalHeaderBgColor}
+          headerTextColor={settings.legalHeaderTextColor}
+        />
+      );
+    }
+  }
+
   if (view === View.CALENDAR && selectedAnimation) {
     const fontColor = selectedAnimation.fontColor || '#ffffff';
     const borderColor = fontColor.startsWith('#') && fontColor.length === 7 ? `${fontColor}33` : fontColor;
@@ -112,7 +164,7 @@ const BookingSystem: React.FC<BookingSystemProps> = ({ view, selectedAnimation, 
             {bookingDetails && <BookingForm animation={selectedAnimation} date={bookingDetails.date} time={bookingDetails.time} onConfirm={handleConfirmBooking} onCancel={() => setBookingDetails(null)} />}
             {confirmedBooking && <BookingConfirmation booking={confirmedBooking} onOk={handleCloseConfirmation} />}
         </div>
-        <AppFooter />
+        <AppFooter onNavigate={onNavigate} />
       </div>
     );
   }
@@ -120,7 +172,7 @@ const BookingSystem: React.FC<BookingSystemProps> = ({ view, selectedAnimation, 
   return (
      <div style={{ backgroundColor: settings.homepageBgColor }} className="min-h-screen flex flex-col">
         <AnimationSelection onSelectAnimation={onSelectAnimation} onNavigateToAdmin={onNavigateToAdmin} />
-        <AppFooter />
+        <AppFooter onNavigate={onNavigate} />
     </div>
   );
 };

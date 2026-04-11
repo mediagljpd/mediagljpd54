@@ -1,6 +1,6 @@
 
 import React, { useState, useContext, useMemo, useEffect } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { AnimatorSettings, Holiday } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { toYYYYMMDD } from '../../utils/date';

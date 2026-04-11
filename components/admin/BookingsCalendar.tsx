@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useContext, useEffect } from 'react';
 import { Booking, Animation } from '../../types';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { toYYYYMMDD } from '../../utils/date';
 
 const BookingsCalendar: React.FC<{ bookings: Booking[]; animations: Animation[]; onEdit: (booking: Booking) => void }> = ({ bookings, animations, onEdit }) => {

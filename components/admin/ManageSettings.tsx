@@ -1,12 +1,16 @@
 
 import React, { useState, useContext, useEffect } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { AppSettings } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { storageService } from '../../services/storageService';
-import { PaintBrushIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, SparklesIcon, TrashIcon } from '../Icons';
+import { PaintBrushIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, SparklesIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon } from '../Icons';
+import * as XLSX from 'xlsx';
 
-type SettingsTab = 'design' | 'media' | 'rules' | 'general' | 'security';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
+
+type SettingsTab = 'design' | 'media' | 'rules' | 'general' | 'footer' | 'security' | 'data';
 
 const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
     const { settings, updateSettings } = useContext(AppContext);
@@ -24,6 +28,9 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
     // States for image uploads
     const [uploadingField, setUploadingField] = useState<string | null>(null);
 
+    // State for rich text editor
+    const [editingLegalPage, setEditingLegalPage] = useState<'legalNotice' | 'privacyPolicy' | string | null>(null);
+
     // Temp state for new time slot input
     const [newSlotTime, setNewSlotTime] = useState<string>('');
 
@@ -33,6 +40,19 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         if (migSettings.bookingLeadTime === undefined) migSettings.bookingLeadTime = 14;
         if (!migSettings.allowedDays) migSettings.allowedDays = [2, 4];
         if (!migSettings.availableTimeSlots) migSettings.availableTimeSlots = [9, 10, 14, 15];
+        if (!migSettings.customLegalPages) migSettings.customLegalPages = [];
+        if (!migSettings.legalNoticeTitle) migSettings.legalNoticeTitle = 'Mentions Légales';
+        if (!migSettings.legalNoticeSlug) migSettings.legalNoticeSlug = 'mentions-legales';
+        if (!migSettings.privacyPolicyTitle) migSettings.privacyPolicyTitle = 'Politique de Confidentialité';
+        if (!migSettings.privacyPolicySlug) migSettings.privacyPolicySlug = 'confidentialite';
+        
+        if (!migSettings.classLevels) migSettings.classLevels = ['PS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
+        if (!migSettings.communes) migSettings.communes = [];
+        if (!migSettings.schools) migSettings.schools = [];
+        
+        // Default colors for legal header
+        if (!migSettings.legalHeaderBgColor) migSettings.legalHeaderBgColor = '#ffffff';
+        if (!migSettings.legalHeaderTextColor) migSettings.legalHeaderTextColor = '#111827';
         
         // Ensure Monday (1) is removed if it was previously selected
         if (migSettings.allowedDays.includes(1)) {
@@ -78,6 +98,254 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
             ...formState,
             availableTimeSlots: formState.availableTimeSlots.filter(t => t !== time)
         });
+    };
+
+    const handleAddFooterLink = () => {
+        const newLink = { id: Date.now().toString(), label: 'Nouveau lien', url: '' };
+        setFormState({
+            ...formState,
+            footerLinks: [...(formState.footerLinks || []), newLink]
+        });
+    };
+
+    const handleRemoveFooterLink = (id: string) => {
+        setFormState({
+            ...formState,
+            footerLinks: (formState.footerLinks || []).filter(l => l.id !== id)
+        });
+    };
+
+    const handleUpdateFooterLink = (id: string, field: 'label' | 'url' | 'content', value: string) => {
+        setFormState({
+            ...formState,
+            footerLinks: (formState.footerLinks || []).map(l => l.id === id ? { ...l, [field]: value } : l)
+        });
+    };
+
+    const handleUpdateEstablishmentInfo = (field: string, value: string) => {
+        setFormState({
+            ...formState,
+            establishmentInfo: {
+                ...(formState.establishmentInfo || { name: '', address: '', phone: '', email: '' }),
+                [field]: value
+            }
+        });
+    };
+
+    const handleAddCustomLegalPage = () => {
+        const id = Date.now().toString();
+        const newPage = {
+            id,
+            title: 'Nouvelle page',
+            content: '',
+            slug: `page-${id}`
+        };
+        setFormState({
+            ...formState,
+            customLegalPages: [...(formState.customLegalPages || []), newPage]
+        });
+    };
+
+    const handleRemoveCustomLegalPage = (id: string) => {
+        if (window.confirm("Êtes-vous sûr de vouloir supprimer cette page ?")) {
+            setFormState({
+                ...formState,
+                customLegalPages: (formState.customLegalPages || []).filter(p => p.id !== id)
+            });
+            if (editingLegalPage === id) setEditingLegalPage(null);
+        }
+    };
+
+    const handleUpdateCustomLegalPage = (id: string, field: 'title' | 'content' | 'slug', value: string) => {
+        setFormState({
+            ...formState,
+            customLegalPages: (formState.customLegalPages || []).map(p => p.id === id ? { ...p, [field]: value } : p)
+        });
+    };
+
+    // Class Levels Handlers
+    const handleAddClassLevel = (level: string) => {
+        if (!level || (formState.classLevels || []).includes(level)) return;
+        setFormState({
+            ...formState,
+            classLevels: [...(formState.classLevels || []), level]
+        });
+    };
+
+    const handleRemoveClassLevel = (level: string) => {
+        setFormState({
+            ...formState,
+            classLevels: (formState.classLevels || []).filter(l => l !== level)
+        });
+    };
+
+    // Communes Handlers
+    const handleAddCommune = () => {
+        const newCommune = { id: Date.now().toString(), name: 'Nouvelle Commune', postalCode: '' };
+        setFormState({
+            ...formState,
+            communes: [...(formState.communes || []), newCommune]
+        });
+    };
+
+    const handleUpdateCommune = (id: string, field: string, value: string) => {
+        setFormState({
+            ...formState,
+            communes: (formState.communes || []).map(c => c.id === id ? { ...c, [field]: value } : c)
+        });
+    };
+
+    const handleRemoveCommune = (id: string) => {
+        setFormState({
+            ...formState,
+            communes: (formState.communes || []).filter(c => c.id !== id),
+            schools: (formState.schools || []).filter(s => s.communeId !== id)
+        });
+    };
+
+    // Schools Handlers
+    const handleAddSchool = (communeId: string) => {
+        const newSchool = { id: Date.now().toString(), name: 'Nouvelle École', address: '', communeId };
+        setFormState({
+            ...formState,
+            schools: [...(formState.schools || []), newSchool]
+        });
+    };
+
+    const handleUpdateSchool = (id: string, field: string, value: string) => {
+        setFormState({
+            ...formState,
+            schools: (formState.schools || []).map(s => s.id === id ? { ...s, [field]: value } : s)
+        });
+    };
+
+    const handleRemoveSchool = (id: string) => {
+        setFormState({
+            ...formState,
+            schools: (formState.schools || []).filter(s => s.id !== id)
+        });
+    };
+
+    // Excel Import Handlers
+    const handleImportCommunes = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const dataBuffer = evt.target?.result;
+                const wb = XLSX.read(dataBuffer, { type: 'array' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws) as any[];
+
+                const findValue = (row: any, keys: string[]) => {
+                    const rowKeys = Object.keys(row);
+                    for (const key of keys) {
+                        const foundKey = rowKeys.find(rk => rk.trim().toLowerCase() === key.toLowerCase());
+                        if (foundKey) return row[foundKey];
+                    }
+                    return '';
+                };
+
+                const importedCommunes = data.map((row, index) => {
+                    const rawValue = findValue(row, ['Communes', 'Commune', 'Nom', 'name', 'Ville']);
+                    let name = String(rawValue || '').trim();
+                    let postalCode = '';
+
+                    // Try to parse "City (PostalCode)"
+                    const match = name.match(/^(.*?)\s*\((.*?)\)$/);
+                    if (match) {
+                        name = match[1].trim();
+                        postalCode = match[2].trim();
+                    }
+
+                    return {
+                        id: `imported-commune-${Date.now()}-${index}`,
+                        name: name,
+                        postalCode: postalCode
+                    };
+                }).filter(c => c.name);
+
+                if (importedCommunes.length === 0 && data.length > 0) {
+                    console.log("Data sample:", data[0]);
+                    showNotification("Aucune donnée valide trouvée. Vérifiez que la colonne s'appelle bien 'Communes'.", "error");
+                } else if (data.length === 0) {
+                    showNotification("Le fichier semble vide.", "error");
+                } else {
+                    setFormState(prev => ({
+                        ...prev,
+                        communes: [...(prev.communes || []), ...importedCommunes]
+                    }));
+                    showNotification(`${importedCommunes.length} communes importées.`);
+                }
+            } catch (error) {
+                console.error("Erreur import communes:", error);
+                showNotification("Erreur lors de la lecture du fichier Excel.", "error");
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    const handleImportSchools = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const dataBuffer = evt.target?.result;
+                const wb = XLSX.read(dataBuffer, { type: 'array' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws) as any[];
+
+                const findValue = (row: any, keys: string[]) => {
+                    const rowKeys = Object.keys(row);
+                    for (const key of keys) {
+                        const foundKey = rowKeys.find(rk => rk.trim().toLowerCase() === key.toLowerCase());
+                        if (foundKey) return row[foundKey];
+                    }
+                    return '';
+                };
+
+                const importedSchools = data.map((row, index) => {
+                    const schoolName = String(findValue(row, ['Ecoles', 'Ecole', 'Nom', 'name']) || '').trim();
+                    const communeName = String(findValue(row, ['Communes', 'Commune', 'commune', 'Ville']) || '').trim();
+                    const address = String(findValue(row, ['Adresses', 'Adresse', 'address']) || '').trim();
+                    
+                    const commune = (formState.communes || []).find(c => 
+                        c.name.trim().toLowerCase() === communeName.toLowerCase() || 
+                        `${c.name.trim()} (${c.postalCode.trim()})`.toLowerCase() === communeName.toLowerCase()
+                    );
+                    
+                    return {
+                        id: `imported-school-${Date.now()}-${index}`,
+                        name: schoolName,
+                        address: address,
+                        communeId: commune?.id || ''
+                    };
+                }).filter(s => s.name);
+
+                if (importedSchools.length === 0 && data.length > 0) {
+                    console.log("Data sample:", data[0]);
+                    showNotification("Aucune donnée valide trouvée. Vérifiez que les colonnes s'appellent 'Ecoles', 'Communes' et 'Adresses'.", "error");
+                } else if (data.length === 0) {
+                    showNotification("Le fichier semble vide.", "error");
+                } else {
+                    setFormState(prev => ({
+                        ...prev,
+                        schools: [...(prev.schools || []), ...importedSchools]
+                    }));
+                    showNotification(`${importedSchools.length} écoles importées.`);
+                }
+            } catch (error) {
+                console.error("Erreur import écoles:", error);
+                showNotification("Erreur lors de la lecture du fichier Excel.", "error");
+            }
+        };
+        reader.readAsArrayBuffer(file);
     };
 
     const handleUnlockSecurity = () => {
@@ -247,6 +515,8 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                         <NavButton id="media" label="Illustrations" icon={<SparklesIcon className="w-5 h-5" />} />
                         <NavButton id="rules" label="Calendrier" icon={<CalendarDaysIcon className="w-5 h-5" />} />
                         <NavButton id="general" label="Général" icon={<BellIcon className="w-5 h-5" />} />
+                        <NavButton id="data" label="Données" icon={<DatabaseIcon className="w-5 h-5" />} />
+                        <NavButton id="footer" label="Pied de page" icon={<PencilIcon className="w-5 h-5" />} />
                         <NavButton id="security" label="Sécurité" icon={<CogIcon className="w-5 h-5" />} />
                     </nav>
                 </aside>
@@ -263,6 +533,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     {activeTab === 'media' && "Illustrations & Médias"}
                                     {activeTab === 'rules' && "Règles du Calendrier & Réservations"}
                                     {activeTab === 'general' && "Paramètres généraux"}
+                                    {activeTab === 'footer' && "Pied de page & Mentions Légales"}
                                     {activeTab === 'security' && "Sécurité & Accès"}
                                 </h3>
                                 <p className="text-sm text-gray-500 mt-1">
@@ -270,6 +541,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     {activeTab === 'media' && "Modifiez les images d'illustration de l'accès admin et des jeux."}
                                     {activeTab === 'rules' && "Définissez les contraintes de réservation : délais, jours et créneaux."}
                                     {activeTab === 'general' && "Configurez l'année scolaire active et vos informations de contact."}
+                                    {activeTab === 'footer' && "Gérez les liens du pied de page, les mentions légales et les infos de l'établissement."}
                                     {activeTab === 'security' && "Gérez vos identifiants de connexion et l'e-mail de secours."}
                                 </p>
                             </div>
@@ -497,42 +769,584 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     </div>
                                 )}
 
+                                {activeTab === 'data' && (
+                                    <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        {/* Niveaux de classe */}
+                                        <div className="p-6 bg-blue-50/30 rounded-2xl border border-blue-100">
+                                            <h4 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
+                                                <AcademicCapIcon className="w-5 h-5" />
+                                                Niveaux de classe
+                                            </h4>
+                                            <div className="flex flex-wrap gap-2 mb-4">
+                                                {(formState.classLevels || []).map(level => (
+                                                    <div key={level} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-blue-200 rounded-lg shadow-sm">
+                                                        <span className="font-bold text-blue-700">{level}</span>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => handleRemoveClassLevel(level)}
+                                                            className="text-gray-400 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <TrashIcon className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="flex gap-2 max-w-xs">
+                                                <input 
+                                                    type="text" 
+                                                    id="newClassLevel"
+                                                    placeholder="Nouveau niveau (ex: MS)"
+                                                    className="flex-grow px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            handleAddClassLevel((e.target as HTMLInputElement).value);
+                                                            (e.target as HTMLInputElement).value = '';
+                                                        }
+                                                    }}
+                                                />
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => {
+                                                        const input = document.getElementById('newClassLevel') as HTMLInputElement;
+                                                        handleAddClassLevel(input.value);
+                                                        input.value = '';
+                                                    }}
+                                                    className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700"
+                                                >
+                                                    Ajouter
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Communes */}
+                                        <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                                                    <MapPinIcon className="w-5 h-5 text-red-500" />
+                                                    Communes
+                                                </h4>
+                                                <div className="flex gap-3 items-center">
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <label className="cursor-pointer px-4 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors text-xs font-bold flex items-center gap-2">
+                                                            <PlusCircleIcon className="w-4 h-4" />
+                                                            Importer Excel
+                                                            <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportCommunes} />
+                                                        </label>
+                                                        <span className="text-[9px] text-gray-400 italic">Colonne attendue : "Communes"</span>
+                                                    </div>
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={handleAddCommune}
+                                                        className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-xs font-bold"
+                                                    >
+                                                        <PlusCircleIcon className="w-4 h-4" />
+                                                        Ajouter manuellement
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto p-1">
+                                                {(formState.communes || []).map(commune => (
+                                                    <div key={commune.id} className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm relative group">
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => handleRemoveCommune(commune.id)}
+                                                            className="absolute top-2 right-2 p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                                        >
+                                                            <TrashIcon className="w-4 h-4" />
+                                                        </button>
+                                                        <div className="space-y-3">
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Nom de la commune</label>
+                                                                <input 
+                                                                    type="text" 
+                                                                    value={commune.name} 
+                                                                    onChange={(e) => handleUpdateCommune(commune.id, 'name', e.target.value)}
+                                                                    className="w-full px-2 py-1 border rounded text-sm font-semibold"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Code Postal</label>
+                                                                <input 
+                                                                    type="text" 
+                                                                    value={commune.postalCode} 
+                                                                    onChange={(e) => handleUpdateCommune(commune.id, 'postalCode', e.target.value)}
+                                                                    className="w-full px-2 py-1 border rounded text-sm font-mono"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Écoles */}
+                                        <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                                                    <BuildingLibraryIcon className="w-5 h-5 text-indigo-500" />
+                                                    Écoles
+                                                </h4>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <label className="cursor-pointer px-4 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors text-xs font-bold flex items-center gap-2">
+                                                        <PlusCircleIcon className="w-4 h-4" />
+                                                        Importer Excel
+                                                        <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportSchools} />
+                                                    </label>
+                                                    <span className="text-[9px] text-gray-400 italic">Colonnes attendues : "Ecoles", "Communes", "Adresses"</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                {(formState.communes || []).map(commune => (
+                                                    <div key={commune.id} className="space-y-3">
+                                                        <div className="flex items-center justify-between border-b pb-2">
+                                                            <h5 className="font-bold text-gray-700">{commune.name} ({commune.postalCode})</h5>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => handleAddSchool(commune.id)}
+                                                                className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                                            >
+                                                                <PlusCircleIcon className="w-3 h-3" />
+                                                                Ajouter une école
+                                                            </button>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            {(formState.schools || []).filter(s => s.communeId === commune.id).map(school => (
+                                                                <div key={school.id} className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm relative group">
+                                                                    <button 
+                                                                        type="button" 
+                                                                        onClick={() => handleRemoveSchool(school.id)}
+                                                                        className="absolute top-2 right-2 p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                                                    >
+                                                                        <TrashIcon className="w-4 h-4" />
+                                                                    </button>
+                                                                    <div className="space-y-3">
+                                                                        <div>
+                                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Nom de l'école</label>
+                                                                            <input 
+                                                                                type="text" 
+                                                                                value={school.name} 
+                                                                                onChange={(e) => handleUpdateSchool(school.id, 'name', e.target.value)}
+                                                                                className="w-full px-2 py-1 border rounded text-sm font-semibold"
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Adresse</label>
+                                                                            <textarea 
+                                                                                value={school.address} 
+                                                                                onChange={(e) => handleUpdateSchool(school.id, 'address', e.target.value)}
+                                                                                className="w-full px-2 py-1 border rounded text-sm h-16"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {activeTab === 'general' && (
                                     <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="max-w-2xl space-y-6">
+                                            <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                                                <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                                    <BellIcon className="w-5 h-5 text-blue-600" />
+                                                    Informations de Contact
+                                                </h4>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Téléphone de contact</label>
+                                                        <input type="text" name="contactPhone" value={formState.contactPhone || ''} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" placeholder="ex: 03 82 26 03 00"/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">E-mail de contact</label>
+                                                        <input type="email" name="contactEmail" value={formState.contactEmail || ''} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" placeholder="ex: contact@grandlongwy.fr"/>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                                                <h4 className="font-bold text-gray-800 mb-4">Année scolaire</h4>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Année scolaire active</label>
+                                                        <input type="text" name="activeYear" value={formState.activeYear} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold"/>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'footer' && (
+                                    <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        {editingLegalPage ? (
                                             <div className="space-y-6">
-                                                <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
-                                                    <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                                        <BellIcon className="w-5 h-5 text-blue-600" />
-                                                        Informations de Contact
-                                                    </h4>
-                                                    <div className="space-y-4">
+                                                <div className="flex justify-between items-center">
+                                                    <div className="flex flex-col">
+                                                        <h4 className="text-lg font-bold text-gray-800">
+                                                            Édition : {
+                                                                editingLegalPage === 'legalNotice' ? (formState.legalNoticeTitle || 'Mentions Légales') : 
+                                                                editingLegalPage === 'privacyPolicy' ? (formState.privacyPolicyTitle || 'Politique de Confidentialité') : 
+                                                                (formState.customLegalPages?.find(p => p.id === editingLegalPage)?.title || 'Page personnalisée')
+                                                            }
+                                                        </h4>
+                                                        <div className="mt-2 flex gap-4 items-center">
+                                                            <div className="flex flex-col">
+                                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Titre de la page</label>
+                                                                <input 
+                                                                    type="text" 
+                                                                    value={
+                                                                        editingLegalPage === 'legalNotice' ? (formState.legalNoticeTitle || '') :
+                                                                        editingLegalPage === 'privacyPolicy' ? (formState.privacyPolicyTitle || '') :
+                                                                        (formState.customLegalPages?.find(p => p.id === editingLegalPage)?.title || '')
+                                                                    }
+                                                                    onChange={(e) => {
+                                                                        if (editingLegalPage === 'legalNotice') setFormState({ ...formState, legalNoticeTitle: e.target.value });
+                                                                        else if (editingLegalPage === 'privacyPolicy') setFormState({ ...formState, privacyPolicyTitle: e.target.value });
+                                                                        else handleUpdateCustomLegalPage(editingLegalPage as string, 'title', e.target.value);
+                                                                    }}
+                                                                    className="px-3 py-1 border rounded bg-white text-sm font-bold"
+                                                                />
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Slug (URL)</label>
+                                                                <input 
+                                                                    type="text" 
+                                                                    value={
+                                                                        editingLegalPage === 'legalNotice' ? (formState.legalNoticeSlug || '') :
+                                                                        editingLegalPage === 'privacyPolicy' ? (formState.privacyPolicySlug || '') :
+                                                                        (formState.customLegalPages?.find(p => p.id === editingLegalPage)?.slug || '')
+                                                                    }
+                                                                    onChange={(e) => {
+                                                                        if (editingLegalPage === 'legalNotice') setFormState({ ...formState, legalNoticeSlug: e.target.value });
+                                                                        else if (editingLegalPage === 'privacyPolicy') setFormState({ ...formState, privacyPolicySlug: e.target.value });
+                                                                        else handleUpdateCustomLegalPage(editingLegalPage as string, 'slug', e.target.value);
+                                                                    }}
+                                                                    className="px-3 py-1 border rounded bg-white text-sm font-mono"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => setEditingLegalPage(null)}
+                                                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors font-medium"
+                                                    >
+                                                        Retour
+                                                    </button>
+                                                </div>
+                                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                                    <ReactQuill 
+                                                        theme="snow"
+                                                        value={
+                                                            editingLegalPage === 'legalNotice' ? (formState.legalNotice || '') :
+                                                            editingLegalPage === 'privacyPolicy' ? (formState.privacyPolicy || '') :
+                                                            (formState.customLegalPages?.find(p => p.id === editingLegalPage)?.content || '')
+                                                        }
+                                                        onChange={(content) => {
+                                                            if (editingLegalPage === 'legalNotice') setFormState({ ...formState, legalNotice: content });
+                                                            else if (editingLegalPage === 'privacyPolicy') setFormState({ ...formState, privacyPolicy: content });
+                                                            else handleUpdateCustomLegalPage(editingLegalPage, 'content', content);
+                                                        }}
+                                                        modules={{
+                                                            toolbar: [
+                                                                [{ 'header': [1, 2, 3, false] }],
+                                                                ['bold', 'italic', 'underline', 'strike'],
+                                                                [{ 'color': [] }, { 'background': [] }],
+                                                                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                                                                ['clean']
+                                                            ],
+                                                        }}
+                                                        className="h-[400px] mb-12"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {/* Legal Pages Selection */}
+                                                <div className="space-y-6">
+                                                    <div className="flex justify-between items-center">
+                                                        <h4 className="font-bold text-gray-800">Pages Légales & Personnalisées</h4>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={handleAddCustomLegalPage}
+                                                            className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-bold"
+                                                        >
+                                                            <PlusCircleIcon className="w-4 h-4" />
+                                                            Ajouter une page
+                                                        </button>
+                                                    </div>
+                                                    
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                        {/* Standard Pages */}
+                                                        <div className="p-6 bg-white rounded-2xl border border-gray-200 flex flex-col items-center text-center gap-4 shadow-sm">
+                                                            <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
+                                                                <PencilIcon className="w-6 h-6" />
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-bold text-gray-800">{formState.legalNoticeTitle || 'Mentions Légales'}</h4>
+                                                                <p className="text-[10px] text-gray-400 mt-1 font-mono">/{formState.legalNoticeSlug || 'mentions-legales'}</p>
+                                                            </div>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => setEditingLegalPage('legalNotice')}
+                                                                className="mt-auto px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-all shadow-sm text-sm"
+                                                            >
+                                                                Modifier
+                                                            </button>
+                                                        </div>
+
+                                                        <div className="p-6 bg-white rounded-2xl border border-gray-200 flex flex-col items-center text-center gap-4 shadow-sm">
+                                                            <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600">
+                                                                <PencilIcon className="w-6 h-6" />
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-bold text-gray-800">{formState.privacyPolicyTitle || 'Confidentialité'}</h4>
+                                                                <p className="text-[10px] text-gray-400 mt-1 font-mono">/{formState.privacyPolicySlug || 'confidentialite'}</p>
+                                                            </div>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => setEditingLegalPage('privacyPolicy')}
+                                                                className="mt-auto px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-sm text-sm"
+                                                            >
+                                                                Modifier
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Custom Pages */}
+                                                        {(formState.customLegalPages || []).map((page) => (
+                                                            <div key={page.id} className="p-6 bg-white rounded-2xl border border-gray-200 flex flex-col items-center text-center gap-4 relative group shadow-sm">
+                                                                <button 
+                                                                    type="button" 
+                                                                    onClick={() => handleRemoveCustomLegalPage(page.id)}
+                                                                    className="absolute top-3 right-3 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                                >
+                                                                    <TrashIcon className="w-4 h-4" />
+                                                                </button>
+                                                                <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center text-gray-600">
+                                                                    <PencilIcon className="w-6 h-6" />
+                                                                </div>
+                                                                <div>
+                                                                    <h4 className="font-bold text-gray-800 truncate max-w-[150px]">{page.title}</h4>
+                                                                    <p className="text-[10px] text-gray-400 mt-1 font-mono">/{page.slug}</p>
+                                                                </div>
+                                                                <button 
+                                                                    type="button" 
+                                                                    onClick={() => setEditingLegalPage(page.id)}
+                                                                    className="mt-auto px-6 py-2 bg-gray-800 text-white rounded-lg font-bold hover:bg-black transition-all shadow-sm text-sm"
+                                                                >
+                                                                    Modifier
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Legal Header Appearance */}
+                                                <div className="space-y-6 border-t pt-8">
+                                                    <h4 className="font-bold text-gray-800">Apparence de l'en-tête des pages légales</h4>
+                                                    <p className="text-xs text-gray-500">Personnalisez les couleurs du bandeau supérieur des pages Mentions Légales et Politique de Confidentialité.</p>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                                         <div>
-                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Téléphone de contact</label>
-                                                            <input type="text" name="contactPhone" value={formState.contactPhone || ''} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" placeholder="ex: 03 82 26 03 00"/>
+                                                            <label className="block text-sm font-bold text-gray-700 mb-3">Couleur d'arrière-plan</label>
+                                                            <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                                                <input 
+                                                                    type="color" 
+                                                                    name="legalHeaderBgColor" 
+                                                                    value={formState.legalHeaderBgColor || '#ffffff'} 
+                                                                    onChange={handleChange} 
+                                                                    className="h-12 w-16 border rounded-lg cursor-pointer bg-white p-1 shadow-sm"
+                                                                />
+                                                                <input 
+                                                                    type="text" 
+                                                                    name="legalHeaderBgColor" 
+                                                                    value={formState.legalHeaderBgColor || '#ffffff'} 
+                                                                    onChange={handleChange} 
+                                                                    className="w-full max-w-[150px] px-3 py-2 border rounded-lg font-mono text-xs uppercase"
+                                                                />
+                                                            </div>
                                                         </div>
                                                         <div>
-                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">E-mail de contact</label>
-                                                            <input type="email" name="contactEmail" value={formState.contactEmail || ''} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" placeholder="ex: contact@grandlongwy.fr"/>
+                                                            <label className="block text-sm font-bold text-gray-700 mb-3">Couleur du texte et bouton</label>
+                                                            <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                                                <input 
+                                                                    type="color" 
+                                                                    name="legalHeaderTextColor" 
+                                                                    value={formState.legalHeaderTextColor || '#111827'} 
+                                                                    onChange={handleChange} 
+                                                                    className="h-12 w-16 border rounded-lg cursor-pointer bg-white p-1 shadow-sm"
+                                                                />
+                                                                <input 
+                                                                    type="text" 
+                                                                    name="legalHeaderTextColor" 
+                                                                    value={formState.legalHeaderTextColor || '#111827'} 
+                                                                    onChange={handleChange} 
+                                                                    className="w-full max-w-[150px] px-3 py-2 border rounded-lg font-mono text-xs uppercase"
+                                                                />
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
-                                                    <h4 className="font-bold text-gray-800 mb-4">Année scolaire</h4>
-                                                    <div className="space-y-4">
-                                                        <div>
-                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Année scolaire active</label>
-                                                            <input type="text" name="activeYear" value={formState.activeYear} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold"/>
+                                                {/* Footer Content */}
+                                                <div className="space-y-4 border-t pt-8">
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Contenu textuel du pied de page (Bas de page)</label>
+                                                    <textarea 
+                                                        name="footerContent" 
+                                                        value={formState.footerContent} 
+                                                        onChange={handleChange} 
+                                                        rows={4} 
+                                                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm" 
+                                                        placeholder="Coordonnées simplifiées, copyright, etc."
+                                                    />
+                                                </div>
+
+                                                {/* Dynamic Links */}
+                                                <div className="space-y-4 border-t pt-8">
+                                                    <div className="flex justify-between items-center">
+                                                        <h4 className="font-bold text-gray-800">Liens supplémentaires du pied de page</h4>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={handleAddFooterLink}
+                                                            className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-bold"
+                                                        >
+                                                            <PlusCircleIcon className="w-4 h-4" />
+                                                            Ajouter un lien
+                                                        </button>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 gap-4">
+                                                        {(formState.footerLinks || []).map((link) => (
+                                                            <div key={link.id} className="flex flex-col sm:flex-row gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100 items-start sm:items-center">
+                                                                <div className="flex-grow grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                                                                    <input 
+                                                                        type="text" 
+                                                                        value={link.label} 
+                                                                        onChange={(e) => handleUpdateFooterLink(link.id, 'label', e.target.value)}
+                                                                        placeholder="Label du lien"
+                                                                        className="px-3 py-2 border rounded-lg text-sm bg-white"
+                                                                    />
+                                                                    <input 
+                                                                        type="text" 
+                                                                        value={link.url || ''} 
+                                                                        onChange={(e) => handleUpdateFooterLink(link.id, 'url', e.target.value)}
+                                                                        placeholder="URL (ex: https://...)"
+                                                                        className="px-3 py-2 border rounded-lg text-sm bg-white"
+                                                                    />
+                                                                </div>
+                                                                <button 
+                                                                    type="button" 
+                                                                    onClick={() => handleRemoveFooterLink(link.id)}
+                                                                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                >
+                                                                    <TrashIcon className="w-5 h-5" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                        {(formState.footerLinks || []).length === 0 && (
+                                                            <p className="text-sm text-gray-400 italic text-center py-4">Aucun lien supplémentaire configuré.</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Establishment Info */}
+                                                <div className="space-y-6 border-t pt-8">
+                                                    <h4 className="font-bold text-gray-800">Informations sur l'établissement</h4>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                        <div className="space-y-4">
+                                                            <div>
+                                                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Nom de l'établissement</label>
+                                                                <input 
+                                                                    type="text" 
+                                                                    value={formState.establishmentInfo?.name || ''} 
+                                                                    onChange={(e) => handleUpdateEstablishmentInfo('name', e.target.value)}
+                                                                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold"
+                                                                    placeholder="ex: Médiathèque de Longwy"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Adresse</label>
+                                                                <input 
+                                                                    type="text" 
+                                                                    value={formState.establishmentInfo?.address || ''} 
+                                                                    onChange={(e) => handleUpdateEstablishmentInfo('address', e.target.value)}
+                                                                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold"
+                                                                    placeholder="ex: 1 Avenue de la Paix, 54400 Longwy"
+                                                                />
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div>
+                                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Téléphone</label>
+                                                                    <input 
+                                                                        type="text" 
+                                                                        value={formState.establishmentInfo?.phone || ''} 
+                                                                        onChange={(e) => handleUpdateEstablishmentInfo('phone', e.target.value)}
+                                                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold"
+                                                                        placeholder="ex: 03 82 26 03 00"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">E-mail</label>
+                                                                    <input 
+                                                                        type="email" 
+                                                                        value={formState.establishmentInfo?.email || ''} 
+                                                                        onChange={(e) => handleUpdateEstablishmentInfo('email', e.target.value)}
+                                                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold"
+                                                                        placeholder="ex: contact@longwy.fr"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-col items-center justify-center p-6 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+                                                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Logo de l'établissement</span>
+                                                            <div className="relative w-40 h-40 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex items-center justify-center mb-4">
+                                                                {formState.establishmentInfo?.logoUrl ? (
+                                                                    <img src={formState.establishmentInfo.logoUrl} alt="Logo" className="max-w-full max-h-full object-contain p-2" />
+                                                                ) : (
+                                                                    <div className="text-gray-300 text-xs italic text-center px-4">Aucun logo importé</div>
+                                                                )}
+                                                                {uploadingField === 'establishmentLogo' && (
+                                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <label className={`cursor-pointer px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm text-sm font-bold text-blue-600 hover:bg-blue-50 transition-all ${uploadingField ? 'opacity-50 pointer-events-none' : ''}`}>
+                                                                Importer un logo
+                                                                <input 
+                                                                    type="file" 
+                                                                    accept="image/*" 
+                                                                    className="hidden" 
+                                                                    onChange={async (e) => {
+                                                                        if (e.target.files && e.target.files[0]) {
+                                                                            const file = e.target.files[0];
+                                                                            setUploadingField('establishmentLogo');
+                                                                            try {
+                                                                                const url = await storageService.uploadFile(file, 'logos');
+                                                                                handleUpdateEstablishmentInfo('logoUrl', url);
+                                                                                showNotification("Logo mis à jour !");
+                                                                            } catch (error) {
+                                                                                console.error(error);
+                                                                                alert("Erreur lors de l'upload.");
+                                                                            } finally {
+                                                                                setUploadingField(null);
+                                                                            }
+                                                                        }
+                                                                    }} 
+                                                                    disabled={uploadingField !== null}
+                                                                />
+                                                            </label>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-bold text-gray-700 mb-2">Contenu du pied de page</label>
-                                                <textarea name="footerContent" value={formState.footerContent} onChange={handleChange} rows={12} className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm" placeholder="Coordonnées, mentions légales, etc."/>
-                                            </div>
-                                        </div>
+                                            </>
+                                        )}
                                     </div>
                                 )}
 

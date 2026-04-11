@@ -1,7 +1,7 @@
 
 import { storageService } from '../../services/storageService';
 import React, { useState, useContext, useMemo } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { Animator } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { PencilIcon, CheckIcon, XIcon, TrashIcon } from '../Icons';

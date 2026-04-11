@@ -1,6 +1,6 @@
 
 import React, { useContext, useState } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { Animation } from '../../types';
 import { CogIcon, BellIcon, XIcon } from '../Icons';
 

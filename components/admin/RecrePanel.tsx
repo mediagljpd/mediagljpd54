@@ -1,6 +1,6 @@
 
 import React, { useState, useContext } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { AdminSubComponentProps } from './types';
 import { PuzzlePieceIcon, CubeTransparentIcon, ViewGridIcon } from '../Icons';
 import MemoryGame from './games/MemoryGame';

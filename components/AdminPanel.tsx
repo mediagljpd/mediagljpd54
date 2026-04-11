@@ -9,7 +9,7 @@ import RecrePanel from './admin/RecrePanel';
 import { AdminView } from './admin/types';
 import { PaintBrushIcon, CalendarIcon, ListIcon, SparklesIcon, JournalIcon, CogIcon, CheckIcon, XIcon } from './Icons';
 import { db } from '../services/firebase';
-import { AppContext } from '../App';
+import { AppContext } from '../AppContext';
 
 // Main Admin Panel Component
 const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {

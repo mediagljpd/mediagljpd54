@@ -1,6 +1,6 @@
 
 import React, { useState, useContext, useMemo } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { ChangelogEntry } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { toYYYYMMDD } from '../../utils/date';

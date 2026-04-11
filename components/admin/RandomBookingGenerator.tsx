@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useContext, useEffect } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { Animation, Booking } from '../../types';
 import { toYYYYMMDD } from '../../utils/date';
 

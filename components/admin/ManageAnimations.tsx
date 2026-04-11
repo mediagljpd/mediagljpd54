@@ -1,6 +1,6 @@
 
 import React, { useState, useContext } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { Animation } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { DragHandleIcon, PencilIcon, TrashIcon } from '../Icons';

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useContext, useEffect, useRef } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { Booking } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { generateBusPdf } from '../../services/documentGenerator';

@@ -1,9 +1,12 @@
 
-import React, { useState } from 'react';
+import React, { useState, useContext, useMemo } from 'react';
 import { Animation, Booking } from '../../types';
 import { toYYYYMMDD } from '../../utils/date';
+import { AppContext } from '../../AppContext';
+import { SearchIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon } from '../Icons';
 
 const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, onConfirm: (formData: Omit<Booking, 'id' | 'animationTitle'>) => void, onCancel: () => void }> = ({ animation, date, time, onConfirm, onCancel }) => {
+    const { settings } = useContext(AppContext);
     const [formData, setFormData] = useState({
         animationId: animation.id,
         date: toYYYYMMDD(date),
@@ -14,11 +17,43 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
         schoolName: '',
         phoneNumber: '',
         email: '',
-        studentCount: 25,
-        adultCount: 2,
+        studentCount: '' as any,
+        adultCount: '' as any,
         busInfo: '',
         noBusRequired: false,
     });
+
+    const [communeSearch, setCommuneSearch] = useState('');
+    const [showCommuneList, setShowCommuneList] = useState(false);
+    const [selectedCommuneId, setSelectedCommuneId] = useState<string | null>(null);
+
+    const filteredCommunes = useMemo(() => {
+        if (!communeSearch) return settings.communes || [];
+        return (settings.communes || []).filter(c => 
+            c.name.toLowerCase().includes(communeSearch.toLowerCase()) || 
+            c.postalCode.includes(communeSearch)
+        );
+    }, [settings.communes, communeSearch]);
+
+    const filteredSchools = useMemo(() => {
+        if (!selectedCommuneId) return [];
+        return (settings.schools || []).filter(s => s.communeId === selectedCommuneId);
+    }, [settings.schools, selectedCommuneId]);
+
+    const selectedSchool = useMemo(() => {
+        return (settings.schools || []).find(s => s.name === formData.schoolName && s.communeId === selectedCommuneId);
+    }, [settings.schools, formData.schoolName, selectedCommuneId]);
+
+    const handleClassLevelToggle = (level: string) => {
+        const currentLevels = formData.classLevel ? formData.classLevel.split(', ') : [];
+        let newLevels;
+        if (currentLevels.includes(level)) {
+            newLevels = currentLevels.filter(l => l !== level);
+        } else {
+            newLevels = [...currentLevels, level];
+        }
+        setFormData(prev => ({ ...prev, classLevel: newLevels.join(', ') }));
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -31,6 +66,8 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
         // Initialisation des statuts bus pour l'admin
         onConfirm({
             ...formData,
+            studentCount: parseInt(formData.studentCount as any) || 0,
+            adultCount: parseInt(formData.adultCount as any) || 0,
             busStatus: formData.noBusRequired ? undefined : 'pending',
             busCost: 0
         });
@@ -46,17 +83,103 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                         <label htmlFor="teacherName" className="block text-sm font-medium text-gray-700">Nom de l'enseignant</label>
                         <input id="teacherName" type="text" name="teacherName" placeholder="ex: Jean Dupont" onChange={handleChange} required className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
                     </div>
-                    <div>
-                        <label htmlFor="classLevel" className="block text-sm font-medium text-gray-700">Niveau de la classe</label>
-                        <input id="classLevel" type="text" name="classLevel" placeholder="ex: CE2" onChange={handleChange} required className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    <div className="col-span-2 md:col-span-1">
+                        <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                            <AcademicCapIcon className="w-4 h-4 text-blue-600" />
+                            Niveau de la classe
+                        </label>
+                        <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            {(settings.classLevels || ['PS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2']).map(level => (
+                                <label key={level} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer transition-all text-xs font-bold ${
+                                    formData.classLevel.split(', ').includes(level)
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                                    : 'bg-white border-gray-300 text-gray-600 hover:border-blue-400'
+                                }`}>
+                                    <input 
+                                        type="checkbox" 
+                                        className="hidden" 
+                                        checked={formData.classLevel.split(', ').includes(level)}
+                                        onChange={() => handleClassLevelToggle(level)}
+                                    />
+                                    {level}
+                                </label>
+                            ))}
+                        </div>
+                        <input type="hidden" name="classLevel" value={formData.classLevel} required />
                     </div>
-                    <div>
-                        <label htmlFor="commune" className="block text-sm font-medium text-gray-700">Commune</label>
-                        <input id="commune" type="text" name="commune" placeholder="ex: Lille" onChange={handleChange} required className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+
+                    <div className="col-span-2 md:col-span-1 relative">
+                        <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                            <MapPinIcon className="w-4 h-4 text-red-500" />
+                            Commune
+                        </label>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                placeholder="Tapez le nom ou le code postal..." 
+                                value={communeSearch || formData.commune}
+                                onChange={(e) => {
+                                    setCommuneSearch(e.target.value);
+                                    setShowCommuneList(true);
+                                    if (formData.commune) {
+                                        setFormData(prev => ({ ...prev, commune: '', schoolName: '' }));
+                                        setSelectedCommuneId(null);
+                                    }
+                                }}
+                                onFocus={() => setShowCommuneList(true)}
+                                className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none pl-10"
+                            />
+                            <SearchIcon className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                        </div>
+                        
+                        {showCommuneList && filteredCommunes.length > 0 && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                                {filteredCommunes.map(c => (
+                                    <button
+                                        key={c.id}
+                                        type="button"
+                                        onClick={() => {
+                                            setFormData(prev => ({ ...prev, commune: `${c.name} (${c.postalCode})` }));
+                                            setCommuneSearch(`${c.name} (${c.postalCode})`);
+                                            setSelectedCommuneId(c.id);
+                                            setShowCommuneList(false);
+                                        }}
+                                        className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors border-b last:border-0 text-sm"
+                                    >
+                                        <span className="font-bold text-gray-800">{c.name}</span>
+                                        <span className="ml-2 text-gray-500 font-mono">({c.postalCode})</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                    <div>
-                        <label htmlFor="schoolName" className="block text-sm font-medium text-gray-700">Nom de l'école</label>
-                        <input id="schoolName" type="text" name="schoolName" placeholder="ex: École Pasteur" onChange={handleChange} required className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+
+                    <div className="col-span-2 md:col-span-1">
+                        <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                            <BuildingLibraryIcon className="w-4 h-4 text-indigo-500" />
+                            Nom de l'école
+                        </label>
+                        <select 
+                            name="schoolName" 
+                            value={formData.schoolName}
+                            onChange={(e) => setFormData(prev => ({ ...prev, schoolName: e.target.value }))}
+                            disabled={!selectedCommuneId}
+                            required
+                            className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        >
+                            <option value="">-- Sélectionnez une école --</option>
+                            {filteredSchools.map(s => (
+                                <option key={s.id} value={s.name}>{s.name}</option>
+                            ))}
+                        </select>
+                        {selectedSchool && (
+                            <div className="mt-2 p-2 bg-indigo-50 rounded border border-indigo-100 flex items-start gap-2">
+                                <MapPinIcon className="w-3.5 h-3.5 text-indigo-400 mt-0.5" />
+                                <p className="text-[11px] text-indigo-700 leading-tight">
+                                    <span className="font-bold">Adresse :</span> {selectedSchool.address}
+                                </p>
+                            </div>
+                        )}
                     </div>
                     <div>
                         <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700">Numéro de téléphone</label>
@@ -77,11 +200,39 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                     </div>
                     <div>
                         <label htmlFor="studentCount" className="block text-sm font-medium text-gray-700">Nombre d'élèves</label>
-                        <input id="studentCount" type="number" name="studentCount" value={formData.studentCount} onChange={handleChange} required className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                        <input 
+                            id="studentCount" 
+                            type="text" 
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            name="studentCount" 
+                            value={formData.studentCount} 
+                            placeholder="ex: 25"
+                            onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                setFormData(prev => ({ ...prev, studentCount: val }));
+                            }} 
+                            required 
+                            className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        />
                     </div>
                     <div>
                         <label htmlFor="adultCount" className="block text-sm font-medium text-gray-700">Nombre d'adultes</label>
-                        <input id="adultCount" type="number" name="adultCount" value={formData.adultCount} onChange={handleChange} required className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                        <input 
+                            id="adultCount" 
+                            type="text" 
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            name="adultCount" 
+                            value={formData.adultCount} 
+                            placeholder="ex: 2"
+                            onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                setFormData(prev => ({ ...prev, adultCount: val }));
+                            }} 
+                            required 
+                            className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        />
                     </div>
 
                     {/* Section Bus */}
@@ -101,13 +252,13 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
 
                         <div className={formData.noBusRequired ? 'opacity-40 grayscale pointer-events-none' : ''}>
                             <label htmlFor="busInfo" className="block text-sm font-bold text-gray-700 mb-1">
-                                Informations pour le bus
+                                Consignes pour le bus
                             </label>
                             <textarea 
                                 id="busInfo" 
                                 name="busInfo" 
                                 value={formData.busInfo}
-                                placeholder="Où et à quelle heure doit passer le bus ? Précisez l'adresse..." 
+                                placeholder="Où et à quelle heure doit passer le bus ? Précisez l'horaire et l'adresse…" 
                                 onChange={handleChange} 
                                 required={!formData.noBusRequired}
                                 className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 h-24"
