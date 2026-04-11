@@ -48,6 +48,41 @@ export interface Animator {
   avatarUrl?: string;
 }
 
+export interface FooterLink {
+  id: string;
+  label: string;
+  url?: string;
+  content?: string;
+}
+
+export interface EstablishmentInfo {
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+  logoUrl?: string;
+}
+
+export interface CustomLegalPage {
+  id: string;
+  title: string;
+  content: string;
+  slug: string;
+}
+
+export interface Commune {
+  id: string;
+  name: string;
+  postalCode: string;
+}
+
+export interface School {
+  id: string;
+  name: string;
+  address: string;
+  communeId: string;
+}
+
 export interface AppSettings {
   homepageTitle: string;
   homepageSubtitle?: string;
@@ -84,6 +119,24 @@ export interface AppSettings {
   allowedDays: number[]; // [0, 1, 2, 3, 4, 5, 6] (0=Dim, 1=Lun...)
   availableTimeSlots: number[]; // [9, 10, 14, 15...]
 
+  // Données de référence
+  classLevels?: string[];
+  communes?: Commune[];
+  schools?: School[];
+
+  // Footer & Legal
+  legalNotice?: string;
+  legalNoticeTitle?: string;
+  legalNoticeSlug?: string;
+  privacyPolicy?: string;
+  privacyPolicyTitle?: string;
+  privacyPolicySlug?: string;
+  customLegalPages?: CustomLegalPage[];
+  legalHeaderBgColor?: string;
+  legalHeaderTextColor?: string;
+  footerLinks?: FooterLink[];
+  establishmentInfo?: EstablishmentInfo;
+
   // Contact
   contactPhone?: string;
   contactEmail?: string;
@@ -102,4 +155,7 @@ export enum View {
   CALENDAR,
   ADMIN_LOGIN,
   ADMIN_PANEL,
+  LEGAL_NOTICE,
+  PRIVACY_POLICY,
+  CUSTOM_PAGE,
 }
