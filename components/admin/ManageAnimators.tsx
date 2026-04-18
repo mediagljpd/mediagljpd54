@@ -7,11 +7,12 @@ import { AdminSubComponentProps } from './types';
 import { PencilIcon, CheckIcon, XIcon, TrashIcon } from '../Icons';
 
 const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
-    const { animations, updateAnimationsOrder, settings, updateSettings } = useContext(AppContext);
+    const { animations, updateAnimationsOrder, settings, updateSettings, currentUser } = useContext(AppContext);
     const [newAnimatorName, setNewAnimatorName] = useState('');
     const [editingAnimator, setEditingAnimator] = useState<{ original: Animator; current: Animator } | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     
+    const canManage = currentUser?.role === 'admin' || currentUser?.permissions.canManageAnimations;
     const animators = useMemo(() => settings.animators || [], [settings.animators]);
 
     const handleAddAnimator = () => {
@@ -112,20 +113,32 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification })
         }
     };
 
+    const handleRemoveAvatar = () => {
+        if (editingAnimator) {
+            setEditingAnimator(prev => prev ? ({
+                ...prev,
+                current: { ...prev.current, avatarUrl: '' }
+            }) : null);
+            showNotification("Avatar supprimé.");
+        }
+    };
+
     return (
         <div className="bg-white p-6 rounded-lg shadow">
             <h2 className="text-xl font-bold text-gray-800 mb-4">Gérer les animateurs</h2>
-            <div className="flex gap-2 mb-6">
-                <input
-                    type="text"
-                    value={newAnimatorName}
-                    onChange={(e) => setNewAnimatorName(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAddAnimator()}
-                    placeholder="Nom de l'animateur"
-                    className="flex-grow min-w-0 p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                />
-                <button onClick={handleAddAnimator} className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 whitespace-nowrap">Ajouter</button>
-            </div>
+            {canManage && (
+                <div className="flex gap-2 mb-6">
+                    <input
+                        type="text"
+                        value={newAnimatorName}
+                        onChange={(e) => setNewAnimatorName(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleAddAnimator()}
+                        placeholder="Nom de l'animateur"
+                        className="flex-grow min-w-0 p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                    <button onClick={handleAddAnimator} className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 whitespace-nowrap">Ajouter</button>
+                </div>
+            )}
             <ul className="space-y-3">
                 {animators.length > 0 ? animators.map(animator => (
                     <li key={animator.name}>
@@ -145,12 +158,23 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification })
                                                 </div>
                                             )}
                                         </div>
-                                        <label 
-                                            htmlFor="avatar-upload" 
-                                            className={`cursor-pointer text-xs font-bold ${isUploading ? 'text-gray-400' : 'text-blue-600 hover:underline'}`}
-                                        >
-                                            {isUploading ? 'Envoi...' : 'Modifier'}
-                                        </label>
+                                        <div className="flex gap-2 justify-center">
+                                            <label 
+                                                htmlFor="avatar-upload" 
+                                                className={`cursor-pointer text-[10px] font-bold ${isUploading ? 'text-gray-400' : 'text-blue-600 hover:underline'}`}
+                                            >
+                                                {isUploading ? 'Envoi...' : 'Modifier'}
+                                            </label>
+                                            {editingAnimator.current.avatarUrl && !isUploading && (
+                                                <button 
+                                                    type="button"
+                                                    onClick={handleRemoveAvatar}
+                                                    className="text-[10px] font-bold text-red-600 hover:underline"
+                                                >
+                                                    Effacer
+                                                </button>
+                                            )}
+                                        </div>
                                         <input id="avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleAvatarFileChange} disabled={isUploading}/>
                                     </div>
                                     <div className="flex-grow space-y-3">
@@ -158,9 +182,11 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification })
                                             type="text"
                                             value={editingAnimator.current.name}
                                             onChange={(e) => setEditingAnimator(prev => prev ? ({ ...prev, current: { ...prev.current, name: e.target.value }}) : null)}
-                                            className="w-full p-2 border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none ${!canManage ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
                                             placeholder="Nom complet"
-                                            autoFocus
+                                            autoFocus={canManage}
+                                            disabled={!canManage}
+                                            title={!canManage ? "Seul un administrateur peut modifier le nom d'un animateur" : ""}
                                         />
                                         <input
                                             type="email"
@@ -192,14 +218,18 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification })
                                         </p>
                                     </div>
                                 </div>
-                                <div className="flex flex-col gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                                    <button onClick={() => setEditingAnimator({ original: animator, current: { ...animator } })} className="text-gray-400 hover:text-indigo-600 p-1.5 bg-white rounded-full border border-gray-100 shadow-sm hover:border-indigo-200" title="Modifier">
-                                        <PencilIcon className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => handleRemoveAnimator(animator)} className="text-gray-400 hover:text-red-600 p-1.5 bg-white rounded-full border border-gray-100 shadow-sm hover:border-red-200" title="Supprimer">
-                                        <TrashIcon className="w-4 h-4" />
-                                    </button>
-                                </div>
+                                { (canManage || (currentUser?.animatorName === animator.name)) && (
+                                    <div className="flex flex-col gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                                        <button onClick={() => setEditingAnimator({ original: animator, current: { ...animator } })} className="text-gray-400 hover:text-indigo-600 p-1.5 bg-white rounded-full border border-gray-100 shadow-sm hover:border-indigo-200" title="Modifier">
+                                            <PencilIcon className="w-4 h-4" />
+                                        </button>
+                                        {canManage && (
+                                            <button onClick={() => handleRemoveAnimator(animator)} className="text-gray-400 hover:text-red-600 p-1.5 bg-white rounded-full border border-gray-100 shadow-sm hover:border-red-200" title="Supprimer">
+                                                <TrashIcon className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </li>

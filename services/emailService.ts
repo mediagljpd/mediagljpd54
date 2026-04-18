@@ -3,13 +3,22 @@ import { Booking, Animator } from '../types';
 
 /**
  * CONFIGURATION EMAILJS
- * Remplacez les valeurs ci-dessous par vos nouveaux identifiants EmailJS
+ * 
+ * Compte 1 (Principal - mediagljpd54@gmail.com)
+ * Gère : Notifications Animateurs et Récupération de mot de passe
  */
-const SERVICE_ID = 'service_o5lbm0b'; 
-const PUBLIC_KEY = 'f3k30dsN4n8aHPNzR'; 
+const MAIN_SERVICE_ID = 'service_o5lbm0b'; 
+const MAIN_PUBLIC_KEY = 'f3k30dsN4n8aHPNzR'; 
+
+/**
+ * Compte 2 (Enseignants - microfolie54@gmail.com)
+ * Gère : Confirmations de réservation aux enseignants
+ */
+const TEACHER_SERVICE_ID = 'service_pqptrua'; 
+const TEACHER_PUBLIC_KEY = 'zcDY1OLyk44t-qy2G'; 
 
 const TEMPLATE_ID_RECOVERY = 'template_recovery';
-const TEMPLATE_ID_CONFIRMATION_TEACHER = 'VOTRE_ID_TEMPLATE_CONFIRMATION';
+const TEMPLATE_ID_CONFIRMATION_TEACHER = 'template_enseignant';
 const TEMPLATE_ID_NOTIFICATION_ANIMATOR = 'template_animateur';
 
 declare global {
@@ -30,7 +39,8 @@ const formatDateFR = (dateStr: string) => {
 export const emailService = {
     init: () => {
         if (window.emailjs) {
-            window.emailjs.init(PUBLIC_KEY);
+            // On initialise avec la clé principale par défaut
+            window.emailjs.init(MAIN_PUBLIC_KEY);
         }
     },
 
@@ -51,7 +61,8 @@ export const emailService = {
         };
 
         try {
-            await window.emailjs.send(SERVICE_ID, TEMPLATE_ID_RECOVERY, templateParams);
+            // Utilise le compte Principal
+            await window.emailjs.send(MAIN_SERVICE_ID, TEMPLATE_ID_RECOVERY, templateParams, MAIN_PUBLIC_KEY);
             console.log('EmailJS: E-mail de récupération envoyé.');
         } catch (error) {
             console.error('EmailJS Error (Récupération):', error);
@@ -78,7 +89,8 @@ export const emailService = {
         };
 
         try {
-            await window.emailjs.send(SERVICE_ID, TEMPLATE_ID_CONFIRMATION_TEACHER, templateParams);
+            // Utilise le compte Enseignants (microfolie54@gmail.com)
+            await window.emailjs.send(TEACHER_SERVICE_ID, TEMPLATE_ID_CONFIRMATION_TEACHER, templateParams, TEACHER_PUBLIC_KEY);
             console.log('EmailJS: Confirmation enseignant envoyée.');
         } catch (error) {
             console.error('EmailJS Error (Confirmation):', error);
@@ -115,7 +127,8 @@ export const emailService = {
         };
 
         try {
-            await window.emailjs.send(SERVICE_ID, TEMPLATE_ID_NOTIFICATION_ANIMATOR, templateParams);
+            // Utilise le compte Principal
+            await window.emailjs.send(MAIN_SERVICE_ID, TEMPLATE_ID_NOTIFICATION_ANIMATOR, templateParams, MAIN_PUBLIC_KEY);
             console.log('EmailJS: Notification animateur envoyée.');
         } catch (error) {
             console.error('EmailJS Error (Notification Animateur):', error);

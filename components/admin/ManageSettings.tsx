@@ -4,16 +4,22 @@ import { AppContext } from '../../AppContext';
 import { AppSettings } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { storageService } from '../../services/storageService';
-import { PaintBrushIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, SparklesIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon } from '../Icons';
+import { PaintBrushIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, JournalIcon, SortAscIcon, SortDescIcon } from '../Icons';
 import * as XLSX from 'xlsx';
+import { validatePassword } from '../../utils/validators';
+import PasswordPolicy from './PasswordPolicy';
 
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
-type SettingsTab = 'design' | 'media' | 'rules' | 'general' | 'footer' | 'security' | 'data';
+import ManageUsers from './ManageUsers';
+import ManageStats from './ManageStats';
+
+type SettingsTab = 'design' | 'rules' | 'data' | 'stats' | 'users' | 'footer' | 'security' | 'pages';
 
 const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
     const { settings, updateSettings } = useContext(AppContext);
+
     const [formState, setFormState] = useState<AppSettings>(settings);
     const [activeTab, setActiveTab] = useState<SettingsTab>('design');
     
@@ -28,8 +34,11 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
     // States for image uploads
     const [uploadingField, setUploadingField] = useState<string | null>(null);
 
-    // State for rich text editor
-    const [editingLegalPage, setEditingLegalPage] = useState<'legalNotice' | 'privacyPolicy' | string | null>(null);
+    // State for editing legal pages
+    const [editingLegalPage, setEditingLegalPage] = useState<'legalNotice' | 'privacyPolicy' | 'cookiesPolicy' | null>(null);
+
+    // State for info pages
+    const [editingInfoPageId, setEditingInfoPageId] = useState<string | null>(null);
 
     // Temp state for new time slot input
     const [newSlotTime, setNewSlotTime] = useState<string>('');
@@ -40,24 +49,20 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         if (migSettings.bookingLeadTime === undefined) migSettings.bookingLeadTime = 14;
         if (!migSettings.allowedDays) migSettings.allowedDays = [2, 4];
         if (!migSettings.availableTimeSlots) migSettings.availableTimeSlots = [9, 10, 14, 15];
-        if (!migSettings.customLegalPages) migSettings.customLegalPages = [];
-        if (!migSettings.legalNoticeTitle) migSettings.legalNoticeTitle = 'Mentions Légales';
-        if (!migSettings.legalNoticeSlug) migSettings.legalNoticeSlug = 'mentions-legales';
-        if (!migSettings.privacyPolicyTitle) migSettings.privacyPolicyTitle = 'Politique de Confidentialité';
-        if (!migSettings.privacyPolicySlug) migSettings.privacyPolicySlug = 'confidentialite';
         
         if (!migSettings.classLevels) migSettings.classLevels = ['PS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
         if (!migSettings.communes) migSettings.communes = [];
         if (!migSettings.schools) migSettings.schools = [];
         
-        // Default colors for legal header
-        if (!migSettings.legalHeaderBgColor) migSettings.legalHeaderBgColor = '#ffffff';
-        if (!migSettings.legalHeaderTextColor) migSettings.legalHeaderTextColor = '#111827';
-        
         // Ensure Monday (1) is removed if it was previously selected
         if (migSettings.allowedDays.includes(1)) {
             migSettings.allowedDays = migSettings.allowedDays.filter(d => d !== 1);
         }
+        
+        if (migSettings.autoCleanupEnabled === undefined) migSettings.autoCleanupEnabled = false;
+        if (migSettings.cleanupDay === undefined) migSettings.cleanupDay = 1;
+        if (migSettings.cleanupMonth === undefined) migSettings.cleanupMonth = 7; // August (0-indexed)
+        if (!migSettings.infoPages) migSettings.infoPages = [];
         
         setFormState(migSettings);
     }, [settings]);
@@ -132,37 +137,6 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         });
     };
 
-    const handleAddCustomLegalPage = () => {
-        const id = Date.now().toString();
-        const newPage = {
-            id,
-            title: 'Nouvelle page',
-            content: '',
-            slug: `page-${id}`
-        };
-        setFormState({
-            ...formState,
-            customLegalPages: [...(formState.customLegalPages || []), newPage]
-        });
-    };
-
-    const handleRemoveCustomLegalPage = (id: string) => {
-        if (window.confirm("Êtes-vous sûr de vouloir supprimer cette page ?")) {
-            setFormState({
-                ...formState,
-                customLegalPages: (formState.customLegalPages || []).filter(p => p.id !== id)
-            });
-            if (editingLegalPage === id) setEditingLegalPage(null);
-        }
-    };
-
-    const handleUpdateCustomLegalPage = (id: string, field: 'title' | 'content' | 'slug', value: string) => {
-        setFormState({
-            ...formState,
-            customLegalPages: (formState.customLegalPages || []).map(p => p.id === id ? { ...p, [field]: value } : p)
-        });
-    };
-
     // Class Levels Handlers
     const handleAddClassLevel = (level: string) => {
         if (!level || (formState.classLevels || []).includes(level)) return;
@@ -224,6 +198,58 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
             ...formState,
             schools: (formState.schools || []).filter(s => s.id !== id)
         });
+    };
+
+    // Info Pages Handlers
+    const handleAddInfoPage = () => {
+        const newPage = { id: Date.now().toString(), title: 'Nouvelle page', content: 'Contenu de la page...', slug: 'nouvelle-page' };
+        setFormState({
+            ...formState,
+            infoPages: [...(formState.infoPages || []), newPage]
+        });
+        setEditingInfoPageId(newPage.id);
+    };
+
+    const handleUpdateInfoPage = (id: string, field: 'title' | 'content', value: string) => {
+        setFormState({
+            ...formState,
+            infoPages: (formState.infoPages || []).map(p => {
+                if (p.id === id) {
+                    const newTitle = field === 'title' ? value : p.title;
+                    const slug = newTitle.toLowerCase()
+                        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove accents
+                        .replace(/[^a-z0-9]/g, '-') // replace non-alphanumeric with -
+                        .replace(/-+/g, '-') // remove double -
+                        .replace(/^-|-$/g, ''); // remove leading/trailing -
+                    return { ...p, [field]: value, slug };
+                }
+                return p;
+            })
+        });
+    };
+
+    const handleRemoveInfoPage = (id: string) => {
+        setFormState({
+            ...formState,
+            infoPages: (formState.infoPages || []).filter(p => p.id !== id)
+        });
+        if (editingInfoPageId === id) {
+            setEditingInfoPageId(null);
+        }
+    };
+
+    const handleMoveInfoPage = (id: string, direction: 'up' | 'down') => {
+        const pages = [...(formState.infoPages || [])];
+        const index = pages.findIndex(p => p.id === id);
+        if (index === -1) return;
+        
+        const newIndex = direction === 'up' ? index - 1 : index + 1;
+        if (newIndex < 0 || newIndex >= pages.length) return;
+        
+        const [removed] = pages.splice(index, 1);
+        pages.splice(newIndex, 0, removed);
+        
+        setFormState({ ...formState, infoPages: pages });
     };
 
     // Excel Import Handlers
@@ -384,8 +410,9 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
             }
 
             if (isChangingPassword) {
-                if (!newPassword || newPassword.length < 4) {
-                    setSecurityError("Le nouveau mot de passe doit faire au moins 4 caractères.");
+                const complexityError = validatePassword(newPassword);
+                if (complexityError) {
+                    setSecurityError(complexityError);
                     setActiveTab('security');
                     return;
                 }
@@ -400,6 +427,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         const finalSettings = { ...formState };
         if (isChangingPassword) {
             finalSettings.adminPassword = newPassword;
+            finalSettings.adminPasswordLastChanged = new Date().toISOString();
         }
 
         updateSettings(finalSettings);
@@ -472,7 +500,10 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
 
     const NavButton: React.FC<{ id: SettingsTab, label: string, icon: React.ReactNode }> = ({ id, label, icon }) => (
         <button
-            onClick={() => setActiveTab(id)}
+            onClick={() => {
+                setActiveTab(id);
+                setEditingLegalPage(null);
+            }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
                 activeTab === id 
                 ? 'bg-blue-600 text-white shadow-md transform scale-[1.02]' 
@@ -512,10 +543,11 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                     </div>
                     <nav className="flex flex-row lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0">
                         <NavButton id="design" label="Apparence" icon={<PaintBrushIcon className="w-5 h-5" />} />
-                        <NavButton id="media" label="Illustrations" icon={<SparklesIcon className="w-5 h-5" />} />
                         <NavButton id="rules" label="Calendrier" icon={<CalendarDaysIcon className="w-5 h-5" />} />
-                        <NavButton id="general" label="Général" icon={<BellIcon className="w-5 h-5" />} />
                         <NavButton id="data" label="Données" icon={<DatabaseIcon className="w-5 h-5" />} />
+                        <NavButton id="stats" label="Statistiques" icon={<ListIcon className="w-5 h-5" />} />
+                        <NavButton id="pages" label="Pages d'info" icon={<JournalIcon className="w-5 h-5" />} />
+                        <NavButton id="users" label="Utilisateurs" icon={<UserGroupIcon className="w-5 h-5" />} />
                         <NavButton id="footer" label="Pied de page" icon={<PencilIcon className="w-5 h-5" />} />
                         <NavButton id="security" label="Sécurité" icon={<CogIcon className="w-5 h-5" />} />
                     </nav>
@@ -529,20 +561,24 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                             {/* Header Panel */}
                             <div className="px-8 py-6 border-b border-gray-50 bg-gray-50/30">
                                 <h3 className="text-xl font-bold text-gray-800">
-                                    {activeTab === 'design' && "Design & Identité visuelle"}
-                                    {activeTab === 'media' && "Illustrations & Médias"}
-                                    {activeTab === 'rules' && "Règles du Calendrier & Réservations"}
-                                    {activeTab === 'general' && "Paramètres généraux"}
-                                    {activeTab === 'footer' && "Pied de page & Mentions Légales"}
-                                    {activeTab === 'security' && "Sécurité & Accès"}
+                                    {activeTab === 'design' && "Apparence"}
+                                    {activeTab === 'rules' && "Calendrier"}
+                                    {activeTab === 'data' && "Données"}
+                                    {activeTab === 'stats' && "Statistiques"}
+                                    {activeTab === 'pages' && "Pages d'information"}
+                                    {activeTab === 'users' && "Gestion des Utilisateurs"}
+                                    {activeTab === 'footer' && "Pied de page"}
+                                    {activeTab === 'security' && "Sécurité"}
                                 </h3>
                                 <p className="text-sm text-gray-500 mt-1">
-                                    {activeTab === 'design' && "Personnalisez les textes, les couleurs et le style de votre accueil."}
-                                    {activeTab === 'media' && "Modifiez les images d'illustration de l'accès admin et des jeux."}
-                                    {activeTab === 'rules' && "Définissez les contraintes de réservation : délais, jours et créneaux."}
-                                    {activeTab === 'general' && "Configurez l'année scolaire active et vos informations de contact."}
-                                    {activeTab === 'footer' && "Gérez les liens du pied de page, les mentions légales et les infos de l'établissement."}
-                                    {activeTab === 'security' && "Gérez vos identifiants de connexion et l'e-mail de secours."}
+                                    {activeTab === 'design' && "Personnalisez les textes, les couleurs et le style de votre accueil"}
+                                    {activeTab === 'rules' && "Définissez les contraintes de réservation : délais, jours et créneaux"}
+                                    {activeTab === 'data' && "Gérez les niveaux de classe, les communes et les écoles"}
+                                    {activeTab === 'stats' && "Visualisez l'activité et l'impact de vos animations pédagogiques"}
+                                    {activeTab === 'pages' && "Créez et modifiez des pages de contenu personnalisées pour vos utilisateurs"}
+                                    {activeTab === 'users' && "Gérez les comptes d'accès à l'administration et leurs permissions"}
+                                    {activeTab === 'footer' && "Gérez les liens du pied de page, les mentions légales et les infos de l'établissement"}
+                                    {activeTab === 'security' && "Gérez vos identifiants de connexion et l'e-mail de secours"}
                                 </p>
                             </div>
 
@@ -630,32 +666,25 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                )}
 
-                                {activeTab === 'media' && (
-                                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                            <ImageUploader 
-                                                label="Illustration Accès Admin" 
-                                                fieldName="adminLoginBgUrl" 
-                                                currentUrl={formState.adminLoginBgUrl} 
-                                            />
-                                            <ImageUploader 
-                                                label="Jeu Memory (Félins)" 
-                                                fieldName="gameMemoryImageUrl" 
-                                                currentUrl={formState.gameMemoryImageUrl} 
-                                            />
-                                            <ImageUploader 
-                                                label="Jeu de Dames (Animaux)" 
-                                                fieldName="gameCheckersImageUrl" 
-                                                currentUrl={formState.gameCheckersImageUrl} 
-                                            />
-                                            <ImageUploader 
-                                                label="Jeu de Picross (Pokémon)" 
-                                                fieldName="gamePicrossImageUrl" 
-                                                currentUrl={formState.gamePicrossImageUrl} 
-                                            />
+                                        {/* Informations de Contact (Moved from General) */}
+                                        <div className="max-w-2xl space-y-6 border-t pt-8">
+                                            <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                                                <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                                    <BellIcon className="w-5 h-5 text-blue-600" />
+                                                    Informations de Contact
+                                                </h4>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Téléphone de contact</label>
+                                                        <input type="text" name="contactPhone" value={formState.contactPhone || ''} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" placeholder="ex: 03 82 26 03 00"/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">E-mail de contact</label>
+                                                        <input type="email" name="contactEmail" value={formState.contactEmail || ''} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" placeholder="ex: contact@grandlongwy.fr"/>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -771,6 +800,57 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
 
                                 {activeTab === 'data' && (
                                     <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        {/* Nettoyage automatique */}
+                                        <div className="p-6 bg-red-50/30 rounded-2xl border border-red-100">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h4 className="font-bold text-red-900 flex items-center gap-2">
+                                                    <DatabaseIcon className="w-5 h-5" />
+                                                    Nettoyage automatique des données personnelles (RGPD)
+                                                </h4>
+                                                <label className="relative inline-flex items-center cursor-pointer">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={formState.autoCleanupEnabled} 
+                                                        onChange={(e) => setFormState({...formState, autoCleanupEnabled: e.target.checked})}
+                                                        className="sr-only peer"
+                                                    />
+                                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                                                </label>
+                                            </div>
+                                            <p className="text-xs text-red-700 mb-4 leading-relaxed">
+                                                Conformément au RGPD, il est recommandé de ne pas conserver les données personnelles plus longtemps que nécessaire. 
+                                                Cette option permet d'anonymiser automatiquement le nom, le téléphone et l'email des enseignants pour l'année scolaire écoulée.
+                                            </p>
+                                            {formState.autoCleanupEnabled && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in zoom-in-95 duration-200">
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Jour d'exécution chaque année</label>
+                                                        <select 
+                                                            value={formState.cleanupDay} 
+                                                            onChange={(e) => setFormState({...formState, cleanupDay: parseInt(e.target.value)})}
+                                                            className="w-full p-2.5 bg-white border border-red-200 rounded-xl font-bold text-red-900"
+                                                        >
+                                                            {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                                                                <option key={d} value={d}>{d}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Mois d'exécution</label>
+                                                        <select 
+                                                            value={formState.cleanupMonth} 
+                                                            onChange={(e) => setFormState({...formState, cleanupMonth: parseInt(e.target.value)})}
+                                                            className="w-full p-2.5 bg-white border border-red-200 rounded-xl font-bold text-red-900"
+                                                        >
+                                                            <option value={6}>Juillet</option>
+                                                            <option value={7}>Août</option>
+                                                            <option value={8}>Septembre</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
                                         {/* Niveaux de classe */}
                                         <div className="p-6 bg-blue-50/30 rounded-2xl border border-blue-100">
                                             <h4 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
@@ -951,37 +1031,12 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     </div>
                                 )}
 
-                                {activeTab === 'general' && (
-                                    <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <div className="max-w-2xl space-y-6">
-                                            <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
-                                                <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                                    <BellIcon className="w-5 h-5 text-blue-600" />
-                                                    Informations de Contact
-                                                </h4>
-                                                <div className="space-y-4">
-                                                    <div>
-                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Téléphone de contact</label>
-                                                        <input type="text" name="contactPhone" value={formState.contactPhone || ''} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" placeholder="ex: 03 82 26 03 00"/>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">E-mail de contact</label>
-                                                        <input type="email" name="contactEmail" value={formState.contactEmail || ''} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" placeholder="ex: contact@grandlongwy.fr"/>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                {activeTab === 'stats' && (
+                                    <ManageStats />
+                                )}
 
-                                            <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
-                                                <h4 className="font-bold text-gray-800 mb-4">Année scolaire</h4>
-                                                <div className="space-y-4">
-                                                    <div>
-                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Année scolaire active</label>
-                                                        <input type="text" name="activeYear" value={formState.activeYear} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold"/>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                {activeTab === 'users' && (
+                                    <ManageUsers showNotification={showNotification} />
                                 )}
 
                                 {activeTab === 'footer' && (
@@ -989,51 +1044,13 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                         {editingLegalPage ? (
                                             <div className="space-y-6">
                                                 <div className="flex justify-between items-center">
-                                                    <div className="flex flex-col">
-                                                        <h4 className="text-lg font-bold text-gray-800">
-                                                            Édition : {
-                                                                editingLegalPage === 'legalNotice' ? (formState.legalNoticeTitle || 'Mentions Légales') : 
-                                                                editingLegalPage === 'privacyPolicy' ? (formState.privacyPolicyTitle || 'Politique de Confidentialité') : 
-                                                                (formState.customLegalPages?.find(p => p.id === editingLegalPage)?.title || 'Page personnalisée')
-                                                            }
-                                                        </h4>
-                                                        <div className="mt-2 flex gap-4 items-center">
-                                                            <div className="flex flex-col">
-                                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Titre de la page</label>
-                                                                <input 
-                                                                    type="text" 
-                                                                    value={
-                                                                        editingLegalPage === 'legalNotice' ? (formState.legalNoticeTitle || '') :
-                                                                        editingLegalPage === 'privacyPolicy' ? (formState.privacyPolicyTitle || '') :
-                                                                        (formState.customLegalPages?.find(p => p.id === editingLegalPage)?.title || '')
-                                                                    }
-                                                                    onChange={(e) => {
-                                                                        if (editingLegalPage === 'legalNotice') setFormState({ ...formState, legalNoticeTitle: e.target.value });
-                                                                        else if (editingLegalPage === 'privacyPolicy') setFormState({ ...formState, privacyPolicyTitle: e.target.value });
-                                                                        else handleUpdateCustomLegalPage(editingLegalPage as string, 'title', e.target.value);
-                                                                    }}
-                                                                    className="px-3 py-1 border rounded bg-white text-sm font-bold"
-                                                                />
-                                                            </div>
-                                                            <div className="flex flex-col">
-                                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Slug (URL)</label>
-                                                                <input 
-                                                                    type="text" 
-                                                                    value={
-                                                                        editingLegalPage === 'legalNotice' ? (formState.legalNoticeSlug || '') :
-                                                                        editingLegalPage === 'privacyPolicy' ? (formState.privacyPolicySlug || '') :
-                                                                        (formState.customLegalPages?.find(p => p.id === editingLegalPage)?.slug || '')
-                                                                    }
-                                                                    onChange={(e) => {
-                                                                        if (editingLegalPage === 'legalNotice') setFormState({ ...formState, legalNoticeSlug: e.target.value });
-                                                                        else if (editingLegalPage === 'privacyPolicy') setFormState({ ...formState, privacyPolicySlug: e.target.value });
-                                                                        else handleUpdateCustomLegalPage(editingLegalPage as string, 'slug', e.target.value);
-                                                                    }}
-                                                                    className="px-3 py-1 border rounded bg-white text-sm font-mono"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                                    <h4 className="text-lg font-bold text-gray-800">
+                                                        Édition : {
+                                                            editingLegalPage === 'legalNotice' ? 'Mentions Légales' : 
+                                                            editingLegalPage === 'privacyPolicy' ? 'Politique de Confidentialité' : 
+                                                            'Gestion des Cookies'
+                                                        }
+                                                    </h4>
                                                     <button 
                                                         type="button" 
                                                         onClick={() => setEditingLegalPage(null)}
@@ -1045,21 +1062,12 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                                                     <ReactQuill 
                                                         theme="snow"
-                                                        value={
-                                                            editingLegalPage === 'legalNotice' ? (formState.legalNotice || '') :
-                                                            editingLegalPage === 'privacyPolicy' ? (formState.privacyPolicy || '') :
-                                                            (formState.customLegalPages?.find(p => p.id === editingLegalPage)?.content || '')
-                                                        }
-                                                        onChange={(content) => {
-                                                            if (editingLegalPage === 'legalNotice') setFormState({ ...formState, legalNotice: content });
-                                                            else if (editingLegalPage === 'privacyPolicy') setFormState({ ...formState, privacyPolicy: content });
-                                                            else handleUpdateCustomLegalPage(editingLegalPage, 'content', content);
-                                                        }}
+                                                        value={formState[editingLegalPage] || ''}
+                                                        onChange={(content) => setFormState({ ...formState, [editingLegalPage]: content })}
                                                         modules={{
                                                             toolbar: [
-                                                                [{ 'header': [1, 2, 3, false] }],
-                                                                ['bold', 'italic', 'underline', 'strike'],
-                                                                [{ 'color': [] }, { 'background': [] }],
+                                                                [{ 'header': [1, 2, false] }],
+                                                                ['bold', 'italic', 'underline'],
                                                                 [{ 'list': 'ordered'}, { 'list': 'bullet' }],
                                                                 ['clean']
                                                             ],
@@ -1073,27 +1081,32 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                 {/* Legal Pages Selection */}
                                                 <div className="space-y-6">
                                                     <div className="flex justify-between items-center">
-                                                        <h4 className="font-bold text-gray-800">Pages Légales & Personnalisées</h4>
+                                                        <h4 className="font-bold text-gray-800">Pages légales</h4>
                                                         <button 
-                                                            type="button" 
-                                                            onClick={handleAddCustomLegalPage}
-                                                            className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-bold"
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const templates = {
+                                                                    legalNotice: `<h2>1. Présentation du site</h2><p>En vertu de l'article 6 de la loi n° 2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique, il est précisé aux utilisateurs du site l'identité des différents intervenants dans le cadre de sa réalisation et de son suivi :</p><p><strong>Propriétaire</strong> : [Nom de l'établissement / Collectivité] – [Adresse complète]</p><p><strong>Responsable publication</strong> : [Nom du responsable] – [Email de contact]</p><p><strong>Webmaster</strong> : [Nom du webmaster] – [Email du webmaster]</p><p><strong>Hébergeur</strong> : Netlify – 2325 3rd Street, Suite 296, San Francisco, California 94107</p><h2>2. Conditions générales d’utilisation du site et des services proposés</h2><p>L’utilisation du site implique l’acceptation pleine et entière des conditions générales d’utilisation ci-après décrites. Ces conditions d’utilisation sont susceptibles d’être modifiées ou complétées à tout moment.</p><h2>3. Description des services fournis</h2><p>Le site a pour objet de fournir une information concernant l’ensemble des activités de la structure et de permettre la réservation d'animations pédagogiques.</p><h2>4. Propriété intellectuelle et contrefaçons</h2><p>[Nom de l'établissement] est propriétaire des droits de propriété intellectuelle ou détient les droits d’usage sur tous les éléments accessibles sur le site, notamment les textes, images, graphismes, logo, icônes, sons, logiciels.</p><h2>5. Limitations de responsabilité</h2><p>[Nom de l'établissement] ne pourra être tenu responsable des dommages directs et indirects causés au matériel de l’utilisateur, lors de l’accès au site.</p>`,
+                                                                    privacyPolicy: `<h2>1. Gestion des données personnelles</h2><p>En France, les données personnelles sont notamment protégées par la loi n° 78-87 du 6 janvier 1978, la loi n° 2004-801 du 6 août 2004, l'article L. 226-13 du Code pénal et le Règlement Général sur la Protection des Données (RGPD : n° 2016-679).</p><h2>2. Finalité des données collectées</h2><p>Le site est susceptible de traiter tout ou partie des données :</p><ul><li>Pour permettre la navigation sur le site</li><li>Pour prévenir et lutter contre la fraude informatique</li><li>Pour améliorer la navigation sur le site</li><li>Pour gérer les réservations d'animations (Nom, Email, Téléphone, École)</li></ul><h2>3. Droit d’accès, de rectification et d’opposition</h2><p>Conformément à la réglementation européenne en vigueur, les Utilisateurs disposent des droits suivants :</p><ul><li>Droit d'accès (article 15 RGPD) et de rectification (article 16 RGPD)</li><li>Droit à l'effacement (article 17 du RGPD)</li><li>Droit de retirer à tout moment un consentement (article 13-2c RGPD)</li><li>Droit à la limitation du traitement des données (article 18 RGPD)</li></ul><p>Pour exercer ces droits, contactez : [Email de contact DPO / Responsable]</p><h2>4. Non-communication des données personnelles</h2><p>Le site s’interdit de traiter, héberger ou transférer les Informations collectées sur ses Clients vers un pays situé en dehors de l’Union européenne ou reconnu comme « non adéquat » par la Commission européenne sans en informer préalablement le client.</p>`,
+                                                                    cookiesPolicy: `<h2>1. Qu'est-ce qu'un cookie ?</h2><p>Un « cookie » est un petit fichier d’information envoyé sur le navigateur de l’Utilisateur et enregistré au sein du terminal de l’Utilisateur. Ce fichier comprend des informations telles que le nom de domaine de l’Utilisateur, le fournisseur d’accès Internet de l’Utilisateur, le système d’exploitation de l’Utilisateur, ainsi que la date et l’heure d’accès.</p><h2>2. Utilisation des cookies sur ce site</h2><p>Ce site utilise des cookies strictement nécessaires à son bon fonctionnement :</p><ul><li><strong>Cookies de session</strong> : Pour maintenir votre connexion ou l'état de votre réservation en cours.</li><li><strong>Cookies de sécurité</strong> : Pour prévenir les attaques malveillantes.</li></ul><h2>3. Cookies tiers</h2><p>Ce site n'utilise pas de cookies publicitaires. Des cookies de mesure d'audience anonymes peuvent être utilisés pour améliorer l'expérience utilisateur.</p><h2>4. Comment désactiver les cookies ?</h2><p>L’Utilisateur peut configurer son navigateur pour qu’il lui permette de décider s’il souhaite ou non les accepter de manière à ce que des Cookies soient enregistrés dans le terminal ou, au contraire, qu’ils soient rejetés.</p>`
+                                                                };
+                                                                setFormState({
+                                                                    ...formState,
+                                                                    ...templates
+                                                                });
+                                                                showNotification("Modèles légaux restaurés ! N'oubliez pas d'enregistrer.");
+                                                            }}
+                                                            className="text-xs font-bold text-blue-600 hover:underline"
                                                         >
-                                                            <PlusCircleIcon className="w-4 h-4" />
-                                                            Ajouter une page
+                                                            Restaurer les modèles par défaut
                                                         </button>
                                                     </div>
-                                                    
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                        {/* Standard Pages */}
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                         <div className="p-6 bg-white rounded-2xl border border-gray-200 flex flex-col items-center text-center gap-4 shadow-sm">
                                                             <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
                                                                 <PencilIcon className="w-6 h-6" />
                                                             </div>
-                                                            <div>
-                                                                <h4 className="font-bold text-gray-800">{formState.legalNoticeTitle || 'Mentions Légales'}</h4>
-                                                                <p className="text-[10px] text-gray-400 mt-1 font-mono">/{formState.legalNoticeSlug || 'mentions-legales'}</p>
-                                                            </div>
+                                                            <h4 className="font-bold text-gray-800">Mentions Légales</h4>
                                                             <button 
                                                                 type="button" 
                                                                 onClick={() => setEditingLegalPage('legalNotice')}
@@ -1104,93 +1117,31 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                         </div>
 
                                                         <div className="p-6 bg-white rounded-2xl border border-gray-200 flex flex-col items-center text-center gap-4 shadow-sm">
-                                                            <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600">
+                                                            <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
                                                                 <PencilIcon className="w-6 h-6" />
                                                             </div>
-                                                            <div>
-                                                                <h4 className="font-bold text-gray-800">{formState.privacyPolicyTitle || 'Confidentialité'}</h4>
-                                                                <p className="text-[10px] text-gray-400 mt-1 font-mono">/{formState.privacyPolicySlug || 'confidentialite'}</p>
-                                                            </div>
+                                                            <h4 className="font-bold text-gray-800">Confidentialité</h4>
                                                             <button 
                                                                 type="button" 
                                                                 onClick={() => setEditingLegalPage('privacyPolicy')}
-                                                                className="mt-auto px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-sm text-sm"
+                                                                className="mt-auto px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-all shadow-sm text-sm"
                                                             >
                                                                 Modifier
                                                             </button>
                                                         </div>
 
-                                                        {/* Custom Pages */}
-                                                        {(formState.customLegalPages || []).map((page) => (
-                                                            <div key={page.id} className="p-6 bg-white rounded-2xl border border-gray-200 flex flex-col items-center text-center gap-4 relative group shadow-sm">
-                                                                <button 
-                                                                    type="button" 
-                                                                    onClick={() => handleRemoveCustomLegalPage(page.id)}
-                                                                    className="absolute top-3 right-3 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                                                >
-                                                                    <TrashIcon className="w-4 h-4" />
-                                                                </button>
-                                                                <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center text-gray-600">
-                                                                    <PencilIcon className="w-6 h-6" />
-                                                                </div>
-                                                                <div>
-                                                                    <h4 className="font-bold text-gray-800 truncate max-w-[150px]">{page.title}</h4>
-                                                                    <p className="text-[10px] text-gray-400 mt-1 font-mono">/{page.slug}</p>
-                                                                </div>
-                                                                <button 
-                                                                    type="button" 
-                                                                    onClick={() => setEditingLegalPage(page.id)}
-                                                                    className="mt-auto px-6 py-2 bg-gray-800 text-white rounded-lg font-bold hover:bg-black transition-all shadow-sm text-sm"
-                                                                >
-                                                                    Modifier
-                                                                </button>
+                                                        <div className="p-6 bg-white rounded-2xl border border-gray-200 flex flex-col items-center text-center gap-4 shadow-sm">
+                                                            <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
+                                                                <PencilIcon className="w-6 h-6" />
                                                             </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {/* Legal Header Appearance */}
-                                                <div className="space-y-6 border-t pt-8">
-                                                    <h4 className="font-bold text-gray-800">Apparence de l'en-tête des pages légales</h4>
-                                                    <p className="text-xs text-gray-500">Personnalisez les couleurs du bandeau supérieur des pages Mentions Légales et Politique de Confidentialité.</p>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                                        <div>
-                                                            <label className="block text-sm font-bold text-gray-700 mb-3">Couleur d'arrière-plan</label>
-                                                            <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
-                                                                <input 
-                                                                    type="color" 
-                                                                    name="legalHeaderBgColor" 
-                                                                    value={formState.legalHeaderBgColor || '#ffffff'} 
-                                                                    onChange={handleChange} 
-                                                                    className="h-12 w-16 border rounded-lg cursor-pointer bg-white p-1 shadow-sm"
-                                                                />
-                                                                <input 
-                                                                    type="text" 
-                                                                    name="legalHeaderBgColor" 
-                                                                    value={formState.legalHeaderBgColor || '#ffffff'} 
-                                                                    onChange={handleChange} 
-                                                                    className="w-full max-w-[150px] px-3 py-2 border rounded-lg font-mono text-xs uppercase"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-sm font-bold text-gray-700 mb-3">Couleur du texte et bouton</label>
-                                                            <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
-                                                                <input 
-                                                                    type="color" 
-                                                                    name="legalHeaderTextColor" 
-                                                                    value={formState.legalHeaderTextColor || '#111827'} 
-                                                                    onChange={handleChange} 
-                                                                    className="h-12 w-16 border rounded-lg cursor-pointer bg-white p-1 shadow-sm"
-                                                                />
-                                                                <input 
-                                                                    type="text" 
-                                                                    name="legalHeaderTextColor" 
-                                                                    value={formState.legalHeaderTextColor || '#111827'} 
-                                                                    onChange={handleChange} 
-                                                                    className="w-full max-w-[150px] px-3 py-2 border rounded-lg font-mono text-xs uppercase"
-                                                                />
-                                                            </div>
+                                                            <h4 className="font-bold text-gray-800">Cookies</h4>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => setEditingLegalPage('cookiesPolicy')}
+                                                                className="mt-auto px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-all shadow-sm text-sm"
+                                                            >
+                                                                Modifier
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1350,6 +1301,141 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     </div>
                                 )}
 
+                                {activeTab === 'pages' && (
+                                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-indigo-100 shadow-sm">
+                                            <div>
+                                                <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">Pages d'information</h3>
+                                                <p className="text-xs text-gray-400 font-medium">Créez des pages de contenu personnalisées pour vos utilisateurs.</p>
+                                            </div>
+                                            <button 
+                                                type="button"
+                                                onClick={handleAddInfoPage}
+                                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                                            >
+                                                <PlusCircleIcon className="w-4 h-4" />
+                                                Ajouter une page
+                                            </button>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                            {/* Liste des pages */}
+                                            <div className="lg:col-span-1 space-y-3">
+                                                {(formState.infoPages || []).length === 0 ? (
+                                                    <div className="p-8 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                                                        <JournalIcon className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                                                        <p className="text-xs text-gray-400 italic">Aucune page créée</p>
+                                                    </div>
+                                                ) : (
+                                                    (formState.infoPages || []).map(page => (
+                                                        <div 
+                                                            key={page.id}
+                                                            className={`p-4 rounded-2xl border transition-all cursor-pointer group ${editingInfoPageId === page.id ? 'bg-indigo-50 border-indigo-200 shadow-md translate-x-1' : 'bg-white border-gray-100 hover:border-indigo-100 shadow-sm'}`}
+                                                            onClick={() => setEditingInfoPageId(page.id)}
+                                                        >
+                                                            <div className="flex justify-between items-start">
+                                                                <div className="flex-grow">
+                                                                    <h4 className={`text-sm font-bold ${editingInfoPageId === page.id ? 'text-indigo-900' : 'text-gray-700'}`}>{page.title}</h4>
+                                                                    <p className="text-[10px] text-gray-400 font-medium mt-0.5">slug: /{page.slug}</p>
+                                                                </div>
+                                                                <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                    <div className="flex gap-1">
+                                                                        <button 
+                                                                            type="button"
+                                                                            onClick={(e) => { e.stopPropagation(); handleMoveInfoPage(page.id, 'up'); }}
+                                                                            disabled={(formState.infoPages || []).indexOf(page) === 0}
+                                                                            className="p-1 text-gray-400 hover:text-indigo-600 disabled:opacity-30"
+                                                                            title="Monter"
+                                                                        >
+                                                                            <SortAscIcon className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                        <button 
+                                                                            type="button"
+                                                                            onClick={(e) => { e.stopPropagation(); handleMoveInfoPage(page.id, 'down'); }}
+                                                                            disabled={(formState.infoPages || []).indexOf(page) === (formState.infoPages || []).length - 1}
+                                                                            className="p-1 text-gray-400 hover:text-indigo-600 disabled:opacity-30"
+                                                                            title="Descendre"
+                                                                        >
+                                                                            <SortDescIcon className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                        <button 
+                                                                            type="button"
+                                                                            onClick={(e) => { e.stopPropagation(); handleRemoveInfoPage(page.id); }}
+                                                                            className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                                            title="Supprimer"
+                                                                        >
+                                                                            <TrashIcon className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+
+                                            {/* Zone d'édition */}
+                                            <div className="lg:col-span-2">
+                                                {editingInfoPageId ? (
+                                                    <div className="bg-white rounded-3xl border border-indigo-100 shadow-xl p-8 space-y-6 animate-in zoom-in-95 duration-200">
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Titre de la page</label>
+                                                            <div className="relative">
+                                                                <PencilIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                                <input 
+                                                                    type="text"
+                                                                    value={(formState.infoPages || []).find(p => p.id === editingInfoPageId)?.title || ''}
+                                                                    onChange={(e) => handleUpdateInfoPage(editingInfoPageId, 'title', e.target.value)}
+                                                                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl font-black text-gray-800 focus:border-indigo-500 outline-none transition-all"
+                                                                    placeholder="ex: Informations pratiques"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Contenu de la page</label>
+                                                            <div className="bg-white rounded-2xl border-2 border-gray-100 overflow-hidden focus-within:border-indigo-500 transition-all">
+                                                                <ReactQuill 
+                                                                    theme="snow"
+                                                                    value={(formState.infoPages || []).find(p => p.id === editingInfoPageId)?.content || ''}
+                                                                    onChange={(content) => handleUpdateInfoPage(editingInfoPageId, 'content', content)}
+                                                                    className="h-[400px]"
+                                                                    modules={{
+                                                                        toolbar: [
+                                                                            [{ 'header': [1, 2, false] }],
+                                                                            ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+                                                                            [{'list': 'ordered'}, {'list': 'bullet'}, {'indent': '-1'}, {'indent': '+1'}],
+                                                                            ['link'],
+                                                                            ['clean']
+                                                                        ],
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex justify-end gap-3 pt-4 border-t border-gray-50">
+                                                            <button 
+                                                                onClick={() => setEditingInfoPageId(null)}
+                                                                className="px-6 py-3 bg-gray-100 text-gray-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-200 transition-all"
+                                                            >
+                                                                Fermer l'éditeur
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="h-full flex flex-col items-center justify-center p-12 bg-gray-50 rounded-3xl border border-dashed border-gray-200 text-center">
+                                                        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-4 rotate-3">
+                                                            <PencilIcon className="w-12 h-12 text-indigo-100" />
+                                                        </div>
+                                                        <h4 className="text-sm font-black text-gray-400 uppercase tracking-widest">Éditeur de page</h4>
+                                                        <p className="text-xs text-gray-400 mt-2">Sélectionnez une page pour commencer à modifier son contenu ou créez-en une nouvelle.</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {activeTab === 'security' && (
                                     <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                                         <div className="max-w-md space-y-6">
@@ -1410,6 +1496,23 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                         />
                                                     </div>
                                                 </div>
+
+                                                <div className="pt-2">
+                                                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Périodicité de changement de mot de passe</label>
+                                                    <select 
+                                                        name="passwordExpiryDays" 
+                                                        value={formState.passwordExpiryDays || 0} 
+                                                        onChange={handleChange}
+                                                        className="w-full p-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    >
+                                                        <option value={0}>Désactivé</option>
+                                                        <option value={30}>Tous les 30 jours</option>
+                                                        <option value={60}>Tous les 60 jours</option>
+                                                        <option value={90}>Tous les 90 jours (Recommandé)</option>
+                                                        <option value={180}>Tous les 180 jours</option>
+                                                    </select>
+                                                    <p className="text-[10px] text-gray-400 mt-1 italic">Force les administrateurs et utilisateurs à changer leur mot de passe régulièrement.</p>
+                                                </div>
                                             </div>
 
                                             {/* Section Mot de passe */}
@@ -1438,6 +1541,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                                     placeholder="Confirmer"
                                                                 />
                                                             </div>
+                                                            <PasswordPolicy password={newPassword} />
                                                         </div>
                                                     </div>
                                                 ) : (

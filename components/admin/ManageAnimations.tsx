@@ -8,9 +8,11 @@ import AnimationForm from './AnimationForm';
 import ManageAnimators from './ManageAnimators';
 
 const ManageAnimations: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
-    const { animations, bookings, saveAnimation, removeAnimation, updateAnimationsOrder, settings } = useContext(AppContext);
+    const { animations, bookings, saveAnimation, removeAnimation, updateAnimationsOrder, settings, currentUser } = useContext(AppContext);
     const [editing, setEditing] = useState<Animation | null>(null);
     const [draggedId, setDraggedId] = useState<string | null>(null);
+    
+    const canManage = currentUser?.role === 'admin' || currentUser?.permissions.canManageAnimations;
     
     const handleSave = async (animToSave: Animation) => {
         try {
@@ -85,9 +87,11 @@ const ManageAnimations: React.FC<AdminSubComponentProps> = ({ showNotification }
             <div className="lg:col-span-8">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-gray-800">Gérer les animations</h2>
-                    <button onClick={handleAddNew} className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
-                        Ajouter une animation
-                    </button>
+                    {canManage && (
+                        <button onClick={handleAddNew} className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                            Ajouter une animation
+                        </button>
+                    )}
                 </div>
 
                 {editing && <AnimationForm animation={editing} animators={settings.animators} onSave={handleSave} onCancel={() => setEditing(null)} />}
@@ -105,15 +109,15 @@ const ManageAnimations: React.FC<AdminSubComponentProps> = ({ showNotification }
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {animations.map(anim => (
-                                 <tr
+                                     <tr
                                     key={anim.id}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, anim.id)}
+                                    draggable={canManage}
+                                    onDragStart={(e) => canManage && handleDragStart(e, anim.id)}
                                     onDragOver={handleDragOver}
-                                    onDrop={(e) => handleDrop(e, anim.id)}
+                                    onDrop={(e) => canManage && handleDrop(e, anim.id)}
                                     className={`transition-opacity ${draggedId === anim.id ? 'opacity-30' : 'hover:bg-gray-50'}`}
                                 >
-                                    <td className="px-6 py-4 whitespace-nowrap cursor-move text-gray-400">
+                                    <td className={`px-6 py-4 whitespace-nowrap text-gray-400 ${canManage ? 'cursor-move' : 'cursor-not-allowed opacity-30'}`}>
                                         <DragHandleIcon className="w-5 h-5" />
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-base font-medium text-gray-900">{anim.title}</td>
@@ -121,22 +125,28 @@ const ManageAnimations: React.FC<AdminSubComponentProps> = ({ showNotification }
                                     <td className="px-6 py-4 whitespace-nowrap text-base text-gray-500">{anim.classLevel}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right font-medium">
                                         <div className="flex justify-end items-center">
-                                            <button 
-                                                onClick={() => setEditing(anim)} 
-                                                className="text-gray-500 hover:text-indigo-600 p-1" 
-                                                title="Modifier l'animation"
-                                                aria-label={`Modifier ${anim.title}`}
-                                            >
-                                                <PencilIcon className="w-5 h-5" />
-                                            </button>
-                                            <button 
-                                                onClick={() => handleDelete(anim.id)} 
-                                                className="text-gray-500 hover:text-red-600 p-1 ml-2" 
-                                                title="Supprimer l'animation"
-                                                aria-label={`Supprimer ${anim.title}`}
-                                            >
-                                                <TrashIcon className="w-5 h-5" />
-                                            </button>
+                                            {canManage ? (
+                                                <>
+                                                    <button 
+                                                        onClick={() => setEditing(anim)} 
+                                                        className="text-gray-500 hover:text-indigo-600 p-1" 
+                                                        title="Modifier l'animation"
+                                                        aria-label={`Modifier ${anim.title}`}
+                                                    >
+                                                        <PencilIcon className="w-5 h-5" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDelete(anim.id)} 
+                                                        className="text-gray-500 hover:text-red-600 p-1 ml-2" 
+                                                        title="Supprimer l'animation"
+                                                        aria-label={`Supprimer ${anim.title}`}
+                                                    >
+                                                        <TrashIcon className="w-5 h-5" />
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <span className="text-[10px] font-bold text-gray-300 uppercase italic">Lecture seule</span>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

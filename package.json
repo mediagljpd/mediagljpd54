@@ -11,10 +11,13 @@
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
+    "@types/recharts": "^1.8.29",
     "firebase": "^12.7.0",
+    "motion": "^12.38.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-quill-new": "^3.8.3",
+    "recharts": "^3.8.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

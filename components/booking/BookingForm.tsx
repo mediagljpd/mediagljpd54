@@ -44,6 +44,8 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
         return (settings.schools || []).find(s => s.name === formData.schoolName && s.communeId === selectedCommuneId);
     }, [settings.schools, formData.schoolName, selectedCommuneId]);
 
+    const [showErrors, setShowErrors] = useState(false);
+
     const handleClassLevelToggle = (level: string) => {
         const currentLevels = formData.classLevel ? formData.classLevel.split(', ') : [];
         let newLevels;
@@ -63,12 +65,18 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        
+        if (!formData.classLevel) {
+            setShowErrors(true);
+            return;
+        }
+
         // Initialisation des statuts bus pour l'admin
         onConfirm({
             ...formData,
             studentCount: parseInt(formData.studentCount as any) || 0,
             adultCount: parseInt(formData.adultCount as any) || 0,
-            busStatus: formData.noBusRequired ? undefined : 'pending',
+            busStatus: formData.noBusRequired ? 'validated' : 'pending',
             busCost: 0
         });
     };
@@ -88,7 +96,7 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                             <AcademicCapIcon className="w-4 h-4 text-blue-600" />
                             Niveau de la classe
                         </label>
-                        <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className={`flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border transition-colors ${showErrors && !formData.classLevel ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}>
                             {(settings.classLevels || ['PS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2']).map(level => (
                                 <label key={level} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer transition-all text-xs font-bold ${
                                     formData.classLevel.split(', ').includes(level)
@@ -99,13 +107,19 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                                         type="checkbox" 
                                         className="hidden" 
                                         checked={formData.classLevel.split(', ').includes(level)}
-                                        onChange={() => handleClassLevelToggle(level)}
+                                        onChange={() => {
+                                            handleClassLevelToggle(level);
+                                            if (showErrors) setShowErrors(false);
+                                        }}
                                     />
                                     {level}
                                 </label>
                             ))}
                         </div>
-                        <input type="hidden" name="classLevel" value={formData.classLevel} required />
+                        {showErrors && !formData.classLevel && (
+                            <p className="text-red-500 text-[10px] font-bold mt-1 animate-pulse">Veuillez sélectionner au moins un niveau.</p>
+                        )}
+                        <input type="hidden" name="classLevel" value={formData.classLevel} />
                     </div>
 
                     <div className="col-span-2 md:col-span-1 relative">
@@ -196,7 +210,6 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                     <div>
                         <label htmlFor="email" className="block text-sm font-medium text-gray-700">Adresse e-mail</label>
                         <input id="email" type="email" name="email" placeholder="ex: jean.dupont@academie.fr" onChange={handleChange} required className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
-                        <p className="text-[10px] text-orange-600 font-bold mt-1 uppercase italic">⚠️ L'envoi automatique du mail de confirmation est désactivé.</p>
                     </div>
                     <div>
                         <label htmlFor="studentCount" className="block text-sm font-medium text-gray-700">Nombre d'élèves</label>

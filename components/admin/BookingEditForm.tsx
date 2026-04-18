@@ -120,6 +120,22 @@ const BookingEditForm: React.FC<{
                             <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Niveau</label>
                             <input type="text" name="classLevel" value={formData.classLevel} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
                         </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Email Enseignant</label>
+                            <input type="email" name="email" value={formData.email} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Téléphone Enseignant</label>
+                            <input type="text" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Nombre d'élèves</label>
+                            <input type="number" name="studentCount" value={formData.studentCount} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Nombre d'adultes</label>
+                            <input type="number" name="adultCount" value={formData.adultCount} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
+                        </div>
                     </div>
 
                     {/* Section Bus Admin */}

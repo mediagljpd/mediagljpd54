@@ -83,6 +83,28 @@ export interface School {
   communeId: string;
 }
 
+export enum UserRole {
+  ADMIN = 'admin',
+  USER = 'user'
+}
+
+export interface UserPermissions {
+  canModifySettings: boolean;
+  canAddChangelog: boolean;
+  canManageVacations: boolean;
+  canManageAnimations: boolean;
+}
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  password: string;
+  role: UserRole;
+  animatorName?: string; // Linked animator for 'user' role
+  permissions: UserPermissions;
+  passwordLastChanged?: string; // ISO date
+}
+
 export interface AppSettings {
   homepageTitle: string;
   homepageSubtitle?: string;
@@ -108,12 +130,6 @@ export interface AppSettings {
   animators: Animator[];
   animatorSettings?: Record<string, AnimatorSettings>;
 
-  // Nouvelles images personnalisables
-  adminLoginBgUrl?: string;
-  gameMemoryImageUrl?: string;
-  gameCheckersImageUrl?: string;
-  gamePicrossImageUrl?: string;
-
   // Règles du calendrier
   bookingLeadTime: number; // Nombre de jours de préavis
   allowedDays: number[]; // [0, 1, 2, 3, 4, 5, 6] (0=Dim, 1=Lun...)
@@ -125,21 +141,25 @@ export interface AppSettings {
   schools?: School[];
 
   // Footer & Legal
-  legalNotice?: string;
-  legalNoticeTitle?: string;
-  legalNoticeSlug?: string;
-  privacyPolicy?: string;
-  privacyPolicyTitle?: string;
-  privacyPolicySlug?: string;
-  customLegalPages?: CustomLegalPage[];
-  legalHeaderBgColor?: string;
-  legalHeaderTextColor?: string;
   footerLinks?: FooterLink[];
   establishmentInfo?: EstablishmentInfo;
+  legalNotice?: string;
+  privacyPolicy?: string;
+  cookiesPolicy?: string;
 
   // Contact
   contactPhone?: string;
   contactEmail?: string;
+  users?: AdminUser[];
+
+  // Auto-cleanup settings
+  autoCleanupEnabled?: boolean;
+  cleanupDay?: number;
+  cleanupMonth?: number;
+  lastCleanupYear?: number;
+  infoPages?: CustomLegalPage[];
+  adminPasswordLastChanged?: string; // ISO date
+  passwordExpiryDays?: number; // 0 for disabled
 }
 
 export interface ChangelogEntry {
@@ -157,5 +177,6 @@ export enum View {
   ADMIN_PANEL,
   LEGAL_NOTICE,
   PRIVACY_POLICY,
-  CUSTOM_PAGE,
+  COOKIES_POLICY,
+  INFO_PAGE,
 }

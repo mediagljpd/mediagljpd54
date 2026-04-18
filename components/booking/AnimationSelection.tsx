@@ -66,7 +66,11 @@ const AnimationCard: React.FC<{ animation: Animation; onSelect: () => void }> = 
     );
 };
 
-const AnimationSelection: React.FC<{ onSelectAnimation: (animation: Animation) => void; onNavigateToAdmin: () => void }> = ({ onSelectAnimation, onNavigateToAdmin }) => {
+const AnimationSelection: React.FC<{ 
+  onSelectAnimation: (animation: Animation) => void; 
+  onNavigateToAdmin: () => void;
+  onNavigateToInfoPage: (pageId: string) => void;
+}> = ({ onSelectAnimation, onNavigateToAdmin, onNavigateToInfoPage }) => {
   const { animations, settings } = useContext(AppContext);
   const [showContact, setShowContact] = useState(false);
 
@@ -86,9 +90,9 @@ const AnimationSelection: React.FC<{ onSelectAnimation: (animation: Animation) =
     <>
       <header className="shadow-sm sticky top-0 z-40 w-full backdrop-blur-md bg-opacity-95" style={headerStyle}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
-              <div className="relative flex items-center justify-center min-h-24 py-4">
+              <div className="flex items-center justify-between min-h-24 py-4 gap-4">
                   {/* Bouton Contact à Gauche */}
-                  <div className="absolute inset-y-0 left-0 flex items-center">
+                  <div className="z-10 flex-shrink-0">
                       <button
                           onClick={() => setShowContact(true)}
                           className="flex items-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-xl shadow-lg hover:bg-blue-700 transition-all transform hover:scale-105 text-sm font-black uppercase tracking-wider"
@@ -99,15 +103,15 @@ const AnimationSelection: React.FC<{ onSelectAnimation: (animation: Animation) =
                       </button>
                   </div>
 
-                  <div className="text-center px-24 md:px-0">
+                  <div className="flex-1 min-w-0 text-center">
                       <h1 
-                        className={`${settings.titleFontSize || 'text-2xl'} ${settings.titleFontWeight || 'font-bold'} ${settings.titleFontStyle || 'not-italic'} leading-tight`}
+                        className={`${settings.titleFontSize || 'text-2xl'} ${settings.titleFontWeight || 'font-bold'} ${settings.titleFontStyle || 'not-italic'} leading-tight break-words`}
                         style={titleStyle}
                       >
                         {settings.homepageTitle}
                       </h1>
                       <p 
-                        className={`${settings.subtitleFontSize || 'text-sm'} ${settings.subtitleFontWeight || 'font-normal'} ${settings.subtitleFontStyle || 'italic'} mt-1 hidden lg:block px-4`}
+                        className={`${settings.subtitleFontSize || 'text-sm'} ${settings.subtitleFontWeight || 'font-normal'} ${settings.subtitleFontStyle || 'italic'} mt-1 hidden lg:block px-4 line-clamp-2`}
                         style={subtitleStyle}
                       >
                         {settings.homepageSubtitle || `Choisissez une animation pour voir les créneaux disponibles pour l'année scolaire ${settings.activeYear}`}
@@ -115,7 +119,7 @@ const AnimationSelection: React.FC<{ onSelectAnimation: (animation: Animation) =
                   </div>
 
                   {/* Bouton Admin à Droite */}
-                  <div className="absolute inset-y-0 right-0 flex items-center">
+                  <div className="z-10 flex-shrink-0">
                       <button
                           onClick={onNavigateToAdmin}
                           className="flex items-center gap-2 bg-slate-800 text-white px-3 py-2 rounded-lg shadow hover:bg-slate-700 transition-colors text-[10px] font-bold uppercase tracking-tight"
@@ -126,6 +130,22 @@ const AnimationSelection: React.FC<{ onSelectAnimation: (animation: Animation) =
                       </button>
                   </div>
               </div>
+
+              {/* Liens de pages d'info centrés en bas de l'en-tête */}
+              {settings.infoPages && settings.infoPages.length > 0 && (
+                  <div className="flex flex-wrap justify-center items-center gap-x-8 gap-y-2 pb-4 pt-2 border-t border-gray-100/50 mt-1">
+                      {settings.infoPages.map(page => (
+                          <button
+                              key={page.id}
+                              onClick={() => onNavigateToInfoPage(page.id)}
+                              className="text-xs font-black uppercase tracking-widest text-gray-500 hover:text-blue-600 transition-all hover:scale-110 relative group"
+                          >
+                              {page.title}
+                              <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-blue-600 transition-all group-hover:w-full"></span>
+                          </button>
+                      ))}
+                  </div>
+              )}
           </div>
       </header>
 

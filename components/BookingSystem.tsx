@@ -1,7 +1,7 @@
 
 import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../AppContext';
-import { Animation, View, Booking } from '../types';
+import { Animation, View, Booking, CustomLegalPage } from '../types';
 import AdminLogin from './AdminLogin';
 import AppFooter from './shared/AppFooter';
 import AnimationSelection from './booking/AnimationSelection';
@@ -12,27 +12,30 @@ import { formatPhoneNumber } from '../utils/formatters';
 import { emailService } from '../services/emailService';
 
 import LegalPage from './shared/LegalPage';
+import CookieBanner from './shared/CookieBanner';
 
 interface BookingSystemProps {
   view: View;
   selectedAnimation: Animation | null;
-  selectedCustomPageId?: string | null;
   onSelectAnimation: (animation: Animation) => void;
   onBackToHome: () => void;
+  onNavigate: (view: View) => void;
   onNavigateToAdmin: () => void;
   onAdminLogin: () => void;
-  onNavigate: (view: View, customPageId?: string) => void;
+  selectedInfoPage: CustomLegalPage | null;
+  onSelectInfoPage: (page: CustomLegalPage) => void;
 }
 
 const BookingSystem: React.FC<BookingSystemProps> = ({ 
   view, 
   selectedAnimation, 
-  selectedCustomPageId,
   onSelectAnimation, 
   onBackToHome, 
+  onNavigate,
   onNavigateToAdmin, 
-  onAdminLogin, 
-  onNavigate 
+  onAdminLogin,
+  selectedInfoPage,
+  onSelectInfoPage,
 }) => {
   const { saveBooking, settings } = useContext(AppContext);
   const [bookingDetails, setBookingDetails] = useState<{ date: Date, time: number } | null>(null);
@@ -64,7 +67,7 @@ const BookingSystem: React.FC<BookingSystemProps> = ({
         await saveBooking(newBooking);
         
         // Envoi des e-mails en arrière-plan
-        // emailService.sendBookingConfirmation(newBooking); // DÉSACTIVÉ TEMPORAIREMENT
+        emailService.sendBookingConfirmation(newBooking);
         
         if (selectedAnimation.animator) {
             const animator = settings.animators.find(a => a.name === selectedAnimation.animator);
@@ -90,42 +93,19 @@ const BookingSystem: React.FC<BookingSystemProps> = ({
   }
 
   if (view === View.LEGAL_NOTICE) {
-    return (
-      <LegalPage 
-        title={settings.legalNoticeTitle || "Mentions légales"} 
-        content={settings.legalNotice || ''} 
-        onBack={onBackToHome} 
-        headerBgColor={settings.legalHeaderBgColor}
-        headerTextColor={settings.legalHeaderTextColor}
-      />
-    );
+    return <LegalPage title="Mentions Légales" content={settings.legalNotice || ''} onBack={onBackToHome} />;
   }
 
   if (view === View.PRIVACY_POLICY) {
-    return (
-      <LegalPage 
-        title={settings.privacyPolicyTitle || "Politique de confidentialité"} 
-        content={settings.privacyPolicy || ''} 
-        onBack={onBackToHome} 
-        headerBgColor={settings.legalHeaderBgColor}
-        headerTextColor={settings.legalHeaderTextColor}
-      />
-    );
+    return <LegalPage title="Politique de Confidentialité" content={settings.privacyPolicy || ''} onBack={onBackToHome} />;
   }
 
-  if (view === View.CUSTOM_PAGE && selectedCustomPageId) {
-    const page = settings.customLegalPages?.find(p => p.id === selectedCustomPageId);
-    if (page) {
-      return (
-        <LegalPage 
-          title={page.title} 
-          content={page.content || ''} 
-          onBack={onBackToHome} 
-          headerBgColor={settings.legalHeaderBgColor}
-          headerTextColor={settings.legalHeaderTextColor}
-        />
-      );
-    }
+  if (view === View.COOKIES_POLICY) {
+    return <LegalPage title="Gestion des Cookies" content={settings.cookiesPolicy || ''} onBack={onBackToHome} />;
+  }
+
+  if (view === View.INFO_PAGE && selectedInfoPage) {
+    return <LegalPage title={selectedInfoPage.title} content={selectedInfoPage.content} onBack={onBackToHome} />;
   }
 
   if (view === View.CALENDAR && selectedAnimation) {
@@ -171,8 +151,19 @@ const BookingSystem: React.FC<BookingSystemProps> = ({
 
   return (
      <div style={{ backgroundColor: settings.homepageBgColor }} className="min-h-screen flex flex-col">
-        <AnimationSelection onSelectAnimation={onSelectAnimation} onNavigateToAdmin={onNavigateToAdmin} />
+        <AnimationSelection 
+          onSelectAnimation={onSelectAnimation} 
+          onNavigateToAdmin={onNavigateToAdmin}
+          onNavigateToInfoPage={(id) => {
+            const page = (settings.infoPages || []).find(p => p.id === id);
+            if (page) {
+                onSelectInfoPage(page);
+                onNavigate(View.INFO_PAGE);
+            }
+          }}
+        />
         <AppFooter onNavigate={onNavigate} />
+        <CookieBanner onNavigate={onNavigate} />
     </div>
   );
 };

@@ -5,25 +5,24 @@ import ManageCalendar from './admin/ManageCalendar';
 import ViewBookings from './admin/ViewBookings';
 import ManageJournal from './admin/ManageJournal';
 import ManageSettings from './admin/ManageSettings';
-import RecrePanel from './admin/RecrePanel';
 import { AdminView } from './admin/types';
-import { PaintBrushIcon, CalendarIcon, ListIcon, SparklesIcon, JournalIcon, CogIcon, CheckIcon, XIcon } from './Icons';
+import { PaintBrushIcon, CalendarIcon, ListIcon, JournalIcon, CogIcon, CheckIcon, XIcon } from './Icons';
 import { db } from '../services/firebase';
 import { AppContext } from '../AppContext';
 
 // Main Admin Panel Component
 const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const [activeView, setActiveView] = useState<AdminView>('animations');
-    const [notification, setNotification] = useState<string | null>(null);
+    const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
     const [dbStatus, setDbStatus] = useState<'connected' | 'error'>('connected');
-    const { settings } = useContext(AppContext);
+    const { settings, currentUser } = useContext(AppContext);
     const notificationTimer = useRef<number | null>(null);
 
-    const showNotification = (message: string) => {
+    const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
         if (notificationTimer.current) {
             clearTimeout(notificationTimer.current);
         }
-        setNotification(message);
+        setNotification({ message, type });
         notificationTimer.current = window.setTimeout(() => {
             setNotification(null);
             notificationTimer.current = null;
@@ -48,7 +47,6 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             case 'animations': return <ManageAnimations {...props} />;
             case 'calendar': return <ManageCalendar {...props} />;
             case 'bookings': return <ViewBookings {...props} />;
-            case 'recre': return <RecrePanel {...props} />;
             case 'journal': return <ManageJournal {...props} />;
             case 'settings': return <ManageSettings {...props} />;
             default: return <ManageAnimations {...props} />;
@@ -106,9 +104,10 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                        <NavLink view="animations" label="Animations" icon={<PaintBrushIcon className="w-6 h-6" />} />
                        <NavLink view="calendar" label="Calendrier" icon={<CalendarIcon className="w-6 h-6" />} />
                        <NavLink view="bookings" label="Réservations" icon={<ListIcon className="w-6 h-6" />} />
-                       <NavLink view="recre" label="Récré !" icon={<SparklesIcon className="w-6 h-6" />} />
-                       <NavLink view="journal" label="Journal" icon={<JournalIcon className="w-6 h-6" />} />
-                       <NavLink view="settings" label="Paramètres" icon={<CogIcon className="w-6 h-6" />} />
+                        <NavLink view="journal" label="Journal" icon={<JournalIcon className="w-6 h-6" />} />
+                       {(currentUser?.role === 'admin' || currentUser?.permissions.canModifySettings) && (
+                           <NavLink view="settings" label="Paramètres" icon={<CogIcon className="w-6 h-6" />} />
+                       )}
                     </nav>
                 </div>
             </header>
@@ -120,8 +119,10 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             </main>
             
             {notification && (
-                <div className="fixed bottom-8 right-8 bg-green-600 text-white px-6 py-3 rounded-lg shadow-xl z-50 animate-bounce">
-                    ✓ {notification}
+                <div className={`fixed bottom-8 right-8 px-6 py-3 rounded-lg shadow-xl z-50 animate-bounce text-white ${
+                    notification.type === 'error' ? 'bg-red-600' : 'bg-green-600'
+                }`}>
+                    {notification.type === 'success' ? '✓' : '✕'} {notification.message}
                 </div>
             )}
         </div>

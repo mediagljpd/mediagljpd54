@@ -27,12 +27,10 @@ const BookingConfirmation: React.FC<{ booking: Booking, onOk: () => void }> = ({
                     </p>
                 </div>
 
-                <div className="mt-8 p-4 bg-orange-50 rounded-xl border border-orange-100">
-                    <p className="text-sm text-orange-700 font-bold uppercase italic">
-                        ⚠️ Note importante :
-                    </p>
-                    <p className="text-orange-800 text-xs mt-1">
-                        L'envoi automatique du mail de confirmation est actuellement désactivé. Veuillez noter ces informations ou faire une capture d'écran.
+                <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                    <p className="text-blue-800 text-sm">
+                        Un mail de confirmation vient de vous être envoyé à l'adresse : <br/>
+                        <span className="font-semibold">{booking.email}</span>
                     </p>
                 </div>
 

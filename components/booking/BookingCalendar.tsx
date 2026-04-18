@@ -211,7 +211,7 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
                                                         : 'bg-gray-50 text-gray-300 cursor-not-allowed border-gray-100'
                                                     }`}
                                                 >
-                                                    {available ? `${time}h00` : 'Complet'}
+                                                    {available ? `${time}h00` : 'Indisponible'}
                                                 </button>
                                             );
                                         })}
@@ -227,7 +227,7 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
                         </div>
                         <h3 className="text-xl font-bold text-gray-700">Aucun créneau ce mois-ci</h3>
                         <p className="text-gray-400 mt-2 max-w-sm mx-auto text-sm font-medium">
-                            Les réservations pour cette période sont complètes ou non autorisées.
+                            Les réservations pour cette période sont indisponibles ou non autorisées.
                         </p>
                     </div>
                 )}

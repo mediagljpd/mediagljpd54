@@ -3,12 +3,12 @@ import { AppContext } from '../../AppContext';
 import { View } from '../../types';
 
 interface AppFooterProps {
-  onNavigate?: (view: View, customPageId?: string) => void;
+  onNavigate: (view: View) => void;
 }
 
 const AppFooter: React.FC<AppFooterProps> = ({ onNavigate }) => {
   const { settings } = useContext(AppContext);
-  const { establishmentInfo, footerLinks, customLegalPages } = settings;
+  const { establishmentInfo, footerLinks } = settings;
 
   return (
     <footer className="w-full bg-white border-t border-gray-200 mt-12 py-12 px-6 sm:px-12">
@@ -18,30 +18,25 @@ const AppFooter: React.FC<AppFooterProps> = ({ onNavigate }) => {
         <div className="flex flex-col gap-6">
           <div className="flex flex-wrap gap-x-8 gap-y-3">
             <button 
-              onClick={() => onNavigate?.(View.LEGAL_NOTICE)}
+              onClick={() => onNavigate(View.LEGAL_NOTICE)}
               className="text-base text-gray-600 hover:text-blue-600 transition-colors font-medium"
             >
-              {settings.legalNoticeTitle || 'Mentions légales'}
+              Mentions légales
             </button>
             <button 
-              onClick={() => onNavigate?.(View.PRIVACY_POLICY)}
+              onClick={() => onNavigate(View.PRIVACY_POLICY)}
               className="text-base text-gray-600 hover:text-blue-600 transition-colors font-medium"
             >
-              {settings.privacyPolicyTitle || 'Politique de confidentialité'}
+              Politique de confidentialité
             </button>
-
-            {customLegalPages?.map((page) => (
-              <button 
-                key={page.id}
-                onClick={() => onNavigate?.(View.CUSTOM_PAGE, page.id)}
-                className="text-base text-gray-600 hover:text-blue-600 transition-colors font-medium"
-              >
-                {page.title}
-              </button>
-            ))}
-            
+            <button 
+              onClick={() => onNavigate(View.COOKIES_POLICY)}
+              className="text-base text-gray-600 hover:text-blue-600 transition-colors font-medium"
+            >
+              Cookies
+            </button>
             {footerLinks?.map((link) => (
-              link.url ? (
+              link.url && (
                 <a 
                   key={link.id}
                   href={link.url}
@@ -51,14 +46,6 @@ const AppFooter: React.FC<AppFooterProps> = ({ onNavigate }) => {
                 >
                   {link.label}
                 </a>
-              ) : (
-                <button 
-                  key={link.id}
-                  onClick={() => onNavigate?.(View.CUSTOM_PAGE)}
-                  className="text-base text-gray-600 hover:text-blue-600 transition-colors font-medium"
-                >
-                  {link.label}
-                </button>
               )
             ))}
           </div>

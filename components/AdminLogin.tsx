@@ -1,7 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
-import { AppSettings } from '../types';
+import React, { useState, useEffect, useContext } from 'react';
+import { AppSettings, UserRole, AdminUser } from '../types';
 import { emailService } from '../services/emailService';
+import { AppContext } from '../AppContext';
+import { validatePassword } from '../utils/validators';
+import PasswordPolicy from './admin/PasswordPolicy';
 
 interface AdminLoginProps {
   settings: AppSettings;
@@ -9,9 +12,8 @@ interface AdminLoginProps {
   onBackToHome: () => void;
 }
 
-const DEFAULT_LOGIN_BG = 'https://i.postimg.cc/FHNkzYMb/e51d34d7fa0879fe125ad25fe3c29954.jpg';
-
 const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBackToHome }) => {
+  const { setCurrentUser, updateSettings } = useContext(AppContext);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -19,12 +21,19 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
   const [recoverySent, setRecoverySent] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
 
+  // Password Expiry States
+  const [isPasswordExpired, setIsPasswordExpired] = useState(false);
+  const [expiredUserType, setExpiredUserType] = useState<'admin' | 'user' | null>(null);
+  const [expiredUserId, setExpiredUserId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [expiryError, setExpiryError] = useState('');
+
   useEffect(() => {
     emailService.init();
   }, []);
 
   const isSetupRequired = !settings.adminUsername || !settings.adminPassword;
-  const loginIllustration = settings.adminLoginBgUrl || DEFAULT_LOGIN_BG;
 
   /**
    * Masque partiellement une adresse e-mail (ex: te****er@academie.fr)
@@ -36,6 +45,17 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
     return `${local.substring(0, 2)}****${local.substring(local.length - 1)}@${domain}`;
   };
 
+  const checkExpiry = (lastChanged?: string) => {
+    if (!settings.passwordExpiryDays || settings.passwordExpiryDays === 0) return false;
+    if (!lastChanged) return true; // Force change if never changed
+    
+    const lastDate = new Date(lastChanged);
+    const expiryDate = new Date(lastDate);
+    expiryDate.setDate(expiryDate.getDate() + settings.passwordExpiryDays);
+    
+    return new Date() > expiryDate;
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (isSetupRequired) {
@@ -44,11 +64,103 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
     }
 
     if (username === settings.adminUsername && password === settings.adminPassword) {
+      if (checkExpiry(settings.adminPasswordLastChanged)) {
+        setIsPasswordExpired(true);
+        setExpiredUserType('admin');
+        return;
+      }
+
       setError('');
+      setCurrentUser({
+        id: 'main-admin',
+        username: settings.adminUsername,
+        password: settings.adminPassword,
+        role: UserRole.ADMIN,
+        permissions: {
+          canModifySettings: true,
+          canAddChangelog: true,
+          canManageVacations: true,
+          canManageAnimations: true
+        },
+        passwordLastChanged: settings.adminPasswordLastChanged
+      });
       onLoginSuccess();
+      return;
+    }
+
+    // Check other users
+    const foundUser = (settings.users || []).find(u => u.username === username && u.password === password);
+    if (foundUser) {
+        if (checkExpiry(foundUser.passwordLastChanged)) {
+            setIsPasswordExpired(true);
+            setExpiredUserType('user');
+            setExpiredUserId(foundUser.id);
+            return;
+        }
+
+        setError('');
+        setCurrentUser(foundUser);
+        onLoginSuccess();
     } else {
       setError('Identifiant ou mot de passe incorrect.');
     }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setExpiryError('');
+
+    const complexityError = validatePassword(newPassword);
+    if (complexityError) {
+        setExpiryError(complexityError);
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        setExpiryError("Les mots de passe ne correspondent pas.");
+        return;
+    }
+
+    if (newPassword === password) {
+        setExpiryError("Le nouveau mot de passe doit être différent de l'ancien.");
+        return;
+    }
+
+    const updatedSettings = { ...settings };
+    const now = new Date().toISOString();
+
+    if (expiredUserType === 'admin') {
+        updatedSettings.adminPassword = newPassword;
+        updatedSettings.adminPasswordLastChanged = now;
+    } else if (expiredUserType === 'user' && expiredUserId) {
+        updatedSettings.users = (settings.users || []).map(u => 
+            u.id === expiredUserId ? { ...u, password: newPassword, passwordLastChanged: now } : u
+        );
+    }
+
+    await updateSettings(updatedSettings);
+    
+    // Auto-login after change
+    if (expiredUserType === 'admin') {
+        setCurrentUser({
+            id: 'main-admin',
+            username: settings.adminUsername!,
+            password: newPassword,
+            role: UserRole.ADMIN,
+            permissions: {
+                canModifySettings: true,
+                canAddChangelog: true,
+                canManageVacations: true,
+                canManageAnimations: true
+            },
+            passwordLastChanged: now
+        });
+    } else {
+        const updatedUser = updatedSettings.users?.find(u => u.id === expiredUserId);
+        if (updatedUser) setCurrentUser(updatedUser);
+    }
+
+    onLoginSuccess();
   };
 
   const handleRecover = async () => {
@@ -78,26 +190,13 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4 py-12">
-        <div className="w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden md:flex relative">
+        <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden relative">
             
-            <div 
-                className="hidden md:block md:w-1/2 bg-cover bg-center" 
-                style={{ backgroundImage: `url('${loginIllustration}')` }}
-                aria-label="Illustration d'un atelier créatif"
-            >
-            </div>
-            
-            <div className="w-full md:w-1/2 p-8 sm:p-12 flex flex-col justify-center">
+            <div className="w-full p-8 sm:p-12 flex flex-col justify-center">
                 <div>
-                    <div className="md:hidden text-center mb-6">
-                        <img 
-                            src={loginIllustration}
-                            alt="Illustration d'un atelier créatif" 
-                            className="w-40 h-40 object-cover rounded-full mx-auto shadow-md" 
-                        />
-                    </div>
-
-                    <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Accès administrateur</h2>
+                    <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">
+                        {isPasswordExpired ? 'Mot de passe expiré' : 'Accès administrateur'}
+                    </h2>
                 
                     {isSetupRequired ? (
                       <div className='text-center'>
@@ -109,6 +208,59 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
                               Configurer et accéder au panneau
                           </button>
                       </div>
+                    ) : isPasswordExpired ? (
+                        <form onSubmit={handleUpdatePassword} className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+                            <p className="text-sm text-gray-600 text-center mb-4">
+                                Votre mot de passe a expiré (tous les {settings.passwordExpiryDays} jours). 
+                                Veuillez le modifier pour continuer.
+                            </p>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700">Nouveau mot de passe</label>
+                                    <input
+                                        type="password"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        required
+                                        className="mt-1 w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+                                
+                                <PasswordPolicy password={newPassword} />
+
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700">Confirmer le mot de passe</label>
+                                    <input
+                                        type="password"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        required
+                                        className="mt-1 w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+                            </div>
+
+                            {expiryError && <p className="text-red-500 text-xs text-center font-medium bg-red-50 p-2 rounded border border-red-100">{expiryError}</p>}
+
+                            <div className="pt-2">
+                                <button
+                                    type="submit"
+                                    className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-transform transform hover:scale-105"
+                                >
+                                    Mettre à jour et accéder
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsPasswordExpired(false)}
+                                    className="w-full mt-3 text-sm text-gray-500 hover:underline"
+                                >
+                                    Retour à la connexion
+                                </button>
+                            </div>
+                        </form>
                     ) : (
                       <form onSubmit={handleLogin} className="space-y-6">
                         <div>

@@ -1,12 +1,14 @@
 
 import React from 'react';
-import { Animation, Booking, AppSettings, ChangelogEntry } from './types';
+import { Animation, Booking, AppSettings, ChangelogEntry, AdminUser } from './types';
 
 export const AppContext = React.createContext<{
   animations: Animation[];
   bookings: Booking[];
   settings: AppSettings;
   changelog: ChangelogEntry[];
+  currentUser: AdminUser | null;
+  setCurrentUser: (user: AdminUser | null) => void;
   saveAnimation: (animation: Animation) => Promise<void>;
   removeAnimation: (animationId: string) => Promise<void>;
   saveBooking: (booking: Booking) => Promise<void>;
@@ -21,6 +23,8 @@ export const AppContext = React.createContext<{
   bookings: [],
   settings: {} as AppSettings,
   changelog: [],
+  currentUser: null,
+  setCurrentUser: () => {},
   saveAnimation: async () => {},
   removeAnimation: async () => {},
   saveBooking: async () => {},

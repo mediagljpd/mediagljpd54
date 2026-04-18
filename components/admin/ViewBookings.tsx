@@ -5,7 +5,7 @@ import { Booking } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { generateBusPdf } from '../../services/documentGenerator';
 import { formatPhoneNumber } from '../../utils/formatters';
-import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon } from '../Icons';
+import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon, XIcon } from '../Icons';
 
 import BookingEditForm from './BookingEditForm';
 import BookingsCalendar from './BookingsCalendar';
@@ -45,6 +45,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const [searchTerm, setSearchTerm] = useState('');
     const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
     const [isBusSheetModalOpen, setIsBusSheetModalOpen] = useState(false);
+    const [viewingBooking, setViewingBooking] = useState<Booking | null>(null);
 
     // Filtres
     const animators = useMemo(() => settings.animators || [], [settings.animators]);
@@ -320,8 +321,8 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-100">
                                     {sortedBookings.map(b => (
-                                        <tr key={b.id} className={`group hover:bg-gray-50/50 transition-colors ${selectedBookingIds.has(b.id) ? 'bg-blue-50/50' : ''}`}>
-                                            <td className="px-6 py-4 align-top">
+                                        <tr key={b.id} className={`group hover:bg-gray-50/50 transition-colors cursor-pointer ${selectedBookingIds.has(b.id) ? 'bg-blue-50/50' : ''}`} onClick={() => setViewingBooking(b)}>
+                                            <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
                                                 <input type="checkbox" checked={selectedBookingIds.has(b.id)} onChange={() => handleSelectOneTable(b.id)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                             </td>
                                             <td className="px-6 py-4 align-top">
@@ -352,7 +353,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 align-top text-right">
-                                                <div className="flex justify-end gap-2">
+                                                <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                                                     <button onClick={() => setEditingBooking(b)} className="p-2 text-gray-400 hover:text-indigo-600 bg-white hover:bg-indigo-50 rounded-lg border border-gray-100 transition-all shadow-sm"><CogIcon className="w-4 h-4" /></button>
                                                     <button onClick={() => { if(window.confirm("Supprimer ?")) removeBooking(b.id); }} className="p-2 text-gray-400 hover:text-red-600 bg-white hover:bg-red-50 rounded-lg border border-gray-100 transition-all shadow-sm"><TrashIcon className="w-4 h-4" /></button>
                                                 </div>
@@ -364,9 +365,120 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                         </div>
                     </>
                 ) : (
-                    <BookingsCalendar bookings={filteredBookings} animations={animations} onEdit={setEditingBooking} />
+                    <BookingsCalendar bookings={filteredBookings} animations={animations} onEdit={setViewingBooking} />
                 )}
             </div>
+            
+            {/* Détails de la réservation */}
+            {viewingBooking && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setViewingBooking(null)}>
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">{viewingBooking.animationTitle}</h2>
+                                <p className="text-blue-600 font-bold">{new Date(viewingBooking.date.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} à {viewingBooking.time}h</p>
+                            </div>
+                            <button onClick={() => setViewingBooking(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                                <XIcon className="w-6 h-6 text-gray-400" />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="space-y-6">
+                                <div>
+                                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Informations Enseignant</h3>
+                                    <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                                        <div>
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Nom</p>
+                                            <p className="font-bold text-gray-800">{viewingBooking.teacherName}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Email</p>
+                                            <p className="font-bold text-blue-600">{viewingBooking.email}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Téléphone</p>
+                                            <p className="font-bold text-gray-800">{viewingBooking.phoneNumber}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Établissement & Classe</h3>
+                                    <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                                        <div>
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">École / Structure</p>
+                                            <p className="font-bold text-gray-800">{viewingBooking.schoolName}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Commune</p>
+                                            <p className="font-bold text-gray-800">{viewingBooking.commune}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Niveau</p>
+                                            <p className="font-bold text-gray-800">{viewingBooking.classLevel}</p>
+                                        </div>
+                                        <div className="pt-2 border-t border-gray-200 mt-2 grid grid-cols-2 gap-4">
+                                            <div>
+                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Élèves</p>
+                                                <p className="font-bold text-blue-600 text-lg">{viewingBooking.studentCount}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Accompagnateurs</p>
+                                                <p className="font-bold text-gray-800 text-lg">{viewingBooking.adultCount}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div>
+                                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Transport & Logistique</h3>
+                                    <div className="bg-blue-50 rounded-2xl p-4 space-y-3 border border-blue-100">
+                                        <div>
+                                            <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Besoin de bus</p>
+                                            <p className="font-bold text-blue-900">{viewingBooking.noBusRequired ? 'Non' : 'Oui'}</p>
+                                        </div>
+                                        {!viewingBooking.noBusRequired && (
+                                            <>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Statut prise en charge</p>
+                                                    <p className={`font-bold ${viewingBooking.busStatus === 'validated' ? 'text-green-600' : 'text-orange-600'}`}>
+                                                        {viewingBooking.busStatus === 'validated' ? 'Validé' : 'En attente'}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Coût</p>
+                                                    <p className="font-bold text-blue-900">{viewingBooking.busCost || 0} €</p>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {viewingBooking.busInfo && (
+                                    <div>
+                                        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Commentaires / Infos passage</h3>
+                                        <div className="bg-gray-50 rounded-2xl p-4">
+                                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{viewingBooking.busInfo}</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end gap-3">
+                            <button onClick={() => { setViewingBooking(null); setEditingBooking(viewingBooking); }} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-indigo-700 transition-all">
+                                Modifier
+                            </button>
+                            <button onClick={() => setViewingBooking(null)} className="px-6 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all">
+                                Fermer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             
             {/* Modales conservées */}
             {busManagementBooking && (

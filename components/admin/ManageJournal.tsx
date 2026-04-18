@@ -8,9 +8,11 @@ import { BellIcon, PlusCircleIcon, PencilIcon, TrashIcon } from '../Icons';
 import ChangelogEntryForm from './ChangelogEntryForm';
 
 const ManageJournal: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
-    const { changelog, saveChangelogEntry, removeChangelogEntry, bookings } = useContext(AppContext);
+    const { changelog, saveChangelogEntry, removeChangelogEntry, bookings, currentUser } = useContext(AppContext);
     const [isAdding, setIsAdding] = useState(false);
     const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+
+    const canManage = currentUser?.role === 'admin' || currentUser?.permissions.canAddChangelog;
 
     const sortedChangelog = useMemo(() => {
         return [...changelog].sort((a, b) => new Date(b.date.replace(/-/g, '/')).getTime() - new Date(a.date.replace(/-/g, '/')).getTime());
@@ -75,13 +77,15 @@ const ManageJournal: React.FC<AdminSubComponentProps> = ({ showNotification }) =
                 <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xl font-semibold">Mises à jour</h3>
-                        <button 
-                            onClick={() => { setIsAdding(!isAdding); setEditingEntryId(null); }}
-                            className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors text-sm"
-                        >
-                            <PlusCircleIcon className="w-5 h-5" />
-                            {isAdding ? 'Annuler' : 'Ajouter une entrée'}
-                        </button>
+                        {canManage && (
+                            <button 
+                                onClick={() => { setIsAdding(!isAdding); setEditingEntryId(null); }}
+                                className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors text-sm"
+                            >
+                                <PlusCircleIcon className="w-5 h-5" />
+                                {isAdding ? 'Annuler' : 'Ajouter une entrée'}
+                            </button>
+                        )}
                     </div>
 
                     {isAdding && <ChangelogEntryForm onSave={handleAddEntry} onCancel={() => setIsAdding(false)} />}
@@ -100,12 +104,18 @@ const ManageJournal: React.FC<AdminSubComponentProps> = ({ showNotification }) =
                                             <p className="mt-2 text-gray-600 whitespace-pre-wrap">{entry.description}</p>
                                         </div>
                                         <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                                            <button onClick={() => { setEditingEntryId(entry.id); setIsAdding(false); }} className="text-gray-400 hover:text-indigo-600 p-1" aria-label="Modifier">
-                                                <PencilIcon className="w-5 h-5"/>
-                                            </button>
-                                            <button onClick={() => handleDelete(entry.id)} className="text-gray-400 hover:text-red-600 p-1" aria-label="Supprimer">
-                                                <TrashIcon className="w-5 h-5"/>
-                                            </button>
+                                            {canManage ? (
+                                                <>
+                                                    <button onClick={() => { setEditingEntryId(entry.id); setIsAdding(false); }} className="text-gray-400 hover:text-indigo-600 p-1" aria-label="Modifier">
+                                                        <PencilIcon className="w-5 h-5"/>
+                                                    </button>
+                                                    <button onClick={() => handleDelete(entry.id)} className="text-gray-400 hover:text-red-600 p-1" aria-label="Supprimer">
+                                                        <TrashIcon className="w-5 h-5"/>
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <span className="text-[10px] font-bold text-gray-300 uppercase italic">Lecture seule</span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
