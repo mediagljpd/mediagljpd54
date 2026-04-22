@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { Booking, Animation } from '../../types';
 import { formatPhoneNumber } from '../../utils/formatters';
+import { AppContext } from '../../AppContext';
 
 const BookingEditForm: React.FC<{
     booking: Booking;
@@ -10,6 +11,8 @@ const BookingEditForm: React.FC<{
     onSave: (booking: Booking) => void;
     onCancel: () => void;
 }> = ({ booking, animations, bookings, onSave, onCancel }) => {
+    const { currentUser } = useContext(AppContext);
+    const isAdmin = currentUser?.role === 'admin';
     const [formData, setFormData] = useState<Booking>({
         ...booking, 
         email: booking.email || '',
@@ -85,7 +88,7 @@ const BookingEditForm: React.FC<{
             <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">Modifier la réservation</h2>
-                    <button onClick={onCancel} className="text-gray-400 hover:text-gray-600">
+                    <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
@@ -139,11 +142,21 @@ const BookingEditForm: React.FC<{
                     </div>
 
                     {/* Section Bus Admin */}
-                    <div className="p-5 bg-blue-50 border border-blue-100 rounded-2xl space-y-4">
-                        <h4 className="text-sm font-black text-blue-900 uppercase tracking-widest">Administration du transport</h4>
+                    <div className={`p-5 bg-blue-50 border border-blue-100 rounded-2xl space-y-4 ${!isAdmin ? 'opacity-70 grayscale-[0.5]' : ''}`}>
+                        <div className="flex justify-between items-center">
+                            <h4 className="text-sm font-black text-blue-900 uppercase tracking-widest">Administration du transport</h4>
+                            {!isAdmin && <span className="text-[10px] font-black bg-blue-200 text-blue-800 px-2 py-0.5 rounded uppercase tracking-tighter">Consultation uniquement</span>}
+                        </div>
                         <div className="flex items-center gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" name="noBusRequired" checked={formData.noBusRequired} onChange={handleChange} className="w-4 h-4 rounded text-blue-600"/>
+                            <label className={`flex items-center gap-2 ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+                                <input 
+                                    type="checkbox" 
+                                    name="noBusRequired" 
+                                    checked={formData.noBusRequired} 
+                                    onChange={handleChange} 
+                                    disabled={!isAdmin}
+                                    className="w-4 h-4 rounded text-blue-600"
+                                />
                                 <span className="text-sm font-bold text-blue-800 italic">Pas de bus nécessaire</span>
                             </label>
                         </div>
@@ -151,18 +164,42 @@ const BookingEditForm: React.FC<{
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in duration-200">
                                 <div>
                                     <label className="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Statut prise en charge</label>
-                                    <select name="busStatus" value={formData.busStatus} onChange={handleChange} className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-bold text-blue-900">
+                                    <select 
+                                        name="busStatus" 
+                                        value={formData.busStatus} 
+                                        onChange={handleChange} 
+                                        disabled={!isAdmin}
+                                        className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-bold text-blue-900 disabled:bg-gray-100"
+                                    >
                                         <option value="pending">En attente</option>
                                         <option value="validated">Validé</option>
                                     </select>
                                 </div>
                                 <div>
                                     <label className="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Coût (€)</label>
-                                    <input type="number" name="busCost" value={formData.busCost} onChange={handleChange} className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-bold text-blue-900"/>
+                                    <input 
+                                        type="text" 
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        name="busCost" 
+                                        value={formData.busCost} 
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(/\D/g, '');
+                                            setFormData(prev => ({ ...prev, busCost: parseInt(val) || 0 }));
+                                        }} 
+                                        disabled={!isAdmin}
+                                        className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-bold text-blue-900 disabled:bg-gray-100"
+                                    />
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Infos de passage</label>
-                                    <textarea name="busInfo" value={formData.busInfo} onChange={handleChange} className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-medium h-20"/>
+                                    <textarea 
+                                        name="busInfo" 
+                                        value={formData.busInfo} 
+                                        onChange={handleChange} 
+                                        disabled={!isAdmin}
+                                        className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-medium h-20 disabled:bg-gray-100"
+                                    />
                                 </div>
                             </div>
                         )}

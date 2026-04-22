@@ -6,11 +6,13 @@ import { AdminSubComponentProps } from './types';
 import { DragHandleIcon, PencilIcon, TrashIcon } from '../Icons';
 import AnimationForm from './AnimationForm';
 import ManageAnimators from './ManageAnimators';
+import ConfirmationModal from '../shared/ConfirmationModal';
 
 const ManageAnimations: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
     const { animations, bookings, saveAnimation, removeAnimation, updateAnimationsOrder, settings, currentUser } = useContext(AppContext);
     const [editing, setEditing] = useState<Animation | null>(null);
     const [draggedId, setDraggedId] = useState<string | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
     
     const canManage = currentUser?.role === 'admin' || currentUser?.permissions.canManageAnimations;
     
@@ -27,17 +29,22 @@ const ManageAnimations: React.FC<AdminSubComponentProps> = ({ showNotification }
     const handleDelete = async (id: string) => {
         const isUsed = bookings.some(booking => booking.animationId === id);
         if (isUsed) {
-            alert("Cette animation ne peut pas être supprimée car des réservations y sont associées.");
+            showNotification("Cette animation ne peut pas être supprimée car des réservations y sont associées.", 'error');
             return;
         }
+        setDeleteId(id);
+    };
 
-        if (window.confirm("Supprimer cette animation ?")) {
-            try {
-                await removeAnimation(id);
-                showNotification('Animation supprimée.');
-            } catch (error) {
-                showNotification('Erreur lors de la suppression.');
-            }
+    const confirmDelete = async () => {
+        if (!deleteId) return;
+        try {
+            await removeAnimation(deleteId);
+            showNotification('Animation supprimée.');
+        } catch (error) {
+            console.error("Delete error:", error);
+            showNotification('Erreur lors de la suppression. Vérifiez vos permissions.', 'error');
+        } finally {
+            setDeleteId(null);
         }
     };
     
@@ -155,6 +162,16 @@ const ManageAnimations: React.FC<AdminSubComponentProps> = ({ showNotification }
                     </table>
                 </div>
             </div>
+
+            <ConfirmationModal 
+                isOpen={!!deleteId}
+                title="Supprimer l'animation"
+                message="Êtes-vous sûr de vouloir supprimer cette animation ? Cette action est irréversible."
+                confirmLabel="Supprimer"
+                isDanger={true}
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteId(null)}
+            />
         </div>
     );
 };

@@ -92,7 +92,7 @@ const AnimationSelection: React.FC<{
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <div className="flex items-center justify-between min-h-24 py-4 gap-4">
                   {/* Bouton Contact à Gauche */}
-                  <div className="z-10 flex-shrink-0">
+                  <div className="z-10 flex-shrink-0 flex flex-col items-center">
                       <button
                           onClick={() => setShowContact(true)}
                           className="flex items-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-xl shadow-lg hover:bg-blue-700 transition-all transform hover:scale-105 text-sm font-black uppercase tracking-wider"
@@ -101,6 +101,17 @@ const AnimationSelection: React.FC<{
                           <BellIcon className="w-5 h-5" />
                           <span className="hidden md:inline">Nous contacter</span>
                       </button>
+                      {settings.headerInfoText && (
+                          <p 
+                            className={`mt-1.5 ${settings.headerInfoFontSize || 'text-[10px]'} ${settings.headerInfoFontWeight || 'font-normal'} ${settings.headerInfoFontStyle === 'italic' ? 'italic' : 'normal'} text-center leading-tight animate-in fade-in slide-in-from-top-1 duration-500`}
+                            style={{ 
+                                color: settings.headerInfoColor || '#6b7280',
+                                maxWidth: `${settings.headerInfoWidth || 200}px` 
+                            }}
+                          >
+                              {settings.headerInfoText}
+                          </p>
+                      )}
                   </div>
 
                   <div className="flex-1 min-w-0 text-center">
@@ -111,7 +122,7 @@ const AnimationSelection: React.FC<{
                         {settings.homepageTitle}
                       </h1>
                       <p 
-                        className={`${settings.subtitleFontSize || 'text-sm'} ${settings.subtitleFontWeight || 'font-normal'} ${settings.subtitleFontStyle || 'italic'} mt-1 hidden lg:block px-4 line-clamp-2`}
+                        className={`${settings.subtitleFontSize || 'text-sm'} ${settings.subtitleFontWeight || 'font-normal'} ${settings.subtitleFontStyle || 'not-italic'} mt-1 hidden lg:block px-4 line-clamp-2`}
                         style={subtitleStyle}
                       >
                         {settings.homepageSubtitle || `Choisissez une animation pour voir les créneaux disponibles pour l'année scolaire ${settings.activeYear}`}

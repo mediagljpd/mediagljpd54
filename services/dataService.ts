@@ -1,6 +1,6 @@
 
-import { Animation, Booking, AppSettings, ChangelogEntry } from '../types';
-import { db } from './firebase';
+import { Animation, Booking, AppSettings } from '../types';
+import { db, handleFirestoreError } from './firebase';
 import { 
   collection, 
   setDoc, 
@@ -14,8 +14,7 @@ export const dataService = {
     try {
         await setDoc(doc(db, "animations", animation.id), animation);
     } catch (e) {
-        console.error("Erreur saveAnimation:", e);
-        throw e;
+        handleFirestoreError(e, 'write', `animations/${animation.id}`);
     }
   },
 
@@ -24,8 +23,7 @@ export const dataService = {
     try {
         await deleteDoc(doc(db, "animations", id));
     } catch (e) {
-        console.error("Erreur removeAnimation:", e);
-        throw e;
+        handleFirestoreError(e, 'delete', `animations/${id}`);
     }
   },
   
@@ -34,8 +32,7 @@ export const dataService = {
     try {
         await setDoc(doc(db, "bookings", booking.id), booking);
     } catch (e) {
-        console.error("Erreur saveBooking:", e);
-        throw e;
+        handleFirestoreError(e, 'write', `bookings/${booking.id}`);
     }
   },
 
@@ -45,8 +42,7 @@ export const dataService = {
         const promises = bookings.map(b => setDoc(doc(db, "bookings", b.id), b));
         await Promise.all(promises);
     } catch (e) {
-        console.error("Erreur saveBookings (mass):", e);
-        throw e;
+        handleFirestoreError(e, 'write', 'bookings (batch)');
     }
   },
   
@@ -55,38 +51,27 @@ export const dataService = {
     try {
         await deleteDoc(doc(db, "bookings", id));
     } catch (e) {
-        console.error("Erreur removeBooking:", e);
-        throw e;
+        handleFirestoreError(e, 'delete', `bookings/${id}`);
     }
   },
 
   saveSettings: async (settings: AppSettings) => {
     if (!db) return;
     try {
+        console.log("Saving settings to Firestore...", settings);
         await setDoc(doc(db, "settings", "global"), settings);
+        console.log("Settings saved successfully.");
     } catch (e) {
-        console.error("Erreur saveSettings:", e);
-        throw e;
+        handleFirestoreError(e, 'write', 'settings/global');
     }
   },
-
-  saveChangelogEntry: async (entry: ChangelogEntry) => {
+  
+  addAdmin: async (uid: string, email: string) => {
     if (!db) return;
     try {
-        await setDoc(doc(db, "changelog", entry.id), entry);
+        await setDoc(doc(db, "admins", uid), { email, role: 'admin' });
     } catch (e) {
-        console.error("Erreur saveChangelogEntry:", e);
-        throw e;
-    }
-  },
-
-  removeChangelogEntry: async (id: string) => {
-    if (!db) return;
-    try {
-        await deleteDoc(doc(db, "changelog", id));
-    } catch (e) {
-        console.error("Erreur removeChangelogEntry:", e);
-        throw e;
+        handleFirestoreError(e, 'write', `admins/${uid}`);
     }
   }
 };

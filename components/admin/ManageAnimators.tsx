@@ -6,11 +6,14 @@ import { Animator } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { PencilIcon, CheckIcon, XIcon, TrashIcon } from '../Icons';
 
+import ConfirmationModal from '../shared/ConfirmationModal';
+
 const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
     const { animations, updateAnimationsOrder, settings, updateSettings, currentUser } = useContext(AppContext);
     const [newAnimatorName, setNewAnimatorName] = useState('');
     const [editingAnimator, setEditingAnimator] = useState<{ original: Animator; current: Animator } | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [animatorToDelete, setAnimatorToDelete] = useState<Animator | null>(null);
     
     const canManage = currentUser?.role === 'admin' || currentUser?.permissions.canManageAnimations;
     const animators = useMemo(() => settings.animators || [], [settings.animators]);
@@ -69,18 +72,27 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification })
     const handleRemoveAnimator = async (animatorToRemove: Animator) => {
         const isAnimatorUsed = animations.some(anim => anim.animator === animatorToRemove.name);
         if (isAnimatorUsed) {
-            alert(`Impossible de supprimer "${animatorToRemove.name}". Il est assigné à une ou plusieurs animations.`);
+            showNotification(`Impossible de supprimer "${animatorToRemove.name}". Il est assigné à une ou plusieurs animations.`, 'error');
             return;
         }
+        setAnimatorToDelete(animatorToRemove);
+    };
 
-        if (window.confirm(`Êtes-vous sûr de vouloir supprimer l'animateur "${animatorToRemove.name}" ?`)) {
-            const newAnimators = animators.filter(animator => animator.name !== animatorToRemove.name);
+    const confirmRemoveAnimator = async () => {
+        if (!animatorToDelete) return;
+        try {
+            const newAnimators = animators.filter(animator => animator.name !== animatorToDelete.name);
             const newAnimatorSettings = { ...(settings.animatorSettings || {})};
-            if(newAnimatorSettings[animatorToRemove.name]) {
-                delete newAnimatorSettings[animatorToRemove.name];
+            if(newAnimatorSettings[animatorToDelete.name]) {
+                delete newAnimatorSettings[animatorToDelete.name];
             }
-            updateSettings({ ...settings, animators: newAnimators, animatorSettings: newAnimatorSettings });
-            showNotification(`Animateur "${animatorToRemove.name}" supprimé.`);
+            await updateSettings({ ...settings, animators: newAnimators, animatorSettings: newAnimatorSettings });
+            showNotification(`Animateur "${animatorToDelete.name}" supprimé.`);
+        } catch (error) {
+            console.error("Delete animator error:", error);
+            showNotification(`Erreur lors de la suppression de l'animateur.`, 'error');
+        } finally {
+            setAnimatorToDelete(null);
         }
     };
 
@@ -235,6 +247,16 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification })
                     </li>
                 )) : <p className="text-gray-500 italic text-center py-4">Aucun animateur ajouté.</p>}
             </ul>
+
+            <ConfirmationModal 
+                isOpen={!!animatorToDelete}
+                title="Supprimer l'animateur"
+                message={`Êtes-vous sûr de vouloir supprimer l'animateur "${animatorToDelete?.name}" ? Cette action supprimera également ses réglages d'indisponibilité.`}
+                confirmLabel="Supprimer"
+                isDanger={true}
+                onConfirm={confirmRemoveAnimator}
+                onCancel={() => setAnimatorToDelete(null)}
+            />
         </div>
     );
 };

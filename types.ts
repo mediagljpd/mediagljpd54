@@ -90,7 +90,6 @@ export enum UserRole {
 
 export interface UserPermissions {
   canModifySettings: boolean;
-  canAddChangelog: boolean;
   canManageVacations: boolean;
   canManageAnimations: boolean;
 }
@@ -98,11 +97,12 @@ export interface UserPermissions {
 export interface AdminUser {
   id: string;
   username: string;
-  password: string;
+  password?: string;
   role: UserRole;
   animatorName?: string; // Linked animator for 'user' role
   permissions: UserPermissions;
   passwordLastChanged?: string; // ISO date
+  mustChangePassword?: boolean;
 }
 
 export interface AppSettings {
@@ -160,14 +160,13 @@ export interface AppSettings {
   infoPages?: CustomLegalPage[];
   adminPasswordLastChanged?: string; // ISO date
   passwordExpiryDays?: number; // 0 for disabled
-}
-
-export interface ChangelogEntry {
-  id: string;
-  date: string; // YYYY-MM-DD
-  version: string;
-  title: string;
-  description: string;
+  lastExportDate?: string; // ISO date
+  headerInfoText?: string;
+  headerInfoFontSize?: string;
+  headerInfoFontWeight?: string;
+  headerInfoFontStyle?: string;
+  headerInfoColor?: string;
+  headerInfoWidth?: number;
 }
 
 export enum View {

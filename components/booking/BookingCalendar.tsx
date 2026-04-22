@@ -8,10 +8,26 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
     const { bookings, settings, animations } = useContext(AppContext);
     
     const animatorSettings = useMemo<AnimatorSettings>(() => {
-        if (!animation.animator) {
+        const animName = animation.animator?.trim();
+        if (!animName) {
             return { unavailableDates: [], inactiveSlots: [] };
         }
-        return settings.animatorSettings?.[animation.animator] || { unavailableDates: [], inactiveSlots: [] };
+        
+        // Exact match
+        if (settings.animatorSettings?.[animName]) {
+            return settings.animatorSettings[animName];
+        }
+        
+        // Case-insensitive/trimmed fallback
+        const matchingKey = Object.keys(settings.animatorSettings || {}).find(
+            key => key.trim().toLowerCase() === animName.toLowerCase()
+        );
+        
+        if (matchingKey && settings.animatorSettings?.[matchingKey]) {
+            return settings.animatorSettings[matchingKey];
+        }
+
+        return { unavailableDates: [], inactiveSlots: [] };
     }, [animation.animator, settings.animatorSettings]);
 
     const [startYear, endYear] = useMemo(() => {
@@ -88,18 +104,19 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
         const dateString = toYYYYMMDD(date);
         const dayBookings = bookingsByDate[dateString] || [];
         
-        if (animatorSettings.inactiveSlots.includes(time)) return false;
-        if (dayBookings.some(b => b.time === time)) return false;
+        if ((animatorSettings.inactiveSlots || []).some(s => Number(s) === Number(time))) return false;
+        if (dayBookings.some(b => Number(b.time) === Number(time))) return false;
 
-        const isAfternoonSlot = time === 14 || time === 15;
-        if (isAfternoonSlot && dayBookings.some(b => b.time === 14 || b.time === 15)) {
+        const timeVal = Number(time);
+        const isAfternoonSlot = timeVal === 14 || timeVal === 15;
+        if (isAfternoonSlot && dayBookings.some(b => Number(b.time) === 14 || Number(b.time) === 15)) {
             return false;
         }
 
-        const currentAnimator = animation.animator;
-        if (currentAnimator && currentAnimator.trim() !== '') {
+        const currentAnimator = animation.animator?.trim().toLowerCase();
+        if (currentAnimator && currentAnimator !== '') {
             const animatorHasBookingOnDate = dayBookings.some(booking => {
-                const bookingAnimator = animationAnimatorMap[booking.animationId];
+                const bookingAnimator = animationAnimatorMap[booking.animationId]?.trim().toLowerCase();
                 return bookingAnimator === currentAnimator;
             });
             if (animatorHasBookingOnDate) return false;

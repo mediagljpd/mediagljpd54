@@ -4,7 +4,9 @@ import { AppContext } from '../../AppContext';
 import { AppSettings } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { storageService } from '../../services/storageService';
-import { PaintBrushIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, JournalIcon, SortAscIcon, SortDescIcon } from '../Icons';
+import { backupService } from '../../services/backupService';
+import ConfirmationModal from '../shared/ConfirmationModal';
+import { PaintBrushIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon } from '../Icons';
 import * as XLSX from 'xlsx';
 import { validatePassword } from '../../utils/validators';
 import PasswordPolicy from './PasswordPolicy';
@@ -15,18 +17,18 @@ import 'react-quill-new/dist/quill.snow.css';
 import ManageUsers from './ManageUsers';
 import ManageStats from './ManageStats';
 
-type SettingsTab = 'design' | 'rules' | 'data' | 'stats' | 'users' | 'footer' | 'security' | 'pages';
+type SettingsTab = 'design' | 'rules' | 'data' | 'stats' | 'users' | 'footer' | 'security' | 'pages' | 'maintenance';
 
 const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
     const { settings, updateSettings } = useContext(AppContext);
 
     const [formState, setFormState] = useState<AppSettings>(settings);
     const [activeTab, setActiveTab] = useState<SettingsTab>('design');
+    const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+    const [pendingRestoreFile, setPendingRestoreFile] = useState<File | null>(null);
     
     // States for password and identity change workflow
     const [isChangingPassword, setIsChangingPassword] = useState(false);
-    const [isSecurityUnlocked, setIsSecurityUnlocked] = useState(false);
-    const [oldPassword, setOldPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [securityError, setSecurityError] = useState<string | null>(null);
@@ -374,68 +376,16 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         reader.readAsArrayBuffer(file);
     };
 
-    const handleUnlockSecurity = () => {
-        if (!oldPassword) {
-            setSecurityError("Veuillez saisir votre mot de passe actuel.");
-            return;
-        }
-        if (oldPassword === settings.adminPassword) {
-            setIsSecurityUnlocked(true);
-            setSecurityError(null);
-            showNotification("Accès déverrouillé. Vous pouvez maintenant modifier vos identifiants.");
-        } else {
-            setSecurityError("Mot de passe incorrect.");
-        }
-    };
-
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault();
         setSecurityError(null);
 
-        const identityChanged = 
-            formState.adminUsername !== settings.adminUsername || 
-            formState.adminEmail !== settings.adminEmail;
-
-        // Si modification d'identifiants ou de mot de passe, vérification du mot de passe actuel
-        if (identityChanged || isChangingPassword) {
-            if (!oldPassword) {
-                setSecurityError("Le mot de passe actuel est requis pour modifier vos identifiants ou votre mot de passe.");
-                setActiveTab('security');
-                return;
-            }
-            if (oldPassword !== settings.adminPassword) {
-                setSecurityError("Le mot de passe actuel est incorrect.");
-                setActiveTab('security');
-                return;
-            }
-
-            if (isChangingPassword) {
-                const complexityError = validatePassword(newPassword);
-                if (complexityError) {
-                    setSecurityError(complexityError);
-                    setActiveTab('security');
-                    return;
-                }
-                if (newPassword !== confirmPassword) {
-                    setSecurityError("Les nouveaux mots de passe ne correspondent pas.");
-                    setActiveTab('security');
-                    return;
-                }
-            }
-        }
-
         const finalSettings = { ...formState };
-        if (isChangingPassword) {
-            finalSettings.adminPassword = newPassword;
-            finalSettings.adminPasswordLastChanged = new Date().toISOString();
-        }
 
         updateSettings(finalSettings);
         
         // Reset security fields
         setIsChangingPassword(false);
-        setIsSecurityUnlocked(false);
-        setOldPassword('');
         setNewPassword('');
         setConfirmPassword('');
         setSecurityError(null);
@@ -537,19 +487,20 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
             <div className="flex flex-col lg:flex-row gap-8 items-start">
                 
                 {/* Sidebar Navigation */}
-                <aside className="w-full lg:w-64 flex-shrink-0 bg-white p-3 rounded-2xl shadow-sm border border-gray-100 sticky top-4">
+                <aside className="w-full lg:w-64 flex-shrink-0 bg-white p-3 rounded-2xl shadow-sm border border-gray-100 lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto custom-scrollbar">
                     <div className="hidden lg:block px-4 py-3 mb-2 border-b border-gray-50">
                         <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest">Configuration</h2>
                     </div>
                     <nav className="flex flex-row lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0">
                         <NavButton id="design" label="Apparence" icon={<PaintBrushIcon className="w-5 h-5" />} />
+                        <NavButton id="pages" label="Pages d'info" icon={<ViewGridIcon className="w-5 h-5" />} />
+                        <NavButton id="footer" label="Pied de page" icon={<PencilIcon className="w-5 h-5" />} />
                         <NavButton id="rules" label="Calendrier" icon={<CalendarDaysIcon className="w-5 h-5" />} />
                         <NavButton id="data" label="Données" icon={<DatabaseIcon className="w-5 h-5" />} />
                         <NavButton id="stats" label="Statistiques" icon={<ListIcon className="w-5 h-5" />} />
-                        <NavButton id="pages" label="Pages d'info" icon={<JournalIcon className="w-5 h-5" />} />
-                        <NavButton id="users" label="Utilisateurs" icon={<UserGroupIcon className="w-5 h-5" />} />
-                        <NavButton id="footer" label="Pied de page" icon={<PencilIcon className="w-5 h-5" />} />
                         <NavButton id="security" label="Sécurité" icon={<CogIcon className="w-5 h-5" />} />
+                        <NavButton id="users" label="Utilisateurs" icon={<UserGroupIcon className="w-5 h-5" />} />
+                        <NavButton id="maintenance" label="Maintenance" icon={<ShieldCheckIcon className="w-5 h-5" />} />
                     </nav>
                 </aside>
 
@@ -569,6 +520,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     {activeTab === 'users' && "Gestion des Utilisateurs"}
                                     {activeTab === 'footer' && "Pied de page"}
                                     {activeTab === 'security' && "Sécurité"}
+                                    {activeTab === 'maintenance' && "Maintenance"}
                                 </h3>
                                 <p className="text-sm text-gray-500 mt-1">
                                     {activeTab === 'design' && "Personnalisez les textes, les couleurs et le style de votre accueil"}
@@ -579,6 +531,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     {activeTab === 'users' && "Gérez les comptes d'accès à l'administration et leurs permissions"}
                                     {activeTab === 'footer' && "Gérez les liens du pied de page, les mentions légales et les infos de l'établissement"}
                                     {activeTab === 'security' && "Gérez vos identifiants de connexion et l'e-mail de secours"}
+                                    {activeTab === 'maintenance' && "Gérez la sauvegarde et la restauration de vos données"}
                                 </p>
                             </div>
 
@@ -682,6 +635,51 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                     <div>
                                                         <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">E-mail de contact</label>
                                                         <input type="email" name="contactEmail" value={formState.contactEmail || ''} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" placeholder="ex: contact@grandlongwy.fr"/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Texte informatif sous le bouton Contact</label>
+                                                        <input type="text" name="headerInfoText" value={formState.headerInfoText || ''} onChange={handleChange} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" placeholder="Petit texte d'aide ou d'information..."/>
+                                                    </div>
+                                                    <div className="space-y-4 pt-2 border-t border-gray-100">
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Formatage du texte informatif</label>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div>
+                                                                <label className="block text-[8px] font-bold text-gray-400 uppercase mb-1">Taille</label>
+                                                                <select name="headerInfoFontSize" value={formState.headerInfoFontSize} onChange={handleChange} className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white">
+                                                                    {fontSizes.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                                                                </select>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[8px] font-bold text-gray-400 uppercase mb-1">Couleur</label>
+                                                                <div className="flex gap-2">
+                                                                    <input type="color" name="headerInfoColor" value={formState.headerInfoColor} onChange={handleChange} className="h-7 w-10 border border-gray-200 rounded cursor-pointer bg-white p-0.5"/>
+                                                                    <input type="text" name="headerInfoColor" value={formState.headerInfoColor} onChange={handleChange} className="flex-grow px-2 py-1 border border-gray-200 rounded text-[9px] font-mono bg-white uppercase"/>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[8px] font-bold text-gray-400 uppercase mb-1">Largeur de la zone (px)</label>
+                                                            <div className="flex items-center gap-3">
+                                                                <input 
+                                                                    type="range" 
+                                                                    min="50" max="500" step="10"
+                                                                    value={formState.headerInfoWidth || 200}
+                                                                    onChange={(e) => setFormState({...formState, headerInfoWidth: parseInt(e.target.value)})}
+                                                                    className="flex-grow h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                                />
+                                                                <span className="text-[10px] font-bold text-gray-600 min-w-[40px]">{formState.headerInfoWidth || 200}px</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-6">
+                                                            <label className="flex items-center gap-2 cursor-pointer group">
+                                                                <input type="checkbox" checked={formState.headerInfoFontWeight === 'font-bold'} onChange={(e) => setFormState({...formState, headerInfoFontWeight: e.target.checked ? 'font-bold' : 'font-normal'})} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"/>
+                                                                <span className="text-xs font-bold text-gray-700 group-hover:text-blue-600">Gras</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-2 cursor-pointer group">
+                                                                <input type="checkbox" checked={formState.headerInfoFontStyle === 'italic'} onChange={(e) => setFormState({...formState, headerInfoFontStyle: e.target.checked ? 'italic' : 'normal'})} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"/>
+                                                                <span className="text-xs italic text-gray-700 group-hover:text-blue-600">Italique</span>
+                                                            </label>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1323,7 +1321,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                             <div className="lg:col-span-1 space-y-3">
                                                 {(formState.infoPages || []).length === 0 ? (
                                                     <div className="p-8 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                                                        <JournalIcon className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                                                        <ViewGridIcon className="w-10 h-10 text-gray-200 mx-auto mb-2" />
                                                         <p className="text-xs text-gray-400 italic">Aucune page créée</p>
                                                     </div>
                                                 ) : (
@@ -1438,167 +1436,138 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
 
                                 {activeTab === 'security' && (
                                     <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <div className="max-w-md space-y-6">
-                                            {/* Section Identifiants & Récupération */}
-                                            <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 space-y-4">
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <h4 className="text-sm font-black text-gray-400 uppercase tracking-widest">Identifiants & Récupération</h4>
-                                                    {isSecurityUnlocked ? (
-                                                        <span className="flex items-center gap-1 text-[10px] font-bold text-green-600 uppercase">
-                                                            <CheckIcon className="w-3 h-3" /> Déverrouillé
+                                        <div className="max-w-2xl space-y-6">
+                                            <div className="p-6 bg-blue-50 rounded-2xl border border-blue-100 flex items-start gap-4">
+                                                <div className="bg-white p-3 rounded-xl shadow-sm">
+                                                    <ShieldCheckIcon className="w-8 h-8 text-blue-600" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-lg font-black text-blue-900 uppercase tracking-tight">Sécurité Google OAuth</h4>
+                                                    <p className="text-sm text-blue-700 mt-2">
+                                                        L'administration est désormais sécurisée par <strong>Google Authentication</strong>. 
+                                                        Les anciens mots de passe ont été supprimés pour garantir une sécurité maximale.
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div className="p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                                                    <h5 className="font-bold text-gray-800 flex items-center gap-2">
+                                                        <UserGroupIcon className="w-4 h-4 text-indigo-500" />
+                                                        Gestion des accès
+                                                    </h5>
+                                                    <p className="text-xs text-gray-500 leading-relaxed">
+                                                        Pour autoriser un nouvel administrateur, vous devez ajouter son <strong>E-mail Google</strong> et son <strong>UID unique</strong> dans l'onglet "Utilisateurs".
+                                                    </p>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setActiveTab('users')}
+                                                        className="text-xs font-bold text-indigo-600 hover:underline"
+                                                    >
+                                                        Aller à la gestion des utilisateurs →
+                                                    </button>
+                                                </div>
+
+                                                <div className="p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                                                    <h5 className="font-bold text-gray-800 flex items-center gap-2">
+                                                        <CogIcon className="w-4 h-4 text-indigo-500" />
+                                                        Plus de mots de passe
+                                                    </h5>
+                                                    <p className="text-xs text-gray-500 leading-relaxed">
+                                                        Il n'est plus nécessaire de changer de mot de passe régulièrement. Google gère la sécurité de votre compte et la double authentification si activée.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'maintenance' && (
+                                    <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            
+                                            {/* Export Panel */}
+                                            <div className="p-8 bg-blue-50/50 rounded-3xl border border-blue-100 flex flex-col items-center text-center">
+                                                <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
+                                                    <DownloadIcon className="w-10 h-10 text-blue-500" />
+                                                </div>
+                                                <h4 className="text-lg font-black text-blue-900 uppercase tracking-tight">Sauvegarde Complète</h4>
+                                                <p className="text-sm text-blue-700 mt-2 mb-2 opacity-80">
+                                                    Téléchargez l'intégralité de vos réservations, paramètres et animateurs dans un seul fichier JSON.
+                                                </p>
+                                                <div className="mb-6">
+                                                    {settings.lastExportDate ? (
+                                                        <span className="text-[11px] font-bold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">
+                                                            Dernier export : {new Date(settings.lastExportDate).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                                         </span>
                                                     ) : (
-                                                        <span className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-                                                            </svg>
-                                                            Verrouillé
+                                                        <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full uppercase">
+                                                            Aucun export enregistré
                                                         </span>
                                                     )}
                                                 </div>
-                                                
-                                                <div>
-                                                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Identifiant Admin</label>
-                                                    <div className={`flex items-center gap-3 p-1 rounded-xl border shadow-sm transition-all ${isSecurityUnlocked ? 'bg-white border-gray-200 focus-within:ring-2 focus-within:ring-blue-500' : 'bg-gray-100 border-gray-200 cursor-not-allowed'}`}>
-                                                        <div className="bg-gray-100 p-2 rounded-lg text-gray-500">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-                                                            </svg>
-                                                        </div>
-                                                        <input 
-                                                            type="text" 
-                                                            name="adminUsername" 
-                                                            value={formState.adminUsername || ''} 
-                                                            onChange={handleChange} 
-                                                            disabled={!isSecurityUnlocked}
-                                                            className={`flex-grow px-2 py-2 text-lg font-bold outline-none bg-transparent ${isSecurityUnlocked ? 'text-gray-800' : 'text-gray-400 cursor-not-allowed'}`} 
-                                                            placeholder="Identifiant"
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">E-mail de secours (Récupération)</label>
-                                                    <div className={`flex items-center gap-3 p-1 rounded-xl border shadow-sm transition-all ${isSecurityUnlocked ? 'bg-white border-gray-200 focus-within:ring-2 focus-within:ring-blue-500' : 'bg-gray-100 border-gray-200 cursor-not-allowed'}`}>
-                                                        <div className="bg-gray-100 p-2 rounded-lg text-gray-500">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-                                                            </svg>
-                                                        </div>
-                                                        <input 
-                                                            type="email" 
-                                                            name="adminEmail" 
-                                                            value={formState.adminEmail || ''} 
-                                                            onChange={handleChange} 
-                                                            disabled={!isSecurityUnlocked}
-                                                            className={`flex-grow px-2 py-2 text-sm font-bold outline-none bg-transparent ${isSecurityUnlocked ? 'text-gray-800' : 'text-gray-400 cursor-not-allowed'}`} 
-                                                            placeholder="admin@exemple.fr"
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div className="pt-2">
-                                                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Périodicité de changement de mot de passe</label>
-                                                    <select 
-                                                        name="passwordExpiryDays" 
-                                                        value={formState.passwordExpiryDays || 0} 
-                                                        onChange={handleChange}
-                                                        className="w-full p-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                                                    >
-                                                        <option value={0}>Désactivé</option>
-                                                        <option value={30}>Tous les 30 jours</option>
-                                                        <option value={60}>Tous les 60 jours</option>
-                                                        <option value={90}>Tous les 90 jours (Recommandé)</option>
-                                                        <option value={180}>Tous les 180 jours</option>
-                                                    </select>
-                                                    <p className="text-[10px] text-gray-400 mt-1 italic">Force les administrateurs et utilisateurs à changer leur mot de passe régulièrement.</p>
-                                                </div>
+                                                <button 
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        try {
+                                                            showNotification("Préparation de la sauvegarde...", "success");
+                                                            const backup = await backupService.exportData();
+                                                            if (backup) {
+                                                                const now = new Date().toISOString();
+                                                                backupService.downloadBackup(backup);
+                                                                await updateSettings({ ...settings, lastExportDate: now });
+                                                                setFormState(prev => ({ ...prev, lastExportDate: now }));
+                                                                showNotification("Sauvegarde téléchargée !");
+                                                            }
+                                                        } catch (e) {
+                                                            showNotification("Erreur lors de l'export.", "error");
+                                                        }
+                                                    }}
+                                                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all flex items-center justify-center gap-3"
+                                                >
+                                                    Exporter les données
+                                                </button>
                                             </div>
 
-                                            {/* Section Mot de passe */}
-                                            <div className="pt-4">
-                                                {isChangingPassword ? (
-                                                    <div className="space-y-5 p-6 bg-indigo-50/50 rounded-2xl border border-indigo-100 animate-in zoom-in-95 duration-200 shadow-inner">
-                                                        <div className="flex justify-between items-center mb-2">
-                                                            <h4 className="font-black text-indigo-900 text-xs uppercase tracking-widest">Nouveau mot de passe</h4>
-                                                            <button type="button" onClick={() => {setIsChangingPassword(false); setSecurityError(null); setNewPassword(''); setConfirmPassword('');}} className="text-[10px] font-bold text-indigo-600 hover:underline uppercase">Annuler le changement</button>
-                                                        </div>
-                                                        
-                                                        <div className="space-y-4">
-                                                            <div className="grid grid-cols-2 gap-3">
-                                                                <input 
-                                                                    type="password" 
-                                                                    value={newPassword}
-                                                                    onChange={(e) => setNewPassword(e.target.value)}
-                                                                    className="w-full px-4 py-2.5 border border-indigo-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                                                                    placeholder="Nouveau"
-                                                                />
-                                                                <input 
-                                                                    type="password" 
-                                                                    value={confirmPassword}
-                                                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                                                    className="w-full px-4 py-2.5 border border-indigo-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                                                                    placeholder="Confirmer"
-                                                                />
-                                                            </div>
-                                                            <PasswordPolicy password={newPassword} />
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex flex-col items-start gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100">
-                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sécurité</label>
-                                                        <div className="flex items-center gap-4 w-full">
-                                                            <div className="flex-grow flex items-center gap-2 px-4 py-2 border rounded-xl bg-gray-100 text-gray-400">
-                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-                                                                </svg>
-                                                                <span className="font-mono text-sm tracking-widest">••••••••</span>
-                                                            </div>
-                                                            <button 
-                                                                type="button" 
-                                                                onClick={() => setIsChangingPassword(true)}
-                                                                className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
-                                                            >
-                                                                Changer le MDP
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Champ de confirmation (visible pour déverrouiller ou confirmer changement) */}
-                                            <div className={`p-6 rounded-2xl border space-y-3 transition-all ${isSecurityUnlocked ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
-                                                <h4 className={`text-xs font-black uppercase tracking-widest ${isSecurityUnlocked ? 'text-green-900' : 'text-red-900'}`}>
-                                                    {isSecurityUnlocked ? 'Vérification réussie' : 'Confirmation requise'}
-                                                </h4>
-                                                <p className={`text-[11px] leading-tight ${isSecurityUnlocked ? 'text-green-700' : 'text-red-700'}`}>
-                                                    {isSecurityUnlocked 
-                                                        ? 'Votre mot de passe a été vérifié. Vous pouvez maintenant modifier vos identifiants.' 
-                                                        : 'Saisissez votre mot de passe actuel pour déverrouiller la modification des identifiants.'}
+                                            {/* Import Panel */}
+                                            <div className="p-8 bg-red-50/50 rounded-3xl border border-red-100 flex flex-col items-center text-center">
+                                                <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
+                                                    <PlusCircleIcon className="w-10 h-10 text-red-500" />
+                                                </div>
+                                                <h4 className="text-lg font-black text-red-900 uppercase tracking-tight">Restauration</h4>
+                                                <p className="text-sm text-red-700 mt-2 mb-6 opacity-80 font-medium">
+                                                    <span className="text-red-600 font-bold underline">Attention :</span> La restauration écrasera vos paramètres et ajoutera les données manquantes.
                                                 </p>
-                                                <div className="flex gap-2">
-                                                    <input 
-                                                        type="password" 
-                                                        value={oldPassword}
-                                                        onChange={(e) => setOldPassword(e.target.value)}
-                                                        className={`flex-grow px-4 py-2.5 border rounded-xl outline-none focus:ring-2 shadow-sm transition-all ${isSecurityUnlocked ? 'border-green-200 bg-white focus:ring-green-500' : 'border-red-200 bg-white focus:ring-red-500'}`}
-                                                        placeholder="Mot de passe actuel"
-                                                    />
-                                                    {!isSecurityUnlocked && (
-                                                        <button 
-                                                            type="button" 
-                                                            onClick={handleUnlockSecurity}
-                                                            className="px-4 py-2.5 bg-red-600 text-white text-xs font-black uppercase rounded-xl hover:bg-red-700 transition-all shadow-md shadow-red-100"
-                                                        >
-                                                            Vérifier
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                {securityError && (
-                                                    <p className="text-[11px] text-red-600 font-bold bg-white p-2.5 rounded-lg border border-red-100 shadow-sm animate-in fade-in zoom-in-95">
-                                                        ⚠️ {securityError}
-                                                    </p>
-                                                )}
+                                                
+                                                <label className="w-full cursor-pointer">
+                                                    <div className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 shadow-xl shadow-red-100 transition-all flex items-center justify-center gap-3">
+                                                        Restaurer (Importer JSON)
+                                                        <input 
+                                                            type="file" 
+                                                            accept=".json" 
+                                                            className="hidden" 
+                                                            onChange={(e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (!file) return;
+                                                                setPendingRestoreFile(file);
+                                                                setShowRestoreConfirm(true);
+                                                                e.target.value = ''; // Reset for next selection
+                                                            }} 
+                                                        />
+                                                    </div>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-6 bg-yellow-50 rounded-2xl border border-yellow-100 flex gap-4 items-start shadow-inner">
+                                            <div className="bg-white p-2 rounded-lg shadow-sm">
+                                               <CogIcon className="w-6 h-6 text-yellow-600" />
+                                            </div>
+                                            <div>
+                                                <h5 className="font-black text-yellow-900 text-sm uppercase">Conseils de Maintenance</h5>
+                                                <p className="text-xs text-yellow-800 mt-1 leading-relaxed opacity-80">
+                                                    Il est fortement recommandé d'effectuer une sauvegarde avant chaque changement d'année scolaire ou avant de modifier des paramètres critiques. Conservez vos fichiers JSON dans un endroit sûr et organisé par date.
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
@@ -1613,7 +1582,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                 <div className="flex gap-3">
                                     <button 
                                         type="button" 
-                                        onClick={() => {setFormState(settings); setIsChangingPassword(false); setIsSecurityUnlocked(false); setSecurityError(null); setOldPassword(''); setNewPassword(''); setConfirmPassword('');}} 
+                                        onClick={() => {setFormState(settings); setIsChangingPassword(false); setSecurityError(null); setNewPassword(''); setConfirmPassword('');}} 
                                         className="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
                                     >
                                         Réinitialiser
@@ -1630,6 +1599,45 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                     </form>
                 </div>
             </div>
+            
+            <ConfirmationModal 
+                isOpen={showRestoreConfirm}
+                title="Confirmer la restauration"
+                message="CRITIQUE : Vous allez restaurer des données. Cela écrasera vos paramètres actuels et fusionnera les données. Cette action est irréversible. Voulez-vous continuer ?"
+                confirmLabel="Restaurer maintenant"
+                isDanger={true}
+                onConfirm={async () => {
+                    if (!pendingRestoreFile) return;
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        try {
+                            const backupStr = event.target?.result as string;
+                            const backup = JSON.parse(backupStr);
+                            
+                            if (!backup.data || !backup.version) {
+                                throw new Error("Format de sauvegarde invalide.");
+                            }
+                            
+                            showNotification("Restauration en cours...", "success");
+                            await backupService.restoreData(backup, (msg) => {
+                                console.log(msg);
+                            });
+                            showNotification("Restauration terminée ! Rechargez la page.");
+                            setTimeout(() => window.location.reload(), 2000);
+                        } catch (err) {
+                            showNotification("Erreur lors de l'import : " + (err instanceof Error ? err.message : "Inconnu"), "error");
+                        } finally {
+                            setPendingRestoreFile(null);
+                            setShowRestoreConfirm(false);
+                        }
+                    };
+                    reader.readAsText(pendingRestoreFile);
+                }}
+                onCancel={() => {
+                    setShowRestoreConfirm(false);
+                    setPendingRestoreFile(null);
+                }}
+            />
         </div>
     );
 };

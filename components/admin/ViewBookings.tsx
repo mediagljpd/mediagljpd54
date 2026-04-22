@@ -11,6 +11,7 @@ import BookingEditForm from './BookingEditForm';
 import BookingsCalendar from './BookingsCalendar';
 import RandomBookingGenerator from './RandomBookingGenerator';
 import BusSheetGeneratorModal from './BusSheetGeneratorModal';
+import ConfirmationModal from '../shared/ConfirmationModal';
 
 const SCHOOL_YEAR_MONTHS = [
     { label: 'OCT', value: 9 },
@@ -31,7 +32,7 @@ const BUS_STATUS_OPTIONS = [
 ];
 
 const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
-    const { bookings, animations, removeBooking, updateBookings, settings, saveBooking } = useContext(AppContext);
+    const { bookings, animations, removeBooking, updateBookings, settings, saveBooking, currentUser } = useContext(AppContext);
     
     type AugmentedBooking = Booking & { animator?: string };
     type SortableKey = 'date' | 'teacherName';
@@ -45,20 +46,51 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const [searchTerm, setSearchTerm] = useState('');
     const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
     const [isBusSheetModalOpen, setIsBusSheetModalOpen] = useState(false);
-    const [viewingBooking, setViewingBooking] = useState<Booking | null>(null);
+    const [viewingBookingId, setViewingBookingId] = useState<string | null>(null);
+    const viewingBooking = useMemo(() => bookings.find(b => b.id === viewingBookingId) || null, [bookings, viewingBookingId]);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
     // Filtres
     const animators = useMemo(() => settings.animators || [], [settings.animators]);
     const [selectedAnimators, setSelectedAnimators] = useState<Set<string>>(new Set());
-    const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set(SCHOOL_YEAR_MONTHS.map(m => m.value)));
+    const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set());
     const [selectedBusStatuses, setSelectedBusStatuses] = useState<Set<string>>(new Set(['pending', 'validated', 'none']));
+    const filterInitialized = useRef(false);
 
-    // Initialisation des animateurs (tout cocher par défaut)
+    // Initialisation intelligente des filtres
     useEffect(() => {
-        if (animators.length > 0 && selectedAnimators.size === 0) {
-            setSelectedAnimators(new Set(animators.map(a => a.name)));
+        if (filterInitialized.current || animators.length === 0) return;
+
+        const isLimitedUser = !!(currentUser && currentUser.animatorName);
+        
+        let initialAnims: string[] = [];
+        let initialMonths: number[] = [];
+
+        if (isLimitedUser && currentUser?.animatorName) {
+            // Mode restreint : Uniquement l'animateur lié
+            initialAnims = [currentUser.animatorName];
+            
+            // Uniquement les mois en cours et à venir du cycle scolaire
+            const now = new Date();
+            const curMonth = now.getMonth();
+            const monthIdx = SCHOOL_YEAR_MONTHS.findIndex(m => m.value === curMonth);
+            
+            if (monthIdx !== -1) {
+                initialMonths = SCHOOL_YEAR_MONTHS.slice(monthIdx).map(m => m.value);
+            } else {
+                initialMonths = SCHOOL_YEAR_MONTHS.map(m => m.value);
+            }
+        } else {
+            // Mode admin complet : Tout cocher par défaut
+            initialAnims = animators.map(a => a.name);
+            initialMonths = SCHOOL_YEAR_MONTHS.map(m => m.value);
         }
-    }, [animators]);
+
+        setSelectedAnimators(new Set(initialAnims));
+        setSelectedMonths(new Set(initialMonths));
+        filterInitialized.current = true;
+    }, [animators, currentUser]);
 
     const animatorMapForFiltering = useMemo(() => {
         const map = new Map<string, string>();
@@ -148,11 +180,31 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     };
 
     const handleDeleteSelected = () => {
-        if (window.confirm(`Êtes-vous sûr de vouloir supprimer les ${selectedBookingIds.size} réservations sélectionnées ?`)) {
-            const idsToDelete = Array.from(selectedBookingIds);
-            idsToDelete.forEach(id => removeBooking(id));
+        setShowBulkDeleteConfirm(true);
+    };
+
+    const confirmBulkDelete = async () => {
+        const idsToDelete = Array.from(selectedBookingIds);
+        try {
+            await Promise.all(idsToDelete.map(id => removeBooking(id)));
             showNotification(`${selectedBookingIds.size} réservation(s) supprimée(s).`);
             setSelectedBookingIds(new Set());
+        } catch (error) {
+            showNotification("Erreur lors de la suppression groupée.", "error");
+        } finally {
+            setShowBulkDeleteConfirm(false);
+        }
+    };
+
+    const confirmSingleDelete = async () => {
+        if (!deleteId) return;
+        try {
+            await removeBooking(deleteId);
+            showNotification('Réservation supprimée.');
+        } catch (error) {
+            showNotification('Erreur lors de la suppression.', 'error');
+        } finally {
+            setDeleteId(null);
         }
     };
 
@@ -172,6 +224,11 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
     const handleSaveBusManagement = (e: React.FormEvent) => {
         e.preventDefault();
+        if (currentUser?.role !== 'admin') {
+            showNotification("Vous n'avez pas les droits pour modifier le transport.", "error");
+            setBusManagementBooking(null);
+            return;
+        }
         if (busManagementBooking) {
             saveBooking(busManagementBooking);
             setBusManagementBooking(null);
@@ -256,9 +313,11 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                             <CalendarDaysIcon className="w-4 h-4 mr-2" /> Calendrier
                         </button>
                     </div>
-                    <button onClick={() => setIsGeneratorOpen(true)} className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition-colors">
-                        <SparklesIcon className="w-5 h-5" /> <span className="hidden sm:inline">Générer</span>
-                    </button>
+                    {currentUser?.role === 'admin' && (
+                        <button onClick={() => setIsGeneratorOpen(true)} className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition-colors">
+                            <SparklesIcon className="w-5 h-5" /> <span className="hidden sm:inline">Générer</span>
+                        </button>
+                    )}
                     <button onClick={() => setIsBusSheetModalOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
                         <PdfIcon className="w-5 h-5" /> <span className="hidden sm:inline">Fiches bus</span>
                     </button>
@@ -321,7 +380,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-100">
                                     {sortedBookings.map(b => (
-                                        <tr key={b.id} className={`group hover:bg-gray-50/50 transition-colors cursor-pointer ${selectedBookingIds.has(b.id) ? 'bg-blue-50/50' : ''}`} onClick={() => setViewingBooking(b)}>
+                                        <tr key={b.id} className={`group hover:bg-gray-50/50 transition-colors cursor-pointer ${selectedBookingIds.has(b.id) ? 'bg-blue-50/50' : ''}`} onClick={() => setViewingBookingId(b.id)}>
                                             <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
                                                 <input type="checkbox" checked={selectedBookingIds.has(b.id)} onChange={() => handleSelectOneTable(b.id)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                             </td>
@@ -355,7 +414,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                             <td className="px-6 py-4 align-top text-right">
                                                 <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                                                     <button onClick={() => setEditingBooking(b)} className="p-2 text-gray-400 hover:text-indigo-600 bg-white hover:bg-indigo-50 rounded-lg border border-gray-100 transition-all shadow-sm"><CogIcon className="w-4 h-4" /></button>
-                                                    <button onClick={() => { if(window.confirm("Supprimer ?")) removeBooking(b.id); }} className="p-2 text-gray-400 hover:text-red-600 bg-white hover:bg-red-50 rounded-lg border border-gray-100 transition-all shadow-sm"><TrashIcon className="w-4 h-4" /></button>
+                                                    <button onClick={() => setDeleteId(b.id)} className="p-2 text-gray-400 hover:text-red-600 bg-white hover:bg-red-50 rounded-lg border border-gray-100 transition-all shadow-sm"><TrashIcon className="w-4 h-4" /></button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -365,20 +424,20 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                         </div>
                     </>
                 ) : (
-                    <BookingsCalendar bookings={filteredBookings} animations={animations} onEdit={setViewingBooking} />
+                    <BookingsCalendar bookings={filteredBookings} animations={animations} onEdit={(b) => setViewingBookingId(b.id)} />
                 )}
             </div>
             
             {/* Détails de la réservation */}
             {viewingBooking && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setViewingBooking(null)}>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setViewingBookingId(null)}>
                     <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-between items-start mb-6">
                             <div>
                                 <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">{viewingBooking.animationTitle}</h2>
                                 <p className="text-blue-600 font-bold">{new Date(viewingBooking.date.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} à {viewingBooking.time}h</p>
                             </div>
-                            <button onClick={() => setViewingBooking(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                            <button type="button" onClick={() => setViewingBookingId(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                                 <XIcon className="w-6 h-6 text-gray-400" />
                             </button>
                         </div>
@@ -398,7 +457,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                         </div>
                                         <div>
                                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Téléphone</p>
-                                            <p className="font-bold text-gray-800">{viewingBooking.phoneNumber}</p>
+                                            <p className="font-bold text-gray-800">{formatPhoneNumber(viewingBooking.phoneNumber)}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -469,10 +528,10 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                         </div>
 
                         <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end gap-3">
-                            <button onClick={() => { setViewingBooking(null); setEditingBooking(viewingBooking); }} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-indigo-700 transition-all">
+                            <button type="button" onClick={() => { setEditingBooking(viewingBooking); }} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-indigo-700 transition-all">
                                 Modifier
                             </button>
-                            <button onClick={() => setViewingBooking(null)} className="px-6 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all">
+                            <button type="button" onClick={() => setViewingBookingId(null)} className="px-6 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all">
                                 Fermer
                             </button>
                         </div>
@@ -484,26 +543,59 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             {busManagementBooking && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setBusManagementBooking(null)}>
                     <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="text-2xl font-black text-gray-800 mb-2">Gestion du transport</h2>
+                        <div className="flex justify-between items-start mb-2">
+                            <h2 className="text-2xl font-black text-gray-800">Gestion du transport</h2>
+                            {currentUser?.role !== 'admin' && <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-1 rounded-lg uppercase tracking-tight">Lecture seule</span>}
+                        </div>
                         <p className="text-sm text-gray-500 mb-6">Validation de la prise en charge pour <strong>{busManagementBooking.teacherName}</strong>.</p>
                         <form onSubmit={handleSaveBusManagement} className="space-y-6">
                             <div className="space-y-3">
                                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">État de la prise en charge</label>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <button type="button" onClick={() => setBusManagementBooking({...busManagementBooking, busStatus: 'pending'})} className={`px-4 py-3 rounded-xl font-bold text-sm border-2 transition-all ${busManagementBooking.busStatus === 'pending' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}>En attente</button>
-                                    <button type="button" onClick={() => setBusManagementBooking({...busManagementBooking, busStatus: 'validated'})} className={`px-4 py-3 rounded-xl font-bold text-sm border-2 transition-all ${busManagementBooking.busStatus === 'validated' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 text-gray-400'}`}>Validé</button>
+                                    <button 
+                                        type="button" 
+                                        disabled={currentUser?.role !== 'admin'}
+                                        onClick={() => setBusManagementBooking({...busManagementBooking, busStatus: 'pending'})} 
+                                        className={`px-4 py-3 rounded-xl font-bold text-sm border-2 transition-all ${busManagementBooking.busStatus === 'pending' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                    >
+                                        En attente
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        disabled={currentUser?.role !== 'admin'}
+                                        onClick={() => setBusManagementBooking({...busManagementBooking, busStatus: 'validated'})} 
+                                        className={`px-4 py-3 rounded-xl font-bold text-sm border-2 transition-all ${busManagementBooking.busStatus === 'validated' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 text-gray-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                    >
+                                        Validé
+                                    </button>
                                 </div>
                             </div>
                             <div className="space-y-2">
                                 <label htmlFor="busCost" className="block text-xs font-black text-gray-400 uppercase tracking-widest">Montant (€)</label>
                                 <div className="relative">
-                                    <input id="busCost" type="number" value={busManagementBooking.busCost || 0} onChange={(e) => setBusManagementBooking({...busManagementBooking, busCost: parseInt(e.target.value) || 0})} className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-gray-800 focus:border-blue-500 outline-none" />
+                                    <input 
+                                        id="busCost" 
+                                        type="text" 
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        disabled={currentUser?.role !== 'admin'}
+                                        value={busManagementBooking.busCost || 0} 
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(/\D/g, '');
+                                            setBusManagementBooking({...busManagementBooking, busCost: parseInt(val) || 0})
+                                        }} 
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-gray-800 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                                    />
                                     <div className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">€</div>
                                 </div>
                             </div>
                             <div className="flex gap-3 pt-4">
-                                <button type="button" onClick={() => setBusManagementBooking(null)} className="flex-grow py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-100 transition-colors">Annuler</button>
-                                <button type="submit" className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg">Confirmer</button>
+                                <button type="button" onClick={() => setBusManagementBooking(null)} className="flex-grow py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-100 transition-colors">
+                                    {currentUser?.role === 'admin' ? 'Annuler' : 'Fermer'}
+                                </button>
+                                {currentUser?.role === 'admin' && (
+                                    <button type="submit" className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg">Confirmer</button>
+                                )}
                             </div>
                         </form>
                     </div>
@@ -512,7 +604,31 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
             {isGeneratorOpen && <RandomBookingGenerator onClose={() => setIsGeneratorOpen(false)} onGenerate={(newB) => { updateBookings([...bookings, ...newB]); setIsGeneratorOpen(false); showNotification(`${newB.length} générées !`); }} />}
             {isBusSheetModalOpen && <BusSheetGeneratorModal bookingCount={selectedBookingIds.size} onClose={() => setIsBusSheetModalOpen(false)} onGenerate={handleGenerateBusSheet} />}
-            {editingBooking && <BookingEditForm booking={editingBooking} animations={animations} bookings={bookings} onSave={(b) => { saveBooking(b); setEditingBooking(null); showNotification('Modifiée !'); }} onCancel={() => setEditingBooking(null)} />}
+            {editingBooking && <BookingEditForm booking={editingBooking} animations={animations} bookings={bookings} onSave={(b) => { 
+                saveBooking(b); 
+                setEditingBooking(null); 
+                showNotification('Modifiée !'); 
+            }} onCancel={() => setEditingBooking(null)} />}
+
+            <ConfirmationModal 
+                isOpen={!!deleteId}
+                title="Supprimer la réservation"
+                message="Êtes-vous sûr de vouloir supprimer cette réservation ? Cette action est irréversible."
+                confirmLabel="Supprimer"
+                isDanger={true}
+                onConfirm={confirmSingleDelete}
+                onCancel={() => setDeleteId(null)}
+            />
+
+            <ConfirmationModal 
+                isOpen={showBulkDeleteConfirm}
+                title="Suppression groupée"
+                message={`Êtes-vous sûr de vouloir supprimer les ${selectedBookingIds.size} réservations sélectionnées ? Cette action est irréversible.`}
+                confirmLabel="Supprimer tout"
+                isDanger={true}
+                onConfirm={confirmBulkDelete}
+                onCancel={() => setShowBulkDeleteConfirm(false)}
+            />
         </div>
     );
 };

@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "Animation": {
+      "title": "Animation",
+      "description": "Educational workshop details",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "duration": { "type": "string" },
+        "capacity": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "order": { "type": "number" },
+        "active": { "type": "boolean" },
+        "targetPublic": { "type": "string" },
+        "objectives": { "type": "string" }
+      },
+      "required": ["title", "description", "order"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Workshop reservation",
+      "type": "object",
+      "properties": {
+        "animationId": { "type": "string" },
+        "date": { "type": "string" },
+        "timeslot": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "teacherEmail": { "type": "string" },
+        "schoolName": { "type": "string" },
+        "level": { "type": "string" },
+        "studentCount": { "type": "number" },
+        "comment": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["animationId", "date", "teacherEmail", "status"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global application configuration",
+      "type": "object",
+      "properties": {
+        "adminUsername": { "type": "string" },
+        "adminPassword": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "headerInfoText": { "type": "string" },
+        "headerInfoFontSize": { "type": "string" },
+        "headerInfoFontWeight": { "type": "string" },
+        "headerInfoFontStyle": { "type": "string" },
+        "headerInfoColor": { "type": "string" },
+        "headerInfoWidth": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/animations/{animationId}": {
+      "schema": "Animation",
+      "description": "Collection of workshops"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Collection of reservations"
+    },
+    "/settings/global": {
+      "schema": "AppSettings",
+      "description": "Central settings document"
+    },
+    "/admins/{adminId}": {
+      "schema": { "type": "object", "properties": { "role": { "type": "string" } } },
+      "description": "List of authorized administrators"
+    }
+  }
+}

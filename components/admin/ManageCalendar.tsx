@@ -5,11 +5,13 @@ import { AnimatorSettings, Holiday } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { toYYYYMMDD } from '../../utils/date';
 import { PencilIcon, TrashIcon } from '../Icons';
+import ConfirmationModal from '../shared/ConfirmationModal';
 import HolidayEditModal from './HolidayEditModal';
 
 const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
     const { settings, updateSettings, currentUser } = useContext(AppContext);
     const animators = useMemo(() => settings.animators || [], [settings.animators]);
+    const [holidayToDelete, setHolidayToDelete] = useState<string | null>(null);
     
     // Scoping for user role
     const isRestrictedUser = currentUser?.role === 'user';
@@ -59,7 +61,9 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         return settings.animatorSettings?.[selectedAnimatorName] || { unavailableDates: [], inactiveSlots: [] };
     }, [settings.animatorSettings, selectedAnimatorName]);
 
-    const timeSlots = useMemo(() => [9, 10, 14, 15], []);
+    const timeSlots = useMemo(() => {
+        return settings.availableTimeSlots || [9, 10, 14, 15];
+    }, [settings.availableTimeSlots]);
 
     useEffect(() => {
         const now = new Date();
@@ -196,11 +200,15 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
     };
     
     const handleSlotToggle = (slot: number) => {
-        setInactiveSlots(currentSlots =>
-            currentSlots.includes(slot)
-                ? currentSlots.filter(s => s !== slot)
-                : [...currentSlots, slot]
-        );
+        const slotNum = Number(slot);
+        setInactiveSlots(currentSlots => {
+            const normalized = currentSlots.map(Number);
+            if (normalized.includes(slotNum)) {
+                return normalized.filter(s => s !== slotNum);
+            } else {
+                return [...normalized, slotNum];
+            }
+        });
     };
     
     const handleSaveSlots = () => {
@@ -234,11 +242,15 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
     };
     
     const handleDeleteHoliday = (holidayNameToDelete: string) => {
-        if (window.confirm("Êtes-vous sûr de vouloir supprimer cette période de vacances ?")) {
-            updateSettings({ ...settings, holidays: settings.holidays.filter(h => h.name !== holidayNameToDelete) });
-            showNotification('Période de vacances supprimée.');
-        }
+        setHolidayToDelete(holidayNameToDelete);
     }
+
+    const confirmDeleteHoliday = () => {
+        if (!holidayToDelete) return;
+        updateSettings({ ...settings, holidays: settings.holidays.filter(h => h.name !== holidayToDelete) });
+        showNotification('Période de vacances supprimée.');
+        setHolidayToDelete(null);
+    };
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -323,8 +335,8 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                         <label key={slot} className="flex items-center space-x-2 cursor-pointer">
                                             <input
                                                 type="checkbox"
-                                                checked={inactiveSlots.includes(slot)}
-                                                onChange={() => handleSlotToggle(slot)}
+                                                checked={inactiveSlots.map(Number).includes(Number(slot))}
+                                                onChange={() => handleSlotToggle(Number(slot))}
                                                 className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                             />
                                             <span>{slot}h</span>
@@ -465,6 +477,15 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                 </div>
             </div>
              {editingHoliday && <HolidayEditModal holiday={editingHoliday} onSave={handleUpdateHoliday} onCancel={() => setEditingHoliday(null)} />}
+             <ConfirmationModal 
+                isOpen={!!holidayToDelete}
+                title="Supprimer les vacances"
+                message={`Êtes-vous sûr de vouloir supprimer la période "${holidayToDelete}" ?`}
+                confirmLabel="Supprimer"
+                isDanger={true}
+                onConfirm={confirmDeleteHoliday}
+                onCancel={() => setHolidayToDelete(null)}
+            />
         </div>
     );
 };

@@ -30,13 +30,21 @@ export const formatPhoneNumber = (phoneStr: string): string => {
     // Remove all non-digit characters
     const cleaned = ('' + phoneStr).replace(/\D/g, '');
     
-    // Only format if it's a 10-digit number
+    // Format if it has exactly 10 digits
     if (cleaned.length === 10) {
         const match = cleaned.match(/^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
         if (match) {
             return `${match[1]}-${match[2]}-${match[3]}-${match[4]}-${match[5]}`;
         }
     }
+    
+    // If it has digits but not 10, just return as is (could be international or partial)
+    // But for the sake of the user's request for "always", we try to group any digits
+    if (cleaned.length > 0) {
+        // Group by 2 digits for any length
+        const parts = cleaned.match(/.{1,2}/g);
+        return parts ? parts.join('-') : cleaned;
+    }
 
-    return phoneStr; // Return original if not a 10-digit French number
+    return phoneStr; 
 };

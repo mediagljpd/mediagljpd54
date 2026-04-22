@@ -96,9 +96,9 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                             <AcademicCapIcon className="w-4 h-4 text-blue-600" />
                             Niveau de la classe
                         </label>
-                        <div className={`flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border transition-colors ${showErrors && !formData.classLevel ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}>
-                            {(settings.classLevels || ['PS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2']).map(level => (
-                                <label key={level} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer transition-all text-xs font-bold ${
+                        <div className={`flex flex-wrap gap-1 p-2 bg-gray-50 rounded-lg border transition-colors ${showErrors && !formData.classLevel ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}>
+                            {(settings.classLevels || ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2']).map(level => (
+                                <label key={level} className={`flex items-center px-2.5 py-1 rounded-full border cursor-pointer transition-all text-xs font-bold ${
                                     formData.classLevel.split(', ').includes(level)
                                     ? 'bg-blue-600 border-blue-600 text-white shadow-md'
                                     : 'bg-white border-gray-300 text-gray-600 hover:border-blue-400'

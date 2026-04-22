@@ -3,44 +3,51 @@ import React, { useState, useMemo, useContext, useEffect } from 'react';
 import { AppContext } from '../../AppContext';
 import { Animation, Booking } from '../../types';
 import { toYYYYMMDD } from '../../utils/date';
+import { formatPhoneNumber } from '../../utils/formatters';
 
 const FAKE_LAST_NAMES = ['Lefebvre', 'Martin', 'Bernard', 'Dubois', 'Thomas', 'Robert', 'Richard', 'Petit', 'Durand', 'Leroy'];
 const FAKE_FIRST_NAMES = ['Alice', 'Benjamin', 'Chloé', 'David', 'Eva', 'François', 'Gabrielle', 'Hugo', 'Inès', 'Jules'];
-const FAKE_CLASSES = ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
-const FAKE_COMMUNES = ['Lille', 'Roubaix', 'Tourcoing', 'Villeneuve d\'Ascq', 'Marcq-en-Barœul', 'Lambersart'];
-const FAKE_SCHOOL_NAMES = ['École Pasteur', 'École Victor Hugo', 'École Jules Ferry', 'École Jean Jaurès', 'Groupe Scolaire Saint-Exupéry'];
-
-const generateFakeBookingData = (animation: Animation, date: Date, time: number): Omit<Booking, 'id'> => {
-    const teacherFirstName = FAKE_FIRST_NAMES[Math.floor(Math.random() * FAKE_FIRST_NAMES.length)];
-    const teacherLastName = FAKE_LAST_NAMES[Math.floor(Math.random() * FAKE_LAST_NAMES.length)];
-    const teacherName = `${teacherFirstName} ${teacherLastName}`;
-    const classLevel = FAKE_CLASSES[Math.floor(Math.random() * FAKE_CLASSES.length)];
-    const commune = FAKE_COMMUNES[Math.floor(Math.random() * FAKE_COMMUNES.length)];
-    const schoolName = FAKE_SCHOOL_NAMES[Math.floor(Math.random() * FAKE_SCHOOL_NAMES.length)];
-    
-    return {
-        animationId: animation.id,
-        animationTitle: animation.title,
-        date: toYYYYMMDD(date),
-        time,
-        teacherName,
-        classLevel,
-        commune,
-        schoolName,
-        phoneNumber: `06${String(Math.floor(Math.random() * 100000000)).padStart(8, '0')}`,
-        email: `${teacherFirstName.toLowerCase()}.${teacherLastName.toLowerCase()}@ecole-fictive.fr`,
-        studentCount: Math.floor(Math.random() * 11) + 20, // 20-30
-        adultCount: Math.floor(Math.random() * 3) + 2, // 2-4
-        busInfo: `Le bus doit récupérer la classe à l'école primaire de ${teacherLastName}ville à 8h30.`,
-    };
-};
-
 
 const RandomBookingGenerator: React.FC<{
     onClose: () => void;
     onGenerate: (bookings: Booking[]) => void;
 }> = ({ onClose, onGenerate }) => {
     const { animations, bookings, settings } = useContext(AppContext);
+    
+    const generateFakeBookingData = (animation: Animation, date: Date, time: number): Omit<Booking, 'id'> => {
+        const teacherFirstName = FAKE_FIRST_NAMES[Math.floor(Math.random() * FAKE_FIRST_NAMES.length)];
+        const teacherLastName = FAKE_LAST_NAMES[Math.floor(Math.random() * FAKE_LAST_NAMES.length)];
+        const teacherName = `${teacherFirstName} ${teacherLastName}`;
+        
+        // Remove accents and special characters for the pseudo-email
+        const cleanForEmail = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        
+        // Use real settings if available, fallback to fakes if not
+        const levels = (settings.classLevels && settings.classLevels.length > 0) ? settings.classLevels : ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
+        const communes = (settings.communes && settings.communes.length > 0) ? settings.communes.map(c => c.name) : ['Lille', 'Roubaix', 'Tourcoing'];
+        const schools = (settings.schools && settings.schools.length > 0) ? settings.schools.map(s => s.name) : ['École Pasteur', 'École Victor Hugo'];
+
+        const classLevel = levels[Math.floor(Math.random() * levels.length)];
+        const commune = communes[Math.floor(Math.random() * communes.length)];
+        const schoolName = schools[Math.floor(Math.random() * schools.length)];
+        
+        return {
+            animationId: animation.id,
+            animationTitle: animation.title,
+            date: toYYYYMMDD(date),
+            time,
+            teacherName,
+            classLevel,
+            commune,
+            schoolName,
+            phoneNumber: `06${String(Math.floor(Math.random() * 100000000)).padStart(8, '0')}`,
+            email: `${cleanForEmail(teacherFirstName)}.${cleanForEmail(teacherLastName)}@ecole-fictive.fr`,
+            studentCount: Math.floor(Math.random() * 11) + 20, // 20-30
+            adultCount: Math.floor(Math.random() * 3) + 2, // 2-4
+            busInfo: `Le bus doit récupérer la classe à l'école primaire de ${teacherLastName}ville à 8h30.`,
+        };
+    };
+
     const [isGenerating, setIsGenerating] = useState(false);
     const [generateAllYear, setGenerateAllYear] = useState(true);
     const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set());
@@ -260,10 +267,12 @@ const RandomBookingGenerator: React.FC<{
 
 
                 const newBookingData = generateFakeBookingData(animation, date, time);
-                newBookings.push({
+                const formattedBooking: Booking = {
                     ...newBookingData,
                     id: `${Date.now()}-${Math.random()}`,
-                });
+                    phoneNumber: formatPhoneNumber(newBookingData.phoneNumber)
+                };
+                newBookings.push(formattedBooking);
                 
                 createdSlots.add(slotKey);
                 if(isAfternoonSlot) {
