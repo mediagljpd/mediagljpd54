@@ -1,49 +1,48 @@
-import React, { useState } from 'react';
-import { Holiday } from '../../types';
 
-const HolidayEditModal: React.FC<{
-    holiday: Holiday;
-    onSave: (holiday: Holiday) => void;
-    onCancel: () => void;
-}> = ({ holiday, onSave, onCancel }) => {
-    const [formState, setFormState] = useState(holiday);
+import React from 'react';
+import { Booking } from '../../types';
+import { CheckIcon } from '../Icons';
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFormState({ ...formState, [e.target.name]: e.target.value });
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formState);
-    };
-
+const BookingConfirmation: React.FC<{ booking: Booking, onOk: () => void }> = ({ booking, onOk }) => {
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={onCancel}>
-            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-semibold mb-4">Modifier la période de vacances</h3>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label htmlFor="holiday-name" className="block text-sm font-medium text-gray-700">Nom de la période</label>
-                        <input type="text" id="holiday-name" name="name" value={formState.name} onChange={handleChange} className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
-                    </div>
-                    <div className="flex gap-4">
-                        <div className="w-1/2">
-                            <label htmlFor="holiday-start" className="block text-sm font-medium text-gray-700">Date de début</label>
-                            <input type="date" id="holiday-start" name="startDate" value={formState.startDate} onChange={handleChange} className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
-                        </div>
-                        <div className="w-1/2">
-                            <label htmlFor="holiday-end" className="block text-sm font-medium text-gray-700">Date de fin</label>
-                            <input type="date" id="holiday-end" name="endDate" value={formState.endDate} onChange={handleChange} className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-4">
-                        <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Annuler</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Sauvegarder</button>
-                    </div>
-                </form>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={onOk}>
+            <div 
+                className="bg-white rounded-2xl shadow-2xl p-8 text-center max-w-md w-full transform animate-in fade-in zoom-in duration-300" 
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                    <CheckIcon className="w-10 h-10" />
+                </div>
+                
+                <h2 className="text-3xl font-extrabold mb-2 text-slate-800">Réservation confirmée !</h2>
+                <div className="h-1 w-16 bg-green-500 mx-auto mb-6 rounded-full"></div>
+                
+                <div className="space-y-3 text-slate-600">
+                    <p>Votre demande de réservation pour l'atelier :</p>
+                    <p className="font-bold text-slate-900 text-lg px-4 py-2 bg-slate-50 rounded-lg border border-slate-100">
+                        {booking.animationTitle}
+                    </p>
+                    <p>
+                        le <span className="font-semibold text-slate-800">{new Date(booking.date.replace(/-/g, '/')).toLocaleDateString('fr-FR')}</span> à <span className="font-semibold text-slate-800">{booking.time}h00</span> a bien été enregistrée.
+                    </p>
+                </div>
+
+                <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                    <p className="text-blue-800 text-sm">
+                        Un mail de confirmation vient de vous être envoyé à l'adresse : <br/>
+                        <span className="font-semibold">{booking.email}</span>
+                    </p>
+                </div>
+
+                <button 
+                    onClick={onOk} 
+                    className="mt-8 w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 active:scale-[0.98] transition-all shadow-lg shadow-blue-200"
+                >
+                    Fermer
+                </button>
             </div>
         </div>
     );
-};
+}
 
-export default HolidayEditModal;
+export default BookingConfirmation;

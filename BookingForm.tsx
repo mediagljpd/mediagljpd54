@@ -1,5 +1,5 @@
-export type AdminView = 'animations' | 'calendar' | 'bookings' | 'settings' | 'journal' | 'recre';
+export type AdminView = 'animations' | 'calendar' | 'bookings' | 'settings' | 'users';
 
 export type AdminSubComponentProps = {
-    showNotification: (message: string) => void;
+    showNotification: (message: string, type?: 'success' | 'error') => void;
 };

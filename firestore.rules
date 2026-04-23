@@ -1,46 +1,9 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
-    }
 
-    // Helpers
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    // Settings: Public read, Admin write
-    match /settings/{settingId} {
-      allow read: if true;
-      allow write: if isAdmin() && isValidId(settingId);
-    }
-
-    // Animations: Public read, Admin write
-    match /animations/{animationId} {
-      allow read: if true;
-      allow write: if isAdmin() && isValidId(animationId);
-    }
-
-    // Bookings: Public read/create, Admin full access
-    match /bookings/{bookingId} {
-      allow read, create: if true;
-      allow update, delete: if isAdmin() && isValidId(bookingId);
-    }
-
-    // Admins list: Only admins can read/write the admin list
-    match /admins/{adminId} {
-      allow read, write: if isAdmin() && isValidId(adminId);
-    }
-  }
-}
+export const validatePassword = (password: string) => {
+    if (password.length < 8) return "Le mot de passe doit faire au moins 8 caractères.";
+    if (!/[A-Z]/.test(password)) return "Le mot de passe doit contenir au moins une majuscule.";
+    if (!/[a-z]/.test(password)) return "Le mot de passe doit contenir au moins une minuscule.";
+    if (!/[0-9]/.test(password)) return "Le mot de passe doit contenir au moins un chiffre.";
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) return "Le mot de passe doit contenir au moins un caractère spécial.";
+    return null;
+};

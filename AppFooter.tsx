@@ -1,399 +1,292 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { XIcon } from '../../Icons';
 
-type PlayerBoardCell = { state: 'empty' | 'filled' | 'crossed' };
-type PicrossGameState = 'menu' | 'playing' | 'won';
-type PicrossDifficulty = 'easy' | 'medium' | 'hard';
-type PicrossSize = 5 | 10 | 15;
-type ColorPalette = { name: string, filled: string, empty: string, hover: string };
+import React, { useState, useContext, useMemo } from 'react';
+import { Animation, Booking } from '../../types';
+import { toYYYYMMDD } from '../../utils/date';
+import { AppContext } from '../../AppContext';
+import { SearchIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon } from '../Icons';
 
-const COLOR_PALETTES: ColorPalette[] = [
-    { name: "Classique", filled: '#333333', empty: '#FFFFFF', hover: 'bg-gray-100' },
-    { name: "Forêt", filled: '#2E7D32', empty: '#F1F8E9', hover: 'bg-green-50' },
-    { name: "Océan", filled: '#1565C0', empty: '#E3F2FD', hover: 'bg-blue-50' },
-    { name: "Feu", filled: '#E65100', empty: '#FFF3E0', hover: 'bg-orange-50' },
-    { name: "Électrique", filled: '#FBC02D', empty: '#FFFDE7', hover: 'bg-yellow-50' },
-    { name: "Psy", filled: '#7B1FA2', empty: '#F3E5F5', hover: 'bg-purple-50' }
-];
+const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, onConfirm: (formData: Omit<Booking, 'id' | 'animationTitle'>) => void, onCancel: () => void }> = ({ animation, date, time, onConfirm, onCancel }) => {
+    const { settings } = useContext(AppContext);
+    const [formData, setFormData] = useState({
+        animationId: animation.id,
+        date: toYYYYMMDD(date),
+        time: time,
+        teacherName: '',
+        classLevel: '',
+        commune: '',
+        schoolName: '',
+        phoneNumber: '',
+        email: '',
+        studentCount: '' as any,
+        adultCount: '' as any,
+        busInfo: '',
+        noBusRequired: false,
+    });
 
-const PICROSS_PATTERNS: Record<string, Record<string, Record<string, number[][]>>> = {
-    '5': {
-        'easy': {
-            'Pokéball': [[0,1,1,1,0],[1,0,0,0,1],[1,0,1,0,1],[1,0,0,0,1],[0,1,1,1,0]],
-        },
-        'medium': {
-            'Voltorbe': [[0,1,1,1,0],[1,1,1,1,1],[1,0,1,0,1],[1,1,1,1,1],[0,1,1,1,0]],
-        },
-        'hard': {
-            'Superball': [[0,1,1,1,0],[1,1,0,1,1],[1,0,1,0,1],[1,1,0,1,1],[0,1,1,1,0]],
-        },
-    },
-    '10': {
-        'easy': {
-            'Pikachu': [[0,0,1,0,0,0,0,1,0,0],[0,1,1,1,0,0,1,1,1,0],[1,1,0,1,0,0,1,0,1,1],[1,1,0,1,1,1,1,0,1,1],[1,0,1,0,0,0,0,1,0,1],[0,1,0,1,1,1,1,0,1,0],[0,0,1,0,0,0,0,1,0,0],[0,0,1,1,1,1,1,1,0,0],[0,0,0,1,1,1,1,0,0,0],[0,0,0,0,1,1,0,0,0,0]],
-        },
-        'medium': {
-            'Bulbizarre': [[0,0,0,1,1,0,0,0,0,0],[0,0,1,1,1,1,0,0,0,0],[0,1,1,1,1,1,1,0,0,0],[1,1,1,1,1,1,1,1,0,0],[0,1,0,1,1,0,1,1,1,0],[0,0,1,1,1,1,1,0,1,0],[0,0,1,0,1,1,0,1,0,0],[0,1,0,0,1,1,0,1,0,0],[0,1,0,0,1,0,0,1,0,0],[0,0,0,0,1,0,0,1,0,0]],
-        },
-        'hard': {
-            'Ectoplasma': [[0,1,0,0,0,0,0,0,1,0],[1,1,1,0,1,1,0,1,1,1],[0,1,1,1,1,1,1,1,1,0],[0,0,1,0,1,1,0,1,0,0],[0,0,1,0,1,1,0,1,0,0],[0,1,1,1,0,0,1,1,1,0],[0,1,0,1,0,0,1,0,1,0],[0,0,1,1,1,1,1,1,0,0],[0,0,0,1,1,1,1,0,0,0],[0,0,0,0,1,1,0,0,0,0]],
-        }
-    },
-    '15': {
-        'easy': {
-            'Ronflex': [[0,0,0,0,1,1,1,1,1,1,1,0,0,0,0],[0,0,0,1,1,0,0,0,0,0,1,1,0,0,0],[0,0,1,0,0,0,0,0,0,0,0,0,1,0,0],[0,1,0,0,1,0,0,0,0,1,0,0,0,1,0],[0,1,0,0,1,0,0,0,0,1,0,0,0,1,0],[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,0,0,0,1,1,1,1,1,1,1,0,0,0,1],[1,0,0,1,0,0,0,0,0,0,1,0,0,0,1],[1,0,1,0,0,0,0,0,0,0,0,1,0,0,1],[1,0,1,0,0,0,0,0,0,0,0,1,0,0,1],[0,1,0,1,1,1,1,1,1,1,1,0,1,0,0],[0,1,0,0,1,1,1,1,1,1,1,0,1,0,0],[0,0,1,0,0,0,0,0,0,0,0,0,1,0,0],[0,0,0,1,1,1,1,1,1,1,1,1,0,0,0],[0,0,0,0,0,1,1,1,1,1,1,0,0,0,0]],
-        },
-        'medium': {
-            'Salamèche': [[0,0,0,0,0,0,0,1,1,0,0,0,0,0,0],[0,0,0,0,0,0,1,1,1,0,0,0,0,0,0],[0,0,0,0,0,1,1,0,0,0,0,0,0,0,0],[0,0,0,0,1,1,1,1,1,1,0,0,0,0,0],[0,0,0,1,1,0,1,1,0,1,1,0,0,0,0],[0,0,1,1,1,1,1,1,1,1,1,1,0,0,0],[0,0,1,0,1,1,1,1,1,1,0,1,0,0,0],[0,0,1,1,1,1,1,1,1,1,1,1,0,0,0],[0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],[0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,0,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,0,1,1,1,0,0,0,0],[0,0,0,0,0,1,1,0,1,1,0,0,0,0,0],[0,0,0,0,0,1,1,0,1,1,0,0,0,0,0],[0,0,0,0,0,0,1,0,0,1,0,0,0,0,0]],
-        },
-        'hard': {
-            'Mewtwo': [[0,0,0,0,0,0,0,1,1,0,0,0,0,0,0],[0,0,0,0,0,0,1,1,1,1,0,0,0,0,0],[0,0,0,0,0,0,1,1,1,1,0,0,0,0,0],[0,0,0,1,1,0,1,1,1,0,1,1,0,0,0],[0,0,1,1,1,0,1,1,1,0,1,1,1,0,0],[0,0,0,1,1,1,1,1,1,1,1,1,0,0,0],[0,0,0,0,0,1,1,1,1,1,1,0,0,0,0],[0,0,0,0,0,0,1,1,1,1,0,0,0,0,0],[0,0,0,0,0,0,1,1,1,1,0,0,0,1,1],[0,0,0,0,0,0,1,1,1,1,0,1,1,1,1],[0,0,0,0,0,0,1,1,1,1,1,1,1,0,0],[0,0,0,0,0,0,1,1,1,1,1,0,0,0,0],[0,0,0,0,0,1,1,0,0,1,1,0,0,0,0],[0,0,0,0,1,1,0,0,0,0,1,1,0,0,0],[0,0,0,1,1,0,0,0,0,0,0,1,1,0,0]],
-        }
-    }
-};
+    const [communeSearch, setCommuneSearch] = useState('');
+    const [showCommuneList, setShowCommuneList] = useState(false);
+    const [selectedCommuneId, setSelectedCommuneId] = useState<string | null>(null);
 
-const POKEMON_COLOR_MAP: Record<string, string> = {
-    'Pokéball': 'Feu',
-    'Voltorbe': 'Feu',
-    'Superball': 'Océan',
-    'Pikachu': 'Électrique',
-    'Bulbizarre': 'Forêt',
-    'Ectoplasma': 'Psy',
-    'Ronflex': 'Océan',
-    'Salamèche': 'Feu',
-    'Mewtwo': 'Psy'
-};
-
-interface PicrossGameProps {
-    onBack: () => void;
-}
-
-const PicrossGame: React.FC<PicrossGameProps> = ({ onBack }) => {
-    const [gameState, setGameState] = useState<PicrossGameState>('menu');
-    const [size, setSize] = useState<PicrossSize>(10);
-    const [difficulty, setDifficulty] = useState<PicrossDifficulty>('medium');
-    const [colorPalette, setColorPalette] = useState<ColorPalette>(COLOR_PALETTES[0]);
-    const [solution, setSolution] = useState<number[][]>([]);
-    const [patternName, setPatternName] = useState('');
-    const [playerBoard, setPlayerBoard] = useState<PlayerBoardCell[][]>([]);
-    const [rowClues, setRowClues] = useState<number[][]>([]);
-    const [colClues, setColClues] = useState<number[][]>([]);
-    const [timer, setTimer] = useState(0);
-    const timerRef = useRef<number | null>(null);
-    const [hoveredCell, setHoveredCell] = useState<{row: number, col: number} | null>(null);
-    const [validationMessage, setValidationMessage] = useState<string | null>(null);
-    
-    // States for drag-and-drop interaction
-    const [isDragging, setIsDragging] = useState(false);
-    const [dragAction, setDragAction] = useState<'filled' | 'crossed' | 'empty' | null>(null);
-
-    const generateClues = useCallback((board: number[][]): { rowClues: number[][], colClues: number[][] } => {
-        const boardSize = board.length;
-        const rClues: number[][] = [];
-        const cClues: number[][] = [];
-
-        // Row clues
-        for (let r = 0; r < boardSize; r++) {
-            const row = board[r];
-            const clues: number[] = [];
-            let count = 0;
-            for (let c = 0; c < boardSize; c++) {
-                if (row[c] === 1) count++;
-                else {
-                    if (count > 0) clues.push(count);
-                    count = 0;
-                }
-            }
-            if (count > 0) clues.push(count);
-            if (clues.length === 0) clues.push(0);
-            rClues.push(clues);
-        }
-
-        // Column clues
-        for (let c = 0; c < boardSize; c++) {
-            const clues: number[] = [];
-            let count = 0;
-            for (let r = 0; r < boardSize; r++) {
-                if (board[r][c] === 1) count++;
-                else {
-                    if (count > 0) clues.push(count);
-                    count = 0;
-                }
-            }
-            if (count > 0) clues.push(count);
-            if (clues.length === 0) clues.push(0);
-            cClues.push(clues);
-        }
-        return { rowClues: rClues, colClues: cClues };
-    }, []);
-
-    const checkWinCondition = useCallback(() => {
-        if (!solution.length || !playerBoard.length) return false;
-        for (let r = 0; r < size; r++) {
-            for (let c = 0; c < size; c++) {
-                const isSolutionFilled = solution[r][c] === 1;
-                const isPlayerFilled = playerBoard[r][c].state === 'filled';
-                if (isSolutionFilled !== isPlayerFilled) return false;
-            }
-        }
-        return true;
-    }, [playerBoard, solution, size]);
-    
-    useEffect(() => {
-      if (gameState === 'playing' && timerRef.current === null) {
-        timerRef.current = window.setInterval(() => setTimer(t => t + 1), 1000);
-      } else if (gameState !== 'playing' && timerRef.current !== null) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      return () => {
-        if (timerRef.current) clearInterval(timerRef.current);
-      };
-    }, [gameState]);
-
-    useEffect(() => {
-        const handleGlobalMouseUp = () => {
-            setIsDragging(false);
-            setDragAction(null);
-        };
-        if (gameState === 'playing') {
-            window.addEventListener('mouseup', handleGlobalMouseUp);
-        }
-        return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-    }, [gameState]);
-
-
-    const handleStartGame = () => {
-        const patternsOfSizeAndDifficulty = PICROSS_PATTERNS[size.toString()][difficulty];
-        const availablePatternNames = Object.keys(patternsOfSizeAndDifficulty);
-        const randomPatternName = availablePatternNames[Math.floor(Math.random() * availablePatternNames.length)];
-        const pattern = patternsOfSizeAndDifficulty[randomPatternName];
-        
-        setPatternName(randomPatternName);
-        const colorName = POKEMON_COLOR_MAP[randomPatternName] || 'Classique';
-        const newPalette = COLOR_PALETTES.find(p => p.name === colorName) || COLOR_PALETTES[0];
-        setColorPalette(newPalette);
-
-        setSolution(pattern);
-        setPlayerBoard(
-            Array.from({ length: size }, () => 
-                Array.from({ length: size }, () => ({ state: 'empty' }))
-            )
+    const filteredCommunes = useMemo(() => {
+        if (!communeSearch) return settings.communes || [];
+        return (settings.communes || []).filter(c => 
+            c.name.toLowerCase().includes(communeSearch.toLowerCase()) || 
+            c.postalCode.includes(communeSearch)
         );
-        const { rowClues, colClues } = generateClues(pattern);
-        setRowClues(rowClues);
-        setColClues(colClues);
-        setTimer(0);
-        setValidationMessage(null);
-        setGameState('playing');
-    };
+    }, [settings.communes, communeSearch]);
 
-    const applyActionToCell = useCallback((row: number, col: number, action: 'filled' | 'crossed' | 'empty') => {
-        setPlayerBoard(prevBoard => {
-            if (prevBoard[row]?.[col]?.state === action) return prevBoard;
-            const newBoard = prevBoard.map(r => r.slice());
-            newBoard[row][col] = { state: action };
-            return newBoard;
-        });
-    }, []);
-    
-    const handleCellInteractionStart = (row: number, col: number, event: React.MouseEvent) => {
-        event.preventDefault();
-        setIsDragging(true);
+    const filteredSchools = useMemo(() => {
+        if (!selectedCommuneId) return [];
+        return (settings.schools || []).filter(s => s.communeId === selectedCommuneId);
+    }, [settings.schools, selectedCommuneId]);
 
-        const currentCellState = playerBoard[row][col].state;
-        let newAction: 'filled' | 'crossed' | 'empty' | null = null;
-        
-        if (event.button === 0) { // Left click
-            newAction = currentCellState === 'filled' ? 'empty' : 'filled';
-        } else if (event.button === 2) { // Right click
-            newAction = currentCellState === 'crossed' ? 'empty' : 'crossed';
-        }
+    const selectedSchool = useMemo(() => {
+        return (settings.schools || []).find(s => s.name === formData.schoolName && s.communeId === selectedCommuneId);
+    }, [settings.schools, formData.schoolName, selectedCommuneId]);
 
-        if (newAction) {
-            setDragAction(newAction);
-            applyActionToCell(row, col, newAction);
-        }
-    };
+    const [showErrors, setShowErrors] = useState(false);
 
-    const handleCellInteractionMove = (row: number, col: number) => {
-        if (!isDragging || !dragAction) return;
-        applyActionToCell(row, col, dragAction);
-    };
-
-    const handleValidate = () => {
-        if (checkWinCondition()) {
-            setGameState('won');
+    const handleClassLevelToggle = (level: string) => {
+        const currentLevels = formData.classLevel ? formData.classLevel.split(', ') : [];
+        let newLevels;
+        if (currentLevels.includes(level)) {
+            newLevels = currentLevels.filter(l => l !== level);
         } else {
-            setValidationMessage('Il y a des erreurs dans votre grille. Essayez encore !');
-            setTimeout(() => setValidationMessage(null), 3000);
+            newLevels = [...currentLevels, level];
         }
+        setFormData(prev => ({ ...prev, classLevel: newLevels.join(', ') }));
     };
 
-    const handleShowSolution = () => {
-        if (window.confirm("Êtes-vous sûr de vouloir voir la solution ? Votre partie sera terminée.")) {
-            setPlayerBoard(solution.map(row => row.map(cellValue => ({
-                state: cellValue === 1 ? 'filled' : 'empty'
-            }))));
-            setGameState('won');
-        }
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const { name, value, type } = e.target;
+        const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : (type === 'number' ? parseInt(value) : value);
+        setFormData(prev => ({ ...prev, [name]: val }));
     };
 
-    const renderMenu = () => (
-        <div className="text-center">
-            <h3 className="text-3xl font-bold text-gray-800 mb-6">Configuration du Picross Pokémon</h3>
-            <div className="max-w-xl mx-auto space-y-6">
-                 <div>
-                    <label className="font-semibold text-lg">Taille de la grille</label>
-                    <div className="flex justify-center gap-4 mt-2">
-                        {[5, 10, 15].map(s => (
-                            <button key={s} onClick={() => setSize(s as PicrossSize)} className={`px-4 py-2 text-lg rounded-lg ${size === s ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}>{s}x{s}</button>
-                        ))}
-                    </div>
-                </div>
-                 <div>
-                    <label className="font-semibold text-lg">Difficulté</label>
-                    <div className="flex justify-center gap-4 mt-2">
-                        {(['easy', 'medium', 'hard'] as PicrossDifficulty[]).map(d => (
-                             <button key={d} onClick={() => setDifficulty(d)} className={`px-4 py-2 text-lg rounded-lg capitalize ${difficulty === d ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}>{d === 'easy' ? 'Facile' : d === 'medium' ? 'Moyen' : 'Difficile'}</button>
-                        ))}
-                    </div>
-                </div>
-                <button onClick={handleStartGame} className="w-full bg-green-500 text-white font-bold py-3 text-xl rounded-lg hover:bg-green-600">Jouer</button>
-            </div>
-            <button onClick={onBack} className="text-blue-600 hover:underline mt-8">&lt; Retour aux jeux</button>
-        </div>
-    );
-    
-    const RulesPanel = () => (
-      <div className="w-64 flex-shrink-0 bg-gray-50 p-4 rounded-lg border self-start">
-        <h4 className="font-bold text-lg mb-2">Comment jouer ?</h4>
-        <ul className="list-disc list-inside space-y-2 text-gray-700">
-          <li>Le but est de noircir les cases pour révéler une image cachée.</li>
-          <li>Les nombres indiquent des séries de cases noires consécutives sur cette ligne ou colonne.</li>
-          <li>Les séries de nombres sont séparées par au moins une case vide.</li>
-          <li><strong>Clic gauche</strong> pour remplir une case.</li>
-          <li><strong>Clic droit</strong> pour marquer d'une croix.</li>
-          <li>Vous pouvez <strong>maintenir le clic</strong> pour interagir avec plusieurs cases à la suite.</li>
-        </ul>
-      </div>
-    );
-
-    const renderGame = () => {
-        const maxColClues = Math.max(1, ...colClues.map(c => c.length));
-        const maxRowClues = Math.max(1, ...rowClues.map(r => r.length));
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
         
-        const cellSize = size === 15 ? 32 : 40; // in pixels
-        const clueFontSize = size === 15 ? 'text-xs' : 'text-sm';
-        const colClueContainerHeight = maxColClues * (size === 15 ? 16 : 20);
-        const rowClueContainerWidth = maxRowClues * (size === 15 ? 10 : 12);
+        if (!formData.classLevel) {
+            setShowErrors(true);
+            return;
+        }
 
-        return (
-            <div className="flex flex-col items-center">
-                 <div className="flex justify-between items-center mb-4 flex-wrap gap-4 w-full">
-                    <button onClick={() => setGameState('menu')} className="text-blue-600 hover:underline">&lt; Nouveau jeu</button>
-                    <div className="text-sm text-center bg-gray-100 px-3 py-1 rounded-lg">
-                        <p><strong>Clic gauche :</strong> Remplir / Vider | <strong>Clic droit :</strong> Marquer X / Effacer</p>
-                    </div>
-                    <div className="text-lg">
-                        <span>Temps: <span className="font-bold">{new Date(timer * 1000).toISOString().substr(14, 5)}</span></span>
-                    </div>
-                </div>
-
-                <div className="flex justify-center items-center gap-4 my-4">
-                    <button onClick={handleValidate} className="px-4 py-2 rounded-lg text-lg font-medium bg-green-500 text-white hover:bg-green-600 transition-colors">Valider ma grille</button>
-                    <button onClick={handleShowSolution} className="px-4 py-2 rounded-lg text-lg font-medium bg-yellow-500 text-white hover:bg-yellow-600 transition-colors">Voir la solution</button>
-                </div>
-                {validationMessage && <p className="text-center text-red-500 font-semibold mb-4 animate-pulse">{validationMessage}</p>}
-                
-                <div className="flex justify-center items-start gap-8 mt-4">
-                    <div
-                        className="grid border-r border-b border-gray-400"
-                        style={{
-                            gridTemplateColumns: `${rowClueContainerWidth}px minmax(0, 1fr)`,
-                            gridTemplateRows: `${colClueContainerHeight}px minmax(0, 1fr)`,
-                        }}
-                        onContextMenu={(e) => e.preventDefault()}
-                        onMouseLeave={() => setHoveredCell(null)}
-                    >
-                        {/* Top-left empty space */}
-                        <div className="border-l border-t border-gray-400" />
-                        
-                        {/* Column clues */}
-                        <div className="flex border-t border-gray-400">
-                            {colClues.map((clue, c) => (
-                                <div key={c} className={`flex flex-col items-center justify-end p-1 border-l border-gray-300 font-bold ${clueFontSize} ${ c > 0 && c % 5 === 4 && c < size-1 ? 'border-r-2 border-gray-400' : ''}`} style={{width: `${cellSize}px`}}>
-                                    {clue.map((item, i) => <div key={i}>{item === 0 ? '' : item}</div>)}
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Row clues */}
-                        <div className="flex flex-col border-l border-gray-400">
-                            {rowClues.map((clue, r) => (
-                                <div key={r} className={`flex items-center justify-end p-1 border-t border-gray-300 font-bold ${clueFontSize} ${ r > 0 && r % 5 === 4 && r < size-1 ? 'border-b-2 border-gray-400' : ''}`} style={{height: `${cellSize}px`}}>
-                                    {clue.map((item, i) => <div key={i} className="ml-1">{item === 0 ? '' : item}</div>)}
-                                </div>
-                            ))}
-                        </div>
-                      
-                        {/* The actual grid */}
-                        <div style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }} className="grid">
-                            {playerBoard.map((row, r) => row.map((cell, c) => {
-                                 const isHovered = hoveredCell && (hoveredCell.row === r || hoveredCell.col === c);
-                                 const borderTop = r > 0 && r % 5 === 0 ? 'border-t-2 border-gray-400' : 'border-t border-gray-300';
-                                 const borderLeft = c > 0 && c % 5 === 0 ? 'border-l-2 border-gray-400' : 'border-l border-gray-300';
-                                 const hoverClass = isHovered ? colorPalette.hover : '';
-                                 const cellBg = cell.state === 'filled' ? colorPalette.filled : colorPalette.empty;
-                                 
-                                 return(
-                                    <div key={`${r}-${c}`}
-                                        onMouseDown={(e) => handleCellInteractionStart(r, c, e)}
-                                        onMouseEnter={() => { handleCellInteractionMove(r, c); setHoveredCell({row: r, col: c}); }}
-                                        className={`flex items-center justify-center cursor-pointer ${borderTop} ${borderLeft} ${hoverClass}`}
-                                        style={{backgroundColor: cellBg, width: `${cellSize}px`, height: `${cellSize}px`}}>
-                                            {cell.state === 'crossed' && <XIcon className="w-full h-full text-gray-400 p-1" />}
-                                    </div>
-                                 )
-                            }))}
-                        </div>
-                    </div>
-
-                    <RulesPanel />
-                </div>
-            </div>
-        );
+        // Initialisation des statuts bus pour l'admin
+        onConfirm({
+            ...formData,
+            studentCount: parseInt(formData.studentCount as any) || 0,
+            adultCount: parseInt(formData.adultCount as any) || 0,
+            busStatus: formData.noBusRequired ? 'validated' : 'pending',
+            busCost: 0
+        });
     };
 
-    const renderWinScreen = () => {
-        return (
-             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={() => setGameState('menu')}>
-                <div className="bg-white p-8 rounded-lg shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-                    <h2 className="text-4xl font-bold text-green-500 mb-2">Bravo !</h2>
-                    <p className="text-xl text-gray-700 mb-4">Vous avez révélé un <strong className="text-indigo-600">{patternName}</strong> !</p>
-                    <div className="inline-grid border-gray-400 border-2 mb-6" style={{gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`}}>
-                        {playerBoard.map((row, r) => row.map((cell, c) => (
-                             <div key={`${r}-${c}`} className="w-8 h-8" style={{backgroundColor: cell.state === 'filled' ? colorPalette.filled : colorPalette.empty}} />
-                        )))}
-                    </div>
-                    <p>Temps: {new Date(timer * 1000).toISOString().substr(14, 5)}</p>
-                    <div className="mt-6 flex justify-center gap-4">
-                        <button onClick={onBack} className="bg-gray-500 text-white px-6 py-3 rounded-lg text-lg hover:bg-gray-600">Retour aux jeux</button>
-                        <button onClick={() => setGameState('menu')} className="bg-blue-500 text-white px-6 py-3 rounded-lg text-lg hover:bg-blue-600">Jouer à nouveau</button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-    
     return (
-        <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-7xl mx-auto">
-            {gameState === 'menu' && renderMenu()}
-            {gameState === 'playing' && renderGame()}
-            {gameState === 'won' && renderGame()}
-            {gameState === 'won' && renderWinScreen()}
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={onCancel}>
+            <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold mb-4 text-gray-800">Réservation pour "{animation.title}"</h2>
+                <p className="mb-6 text-gray-600">Le {date.toLocaleDateString('fr-FR')} à {time}h00</p>
+                <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-x-6 gap-y-4">
+                    <div>
+                        <label htmlFor="teacherName" className="block text-sm font-medium text-gray-700">Nom de l'enseignant</label>
+                        <input id="teacherName" type="text" name="teacherName" placeholder="ex: Jean Dupont" onChange={handleChange} required className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
+                        <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                            <AcademicCapIcon className="w-4 h-4 text-blue-600" />
+                            Niveau de la classe
+                        </label>
+                        <div className={`flex flex-wrap gap-1 p-2 bg-gray-50 rounded-lg border transition-colors ${showErrors && !formData.classLevel ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}>
+                            {(settings.classLevels || ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2']).map(level => (
+                                <label key={level} className={`flex items-center px-2.5 py-1 rounded-full border cursor-pointer transition-all text-xs font-bold ${
+                                    formData.classLevel.split(', ').includes(level)
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                                    : 'bg-white border-gray-300 text-gray-600 hover:border-blue-400'
+                                }`}>
+                                    <input 
+                                        type="checkbox" 
+                                        className="hidden" 
+                                        checked={formData.classLevel.split(', ').includes(level)}
+                                        onChange={() => {
+                                            handleClassLevelToggle(level);
+                                            if (showErrors) setShowErrors(false);
+                                        }}
+                                    />
+                                    {level}
+                                </label>
+                            ))}
+                        </div>
+                        {showErrors && !formData.classLevel && (
+                            <p className="text-red-500 text-[10px] font-bold mt-1 animate-pulse">Veuillez sélectionner au moins un niveau.</p>
+                        )}
+                        <input type="hidden" name="classLevel" value={formData.classLevel} />
+                    </div>
+
+                    <div className="col-span-2 md:col-span-1 relative">
+                        <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                            <MapPinIcon className="w-4 h-4 text-red-500" />
+                            Commune
+                        </label>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                placeholder="Tapez le nom ou le code postal..." 
+                                value={communeSearch || formData.commune}
+                                onChange={(e) => {
+                                    setCommuneSearch(e.target.value);
+                                    setShowCommuneList(true);
+                                    if (formData.commune) {
+                                        setFormData(prev => ({ ...prev, commune: '', schoolName: '' }));
+                                        setSelectedCommuneId(null);
+                                    }
+                                }}
+                                onFocus={() => setShowCommuneList(true)}
+                                className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none pl-10"
+                            />
+                            <SearchIcon className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                        </div>
+                        
+                        {showCommuneList && filteredCommunes.length > 0 && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                                {filteredCommunes.map(c => (
+                                    <button
+                                        key={c.id}
+                                        type="button"
+                                        onClick={() => {
+                                            setFormData(prev => ({ ...prev, commune: `${c.name} (${c.postalCode})` }));
+                                            setCommuneSearch(`${c.name} (${c.postalCode})`);
+                                            setSelectedCommuneId(c.id);
+                                            setShowCommuneList(false);
+                                        }}
+                                        className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors border-b last:border-0 text-sm"
+                                    >
+                                        <span className="font-bold text-gray-800">{c.name}</span>
+                                        <span className="ml-2 text-gray-500 font-mono">({c.postalCode})</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="col-span-2 md:col-span-1">
+                        <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                            <BuildingLibraryIcon className="w-4 h-4 text-indigo-500" />
+                            Nom de l'école
+                        </label>
+                        <select 
+                            name="schoolName" 
+                            value={formData.schoolName}
+                            onChange={(e) => setFormData(prev => ({ ...prev, schoolName: e.target.value }))}
+                            disabled={!selectedCommuneId}
+                            required
+                            className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        >
+                            <option value="">-- Sélectionnez une école --</option>
+                            {filteredSchools.map(s => (
+                                <option key={s.id} value={s.name}>{s.name}</option>
+                            ))}
+                        </select>
+                        {selectedSchool && (
+                            <div className="mt-2 p-2 bg-indigo-50 rounded border border-indigo-100 flex items-start gap-2">
+                                <MapPinIcon className="w-3.5 h-3.5 text-indigo-400 mt-0.5" />
+                                <p className="text-[11px] text-indigo-700 leading-tight">
+                                    <span className="font-bold">Adresse :</span> {selectedSchool.address}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                    <div>
+                        <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700">Numéro de téléphone</label>
+                        <input
+                            id="phoneNumber"
+                            type="tel"
+                            name="phoneNumber"
+                            placeholder="ex: 0612345678"
+                            onChange={handleChange}
+                            required
+                            className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="email" className="block text-sm font-medium text-gray-700">Adresse e-mail</label>
+                        <input id="email" type="email" name="email" placeholder="ex: jean.dupont@academie.fr" onChange={handleChange} required className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+                    </div>
+                    <div>
+                        <label htmlFor="studentCount" className="block text-sm font-medium text-gray-700">Nombre d'élèves</label>
+                        <input 
+                            id="studentCount" 
+                            type="text" 
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            name="studentCount" 
+                            value={formData.studentCount} 
+                            placeholder="ex: 25"
+                            onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                setFormData(prev => ({ ...prev, studentCount: val }));
+                            }} 
+                            required 
+                            className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="adultCount" className="block text-sm font-medium text-gray-700">Nombre d'adultes</label>
+                        <input 
+                            id="adultCount" 
+                            type="text" 
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            name="adultCount" 
+                            value={formData.adultCount} 
+                            placeholder="ex: 2"
+                            onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                setFormData(prev => ({ ...prev, adultCount: val }));
+                            }} 
+                            required 
+                            className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                    </div>
+
+                    {/* Section Bus */}
+                    <div className="col-span-2 mt-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                        <label className="flex items-center gap-3 cursor-pointer mb-4">
+                            <input 
+                                type="checkbox" 
+                                name="noBusRequired" 
+                                checked={formData.noBusRequired} 
+                                onChange={handleChange}
+                                className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-blue-300"
+                            />
+                            <span className="text-sm font-bold text-blue-900">
+                                Nous ne souhaitons pas bénéficier de la prise en charge du bus par le Grand Longwy
+                            </span>
+                        </label>
+
+                        <div className={formData.noBusRequired ? 'opacity-40 grayscale pointer-events-none' : ''}>
+                            <label htmlFor="busInfo" className="block text-sm font-bold text-gray-700 mb-1">
+                                Consignes pour le bus
+                            </label>
+                            <textarea 
+                                id="busInfo" 
+                                name="busInfo" 
+                                value={formData.busInfo}
+                                placeholder="Où et à quelle heure doit passer le bus ? Précisez l'horaire et l'adresse…" 
+                                onChange={handleChange} 
+                                required={!formData.noBusRequired}
+                                className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 h-24"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="col-span-2 flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onCancel} className="px-6 py-2 bg-gray-300 rounded-md font-bold hover:bg-gray-400">Annuler</button>
+                        <button type="submit" className="px-8 py-2 bg-green-600 text-white rounded-md font-bold hover:bg-green-700 shadow-md transform active:scale-95 transition-all">Confirmer la réservation</button>
+                    </div>
+                </form>
+            </div>
         </div>
     );
 };
 
-export default PicrossGame;
+export default BookingForm;

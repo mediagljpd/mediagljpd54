@@ -1,211 +1,200 @@
 
-import React, { useState, useEffect } from 'react';
-import { AppSettings } from '../types';
-import { emailService } from '../services/emailService';
+import React, { useState, useRef, useEffect, useContext } from 'react';
+import ManageAnimations from './admin/ManageAnimations';
+import ManageCalendar from './admin/ManageCalendar';
+import ViewBookings from './admin/ViewBookings';
+import ManageSettings from './admin/ManageSettings';
+import { AdminView } from './admin/types';
+import { PaintBrushIcon, CalendarIcon, ListIcon, CogIcon, CheckIcon, XIcon, ShieldCheckIcon, DownloadIcon } from './Icons';
+import { db, auth } from '../services/firebase';
+import { signOut } from 'firebase/auth';
+import { AppContext } from '../AppContext';
 
-interface AdminLoginProps {
-  settings: AppSettings;
-  onLoginSuccess: () => void;
-  onBackToHome: () => void;
-}
+// Main Admin Panel Component
+const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
+    const [activeView, setActiveView] = useState<AdminView>('animations');
+    const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+    const [dbStatus, setDbStatus] = useState<'connected' | 'error'>('connected');
+    const [showBackupAlert, setShowBackupAlert] = useState(false);
+    const { settings, currentUser } = useContext(AppContext);
+    const notificationTimer = useRef<number | null>(null);
 
-const DEFAULT_LOGIN_BG = 'https://i.postimg.cc/FHNkzYMb/e51d34d7fa0879fe125ad25fe3c29954.jpg';
+    const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+        if (notificationTimer.current) {
+            clearTimeout(notificationTimer.current);
+        }
+        setNotification({ message, type });
+        notificationTimer.current = window.setTimeout(() => {
+            setNotification(null);
+            notificationTimer.current = null;
+        }, 3000);
+    };
+    
+    useEffect(() => {
+        // Vérification simple de la connectivité DB
+        if (!db) {
+            setDbStatus('error');
+        }
 
-const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBackToHome }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [showRecovery, setShowRecovery] = useState(false);
-  const [recoverySent, setRecoverySent] = useState(false);
-  const [isRecovering, setIsRecovering] = useState(false);
+        // Vérification de la date du dernier export (pour les admins)
+        if (currentUser?.role === 'admin') {
+            const lastExport = settings.lastExportDate;
+            const oneMonthAgo = new Date();
+            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
-  useEffect(() => {
-    emailService.init();
-  }, []);
+            if (!lastExport || new Date(lastExport) < oneMonthAgo) {
+                const dismissed = sessionStorage.getItem('backup_alert_dismissed');
+                if (!dismissed) {
+                    setShowBackupAlert(true);
+                }
+            }
+        }
 
-  const isSetupRequired = !settings.adminUsername || !settings.adminPassword;
-  const loginIllustration = settings.adminLoginBgUrl || DEFAULT_LOGIN_BG;
+        return () => {
+            if (notificationTimer.current) {
+                clearTimeout(notificationTimer.current);
+            }
+        };
+    }, [currentUser, settings.lastExportDate]);
 
-  /**
-   * Masque partiellement une adresse e-mail (ex: te****er@academie.fr)
-   */
-  const maskEmail = (email: string) => {
-    if (!email || !email.includes('@')) return email;
-    const [local, domain] = email.split('@');
-    if (local.length <= 3) return `***@${domain}`;
-    return `${local.substring(0, 2)}****${local.substring(local.length - 1)}@${domain}`;
-  };
+    const renderView = () => {
+        const props = { showNotification };
+        switch (activeView) {
+            case 'animations': return <ManageAnimations {...props} />;
+            case 'calendar': return <ManageCalendar {...props} />;
+            case 'bookings': return <ViewBookings {...props} />;
+            case 'settings': return <ManageSettings {...props} />;
+            default: return <ManageAnimations {...props} />;
+        }
+    };
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSetupRequired) {
-      onLoginSuccess();
-      return;
-    }
+    const NavLink: React.FC<{ view: AdminView; label: string; icon: React.ReactNode }> = ({ view, label, icon }) => (
+        <button
+            onClick={() => setActiveView(view)}
+            className={`flex items-center px-4 py-2 rounded-lg text-base font-medium transition-colors duration-200 ${
+                activeView === view
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+            }`}
+        >
+            <span className="mr-3">{icon}</span>
+            {label}
+        </button>
+    );
 
-    if (username === settings.adminUsername && password === settings.adminPassword) {
-      setError('');
-      onLoginSuccess();
-    } else {
-      setError('Identifiant ou mot de passe incorrect.');
-    }
-  };
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            onLogout();
+        } catch (err) {
+            console.error("Logout error:", err);
+            onLogout();
+        }
+    };
 
-  const handleRecover = async () => {
-    if (!settings.adminEmail) {
-        alert("Aucun e-mail de secours n'est configuré dans les paramètres.");
-        return;
-    }
-
-    setIsRecovering(true);
-    try {
-        await emailService.sendRecoveryEmail(
-            settings.adminEmail, 
-            settings.adminUsername || 'Administrateur',
-            settings.adminPassword || ''
-        );
-        setRecoverySent(true);
-        setTimeout(() => {
-            setShowRecovery(false);
-            setRecoverySent(false);
-        }, 8000);
-    } catch (e) {
-        alert("Une erreur est survenue lors de l'envoi de l'e-mail. Vérifiez la configuration EmailJS.");
-    } finally {
-        setIsRecovering(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4 py-12">
-        <div className="w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden md:flex relative">
-            
-            <div 
-                className="hidden md:block md:w-1/2 bg-cover bg-center" 
-                style={{ backgroundImage: `url('${loginIllustration}')` }}
-                aria-label="Illustration d'un atelier créatif"
-            >
-            </div>
-            
-            <div className="w-full md:w-1/2 p-8 sm:p-12 flex flex-col justify-center">
-                <div>
-                    <div className="md:hidden text-center mb-6">
-                        <img 
-                            src={loginIllustration}
-                            alt="Illustration d'un atelier créatif" 
-                            className="w-40 h-40 object-cover rounded-full mx-auto shadow-md" 
-                        />
-                    </div>
-
-                    <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Accès administrateur</h2>
-                
-                    {isSetupRequired ? (
-                      <div className='text-center'>
-                            <p className="text-gray-600 mb-4">Aucun identifiant n'est configuré.</p>
-                            <button
-                              onClick={onLoginSuccess}
-                              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-transform transform hover:scale-105"
-                          >
-                              Configurer et accéder au panneau
-                          </button>
-                      </div>
-                    ) : (
-                      <form onSubmit={handleLogin} className="space-y-6">
-                        <div>
-                            <label htmlFor="username" className="text-sm font-medium text-gray-700">Identifiant</label>
-                            <input
-                              id="username"
-                              type="text"
-                              value={username}
-                              onChange={(e) => setUsername(e.target.value)}
-                              required
-                              className="mt-1 w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                              placeholder="Votre identifiant"
-                            />
+    return (
+        <div className="h-screen bg-gray-100 flex flex-col">
+            <header className="bg-white shadow-sm z-30 px-6 py-4 flex-shrink-0">
+                <div className="max-w-screen-xl mx-auto">
+                    <div className="relative flex justify-center items-center">
+                        <div className="absolute left-0 flex items-center gap-2">
+                             <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                 dbStatus === 'connected' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                             }`}>
+                                 {dbStatus === 'connected' ? (
+                                     <><CheckIcon className="w-3 h-3" /> Connecté</>
+                                 ) : (
+                                     <><XIcon className="w-3 h-3" /> Erreur Base</>
+                                 )}
+                             </div>
                         </div>
-                        <div>
-                            <div className="flex justify-between items-center mb-1">
-                                <label htmlFor="password" className="text-sm font-medium text-gray-700">Mot de passe</label>
-                                <button 
-                                    type="button" 
-                                    onClick={() => setShowRecovery(true)}
-                                    className="text-xs text-indigo-600 hover:underline"
-                                >
-                                    Identifiants oubliés ?
-                                </button>
-                            </div>
-                            <input
-                              id="password"
-                              type="password"
-                              value={password}
-                              onChange={(e) => setPassword(e.target.value)}
-                              required
-                              className="w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                              placeholder="••••••••"
-                            />
-                        </div>
-                        {error && <p className="text-red-500 text-sm text-center font-medium">{error}</p>}
-                        <div>
-                            <button
-                              type="submit"
-                              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-transform transform hover:scale-105"
-                            >
-                              Se connecter
+                        
+                        <h1 className="text-2xl font-bold text-blue-600 whitespace-nowrap">Administration</h1>
+                        
+                        <div className="absolute right-0 flex items-center gap-4">
+                            <span className="hidden md:block text-xs text-gray-500 font-medium">Année : {settings.activeYear}</span>
+                            <button onClick={handleLogout} className="bg-red-500 text-white px-5 py-2 rounded-lg text-base font-medium hover:bg-red-600 transition-colors">
+                                Déconnexion
                             </button>
                         </div>
-                      </form>
-                    )}
-
-                    <div className="mt-8 text-center">
-                      <button onClick={onBackToHome} className="text-sm text-indigo-600 hover:text-indigo-500 hover:underline">
-                          ← Retour à l'accueil
-                      </button>
                     </div>
-                </div>
-            </div>
 
-            {showRecovery && (
-                <div className="absolute inset-0 bg-white bg-opacity-95 flex flex-col items-center justify-center p-8 text-center z-10 animate-fade-in">
-                    {recoverySent ? (
-                        <div className="space-y-4 animate-in zoom-in duration-300">
-                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-8 h-8">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                                </svg>
-                            </div>
-                            <h3 className="text-xl font-bold text-gray-800">Identifiants envoyés</h3>
-                            <p className="text-gray-600 text-sm">Vos identifiants actuels ont été envoyés à l'adresse e-mail de secours :</p>
-                            <p className="font-mono text-sm bg-gray-100 p-2 rounded border border-gray-200">
-                                {maskEmail(settings.adminEmail || 'Non configurée')}
-                            </p>
-                            <p className="text-[10px] text-gray-400 pt-4 italic">Pensez à vérifier vos courriers indésirables (spam).</p>
-                        </div>
-                    ) : (
-                        <div className="max-w-xs space-y-6">
-                            <h3 className="text-2xl font-bold text-gray-800">Récupération</h3>
-                            <p className="text-gray-600 text-sm">Souhaitez-vous recevoir vos identifiants par e-mail ?</p>
-                            <div className="space-y-3">
-                                <button 
-                                    onClick={handleRecover}
-                                    disabled={isRecovering}
-                                    className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors disabled:bg-indigo-300 shadow-md"
-                                >
-                                    {isRecovering ? 'Envoi en cours...' : "Oui, envoyer mes accès"}
-                                </button>
-                                <button 
-                                    onClick={() => setShowRecovery(false)}
-                                    className="w-full text-gray-500 py-2 hover:underline text-sm"
-                                >
-                                    Annuler
-                                </button>
-                            </div>
+                    {dbStatus === 'error' && (
+                        <div className="mt-4 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs text-center">
+                            Attention : La base de données est inaccessible. Vérifiez vos <strong>Règles de sécurité Firestore</strong> dans la console Google Firebase.
                         </div>
                     )}
+
+                    <nav className="flex items-center justify-center flex-wrap gap-3 mt-4">
+                       <NavLink view="animations" label="Animations" icon={<PaintBrushIcon className="w-6 h-6" />} />
+                       <NavLink view="calendar" label="Calendrier" icon={<CalendarIcon className="w-6 h-6" />} />
+                       <NavLink view="bookings" label="Réservations" icon={<ListIcon className="w-6 h-6" />} />
+                       {(currentUser?.role === 'admin' || currentUser?.permissions.canModifySettings) && (
+                           <NavLink view="settings" label="Paramètres" icon={<CogIcon className="w-6 h-6" />} />
+                       )}
+                    </nav>
+                </div>
+            </header>
+            
+            <main className="flex-grow p-4 sm:p-6 lg:p-8 overflow-y-auto">
+                <div className="max-w-screen-xl mx-auto">
+                    {renderView()}
+                </div>
+            </main>
+            
+            {notification && (
+                <div className={`fixed bottom-8 right-8 px-6 py-3 rounded-lg shadow-xl z-50 animate-bounce text-white ${
+                    notification.type === 'error' ? 'bg-red-600' : 'bg-green-600'
+                }`}>
+                    {notification.type === 'success' ? '✓' : '✕'} {notification.message}
+                </div>
+            )}
+
+            {/* Backup Reminder Modal */}
+            {showBackupAlert && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-300">
+                        <div className="bg-amber-500 p-6 flex flex-col items-center text-white">
+                            <div className="bg-white/20 p-4 rounded-full mb-4">
+                                <ShieldCheckIcon className="w-12 h-12" />
+                            </div>
+                            <h2 className="text-xl font-black uppercase tracking-tight">Sécurité des données</h2>
+                        </div>
+                        <div className="p-8 text-center">
+                            <h3 className="text-lg font-bold text-gray-800 mb-2">Sauvegarde recommandée</h3>
+                            <p className="text-gray-600 mb-6 leading-relaxed">
+                                Votre dernier export de données date de plus d'un mois (ou n'a jamais été effectué). 
+                                Pour éviter toute perte accidentelle, il est conseillé de réaliser un export régulier.
+                            </p>
+                            
+                            <div className="flex flex-col gap-3">
+                                <button
+                                    onClick={() => {
+                                        setActiveView('settings');
+                                        setShowBackupAlert(false);
+                                        sessionStorage.setItem('backup_alert_dismissed', 'true');
+                                    }}
+                                    className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2"
+                                >
+                                    <CogIcon className="w-5 h-5" />
+                                    Aller aux paramètres
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowBackupAlert(false);
+                                        sessionStorage.setItem('backup_alert_dismissed', 'true');
+                                    }}
+                                    className="w-full py-3 text-gray-500 text-sm font-medium hover:bg-gray-50 rounded-xl transition-all"
+                                >
+                                    Plus tard
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
-    </div>
-  );
+    );
 };
 
-export default AdminLogin;
+export default AdminPanel;

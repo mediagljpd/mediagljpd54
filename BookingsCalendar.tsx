@@ -1,131 +1,179 @@
 
-import React, { useState, useRef, useEffect, useContext } from 'react';
-import ManageAnimations from './admin/ManageAnimations';
-import ManageCalendar from './admin/ManageCalendar';
-import ViewBookings from './admin/ViewBookings';
-import ManageJournal from './admin/ManageJournal';
-import ManageSettings from './admin/ManageSettings';
-import RecrePanel from './admin/RecrePanel';
-import { AdminView } from './admin/types';
-import { PaintBrushIcon, CalendarIcon, ListIcon, SparklesIcon, JournalIcon, CogIcon, CheckIcon, XIcon } from './Icons';
-import { db } from '../services/firebase';
-import { AppContext } from '../App';
+import React, { useState, useContext, useEffect } from 'react';
+import { AppContext } from '../AppContext';
+import { Animation, View, Booking, CustomLegalPage } from '../types';
+import AdminLogin from './AdminLogin';
+import AppFooter from './shared/AppFooter';
+import AnimationSelection from './booking/AnimationSelection';
+import BookingCalendar from './booking/BookingCalendar';
+import BookingForm from './booking/BookingForm';
+import BookingConfirmation from './booking/BookingConfirmation';
+import { formatPhoneNumber } from '../utils/formatters';
+import { emailService } from '../services/emailService';
 
-// Main Admin Panel Component
-const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
-    const [activeView, setActiveView] = useState<AdminView>('animations');
-    const [notification, setNotification] = useState<string | null>(null);
-    const [dbStatus, setDbStatus] = useState<'connected' | 'error'>('connected');
-    const { settings } = useContext(AppContext);
-    const notificationTimer = useRef<number | null>(null);
+import LegalPage from './shared/LegalPage';
+import CookieBanner from './shared/CookieBanner';
 
-    const showNotification = (message: string) => {
-        if (notificationTimer.current) {
-            clearTimeout(notificationTimer.current);
-        }
-        setNotification(message);
-        notificationTimer.current = window.setTimeout(() => {
-            setNotification(null);
-            notificationTimer.current = null;
-        }, 3000);
+interface BookingSystemProps {
+  view: View;
+  selectedAnimation: Animation | null;
+  onSelectAnimation: (animation: Animation) => void;
+  onBackToHome: () => void;
+  onNavigate: (view: View) => void;
+  onNavigateToAdmin: () => void;
+  onAdminLogin: () => void;
+  selectedInfoPage: CustomLegalPage | null;
+  onSelectInfoPage: (page: CustomLegalPage) => void;
+}
+
+const BookingSystem: React.FC<BookingSystemProps> = ({ 
+  view, 
+  selectedAnimation, 
+  onSelectAnimation, 
+  onBackToHome, 
+  onNavigate,
+  onNavigateToAdmin, 
+  onAdminLogin,
+  selectedInfoPage,
+  onSelectInfoPage,
+}) => {
+  const { saveBooking, settings } = useContext(AppContext);
+  const [bookingDetails, setBookingDetails] = useState<{ date: Date, time: number } | null>(null);
+  const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
+
+  useEffect(() => {
+    emailService.init();
+  }, []);
+
+  const handleBookSlot = (date: Date, time: number) => {
+    setBookingDetails({ date, time });
+  };
+
+  const handleConfirmBooking = async (formData: Omit<Booking, 'id' | 'animationTitle'>) => {
+    if (!selectedAnimation) return;
+
+    const formattedFormData = {
+        ...formData,
+        phoneNumber: formatPhoneNumber(formData.phoneNumber),
+    };
+
+    const newBooking: Booking = {
+        ...formattedFormData,
+        id: Date.now().toString(),
+        animationTitle: selectedAnimation.title,
     };
     
-    useEffect(() => {
-        // Vérification simple de la connectivité DB
-        if (!db) {
-            setDbStatus('error');
-        }
-        return () => {
-            if (notificationTimer.current) {
-                clearTimeout(notificationTimer.current);
+    try {
+        await saveBooking(newBooking);
+        
+        // Envoi des e-mails en arrière-plan
+        emailService.sendBookingConfirmation(newBooking);
+        
+        if (selectedAnimation.animator) {
+            const animator = settings.animators.find(a => a.name === selectedAnimation.animator);
+            if (animator && animator.email) {
+                emailService.sendAnimatorNotification(newBooking, animator);
             }
-        };
-    }, []);
-
-    const renderView = () => {
-        const props = { showNotification };
-        switch (activeView) {
-            case 'animations': return <ManageAnimations {...props} />;
-            case 'calendar': return <ManageCalendar {...props} />;
-            case 'bookings': return <ViewBookings {...props} />;
-            case 'recre': return <RecrePanel {...props} />;
-            case 'journal': return <ManageJournal {...props} />;
-            case 'settings': return <ManageSettings {...props} />;
-            default: return <ManageAnimations {...props} />;
         }
-    };
 
-    const NavLink: React.FC<{ view: AdminView; label: string; icon: React.ReactNode }> = ({ view, label, icon }) => (
-        <button
-            onClick={() => setActiveView(view)}
-            className={`flex items-center px-4 py-2 rounded-lg text-base font-medium transition-colors duration-200 ${
-                activeView === view
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
-            }`}
-        >
-            <span className="mr-3">{icon}</span>
-            {label}
-        </button>
-    );
+        setBookingDetails(null);
+        setConfirmedBooking(newBooking);
+    } catch (error) {
+        alert("Une erreur est survenue lors de la réservation. Veuillez réessayer.");
+    }
+  };
+  
+  const handleCloseConfirmation = () => {
+    setConfirmedBooking(null);
+    onBackToHome();
+  };
+
+  const renderContent = () => {
+    if (view === View.ADMIN_LOGIN) {
+      return <AdminLogin settings={settings} onLoginSuccess={onAdminLogin} onBackToHome={onBackToHome} />;
+    }
+
+    if (view === View.LEGAL_NOTICE) {
+      return <LegalPage title="Mentions Légales" content={settings.legalNotice || ''} onBack={onBackToHome} />;
+    }
+
+    if (view === View.PRIVACY_POLICY) {
+      return <LegalPage title="Politique de Confidentialité" content={settings.privacyPolicy || ''} onBack={onBackToHome} />;
+    }
+
+    if (view === View.COOKIES_POLICY) {
+      return <LegalPage title="Gestion des Cookies" content={settings.cookiesPolicy || ''} onBack={onBackToHome} />;
+    }
+
+    if (view === View.INFO_PAGE && selectedInfoPage) {
+      return <LegalPage title={selectedInfoPage.title} content={selectedInfoPage.content} onBack={onBackToHome} />;
+    }
+
+    if (view === View.CALENDAR && selectedAnimation) {
+      const fontColor = selectedAnimation.fontColor || '#ffffff';
+      const borderColor = fontColor.startsWith('#') && fontColor.length === 7 ? `${fontColor}33` : fontColor;
+
+      return (
+        <div className="p-4 sm:p-8 bg-gray-50 min-h-screen flex flex-col">
+          <div className="flex-grow">
+              <header className="max-w-7xl mx-auto mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                  <button onClick={onBackToHome} className="text-blue-600 hover:underline mb-6 inline-block font-medium">← Retour à la liste</button>
+                  <div 
+                      className="p-6 rounded-lg w-full border flex flex-col md:flex-row gap-6 md:items-center"
+                      style={{ 
+                          backgroundColor: selectedAnimation.color, 
+                          color: fontColor,
+                          borderColor: borderColor
+                      }}
+                  >
+                      <div className="md:w-1/2 md:border-r md:pr-10" style={{ borderColor: borderColor }}>
+                          <h1 className="text-3xl font-bold leading-tight">{selectedAnimation.title}</h1>
+                          <p className="opacity-90 mt-2 text-lg font-semibold">{selectedAnimation.classLevel}</p>
+                      </div>
+                      
+                      {selectedAnimation.description && (
+                          <div className="md:w-1/2 md:pl-4">
+                              <p className="text-lg md:text-xl leading-relaxed opacity-95 italic font-medium">
+                                  {selectedAnimation.description}
+                              </p>
+                          </div>
+                      )}
+                  </div>
+                  <p className="text-gray-600 mt-6 italic font-medium">Sélectionnez une date et un créneau horaire disponibles ci-dessous :</p>
+              </header>
+              <BookingCalendar animation={selectedAnimation} onBookSlot={handleBookSlot} />
+              {bookingDetails && <BookingForm animation={selectedAnimation} date={bookingDetails.date} time={bookingDetails.time} onConfirm={handleConfirmBooking} onCancel={() => setBookingDetails(null)} />}
+              {confirmedBooking && <BookingConfirmation booking={confirmedBooking} onOk={handleCloseConfirmation} />}
+          </div>
+          <AppFooter onNavigate={onNavigate} />
+        </div>
+      );
+    }
 
     return (
-        <div className="h-screen bg-gray-100 flex flex-col">
-            <header className="bg-white shadow-sm z-30 px-6 py-4 flex-shrink-0">
-                <div className="max-w-screen-xl mx-auto">
-                    <div className="relative flex justify-center items-center">
-                        <div className="absolute left-0 flex items-center gap-2">
-                             <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                 dbStatus === 'connected' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                             }`}>
-                                 {dbStatus === 'connected' ? (
-                                     <><CheckIcon className="w-3 h-3" /> Connecté</>
-                                 ) : (
-                                     <><XIcon className="w-3 h-3" /> Erreur Base</>
-                                 )}
-                             </div>
-                        </div>
-                        
-                        <h1 className="text-2xl font-bold text-blue-600 whitespace-nowrap">Administration</h1>
-                        
-                        <div className="absolute right-0 flex items-center gap-4">
-                            <span className="hidden md:block text-xs text-gray-500 font-medium">Année : {settings.activeYear}</span>
-                            <button onClick={onLogout} className="bg-red-500 text-white px-5 py-2 rounded-lg text-base font-medium hover:bg-red-600 transition-colors">
-                                Déconnexion
-                            </button>
-                        </div>
-                    </div>
-
-                    {dbStatus === 'error' && (
-                        <div className="mt-4 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs text-center">
-                            Attention : La base de données est inaccessible. Vérifiez vos <strong>Règles de sécurité Firestore</strong> dans la console Google Firebase.
-                        </div>
-                    )}
-
-                    <nav className="flex items-center justify-center flex-wrap gap-3 mt-4">
-                       <NavLink view="animations" label="Animations" icon={<PaintBrushIcon className="w-6 h-6" />} />
-                       <NavLink view="calendar" label="Calendrier" icon={<CalendarIcon className="w-6 h-6" />} />
-                       <NavLink view="bookings" label="Réservations" icon={<ListIcon className="w-6 h-6" />} />
-                       <NavLink view="recre" label="Récré !" icon={<SparklesIcon className="w-6 h-6" />} />
-                       <NavLink view="journal" label="Journal" icon={<JournalIcon className="w-6 h-6" />} />
-                       <NavLink view="settings" label="Paramètres" icon={<CogIcon className="w-6 h-6" />} />
-                    </nav>
-                </div>
-            </header>
-            
-            <main className="flex-grow p-4 sm:p-6 lg:p-8 overflow-y-auto">
-                <div className="max-w-screen-xl mx-auto">
-                    {renderView()}
-                </div>
-            </main>
-            
-            {notification && (
-                <div className="fixed bottom-8 right-8 bg-green-600 text-white px-6 py-3 rounded-lg shadow-xl z-50 animate-bounce">
-                    ✓ {notification}
-                </div>
-            )}
-        </div>
+       <div style={{ backgroundColor: settings.homepageBgColor }} className="min-h-screen flex flex-col">
+          <AnimationSelection 
+            onSelectAnimation={onSelectAnimation} 
+            onNavigateToAdmin={onNavigateToAdmin}
+            onNavigateToInfoPage={(id) => {
+              const page = (settings.infoPages || []).find(p => p.id === id);
+              if (page) {
+                  onSelectInfoPage(page);
+                  onNavigate(View.INFO_PAGE);
+              }
+            }}
+          />
+          <AppFooter onNavigate={onNavigate} />
+      </div>
     );
+  };
+
+  return (
+    <>
+      {renderContent()}
+      {view !== View.ADMIN_LOGIN && <CookieBanner onNavigate={onNavigate} />}
+    </>
+  );
 };
 
-export default AdminPanel;
+export default BookingSystem;

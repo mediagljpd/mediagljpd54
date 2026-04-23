@@ -1,523 +1,400 @@
-import React, { useState, useCallback, useEffect } from 'react';
 
-const BOARD_SIZE = 10;
-type Player = 1 | 2;
-type Piece = { player: Player; isKing: boolean };
-type Board = (Piece | null)[][];
-type Move = {
-    to: { row: number; col: number };
-    captures?: { row: number; col: number };
-};
-type Difficulty = 'easy' | 'medium' | 'hard';
-type PieceSet = { p1: string; name1: string; p2: string; name2: string };
+import React, { useState, useMemo, useContext, useEffect } from 'react';
+import { AppContext } from '../../AppContext';
+import { Animation, Booking } from '../../types';
+import { toYYYYMMDD } from '../../utils/date';
+import { formatPhoneNumber } from '../../utils/formatters';
 
-const pieceOptions: PieceSet[] = [
-    { p1: '🐼', name1: 'Pandas', p2: '🦊', name2: 'Renards' },
-    { p1: '🐰', name1: 'Lapins', p2: '🐻', name2: 'Ours' },
-    { p1: '🐶', name1: 'Chiens', p2: '🐱', name2: 'Chats' },
-];
+const FAKE_LAST_NAMES = ['Lefebvre', 'Martin', 'Bernard', 'Dubois', 'Thomas', 'Robert', 'Richard', 'Petit', 'Durand', 'Leroy'];
+const FAKE_FIRST_NAMES = ['Alice', 'Benjamin', 'Chloé', 'David', 'Eva', 'François', 'Gabrielle', 'Hugo', 'Inès', 'Jules'];
 
-interface CheckersGameProps {
-    onBack: () => void;
-}
-
-const CheckersGame: React.FC<CheckersGameProps> = ({ onBack }) => {
-    const [gameState, setGameState] = useState<'menu' | 'playing' | 'gameOver'>('menu');
-    const [difficulty, setDifficulty] = useState<Difficulty>('medium');
-    const [pieceSet, setPieceSet] = useState<PieceSet>(pieceOptions[0]);
-    const [board, setBoard] = useState<Board>([]);
-    const [currentPlayer, setCurrentPlayer] = useState<Player>(1);
-    const [selectedPiece, setSelectedPiece] = useState<{ row: number; col: number } | null>(null);
-    const [validMoves, setValidMoves] = useState<Move[]>([]);
-    const [winner, setWinner] = useState<Player | 'draw' | null>(null);
-    const [turnMessage, setTurnMessage] = useState('');
-    const [isAiThinking, setIsAiThinking] = useState(false);
-    const [lastMove, setLastMove] = useState<{ from: {row: number, col: number}, to: {row: number, col: number} } | null>(null);
-
-    const initializeBoard = (): Board => {
-        const newBoard = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
-        for (let row = 0; row < 4; row++) {
-            for (let col = 0; col < BOARD_SIZE; col++) {
-                if ((row + col) % 2 !== 0) {
-                    newBoard[row][col] = { player: 2, isKing: false };
-                }
-            }
-        }
-        for (let row = BOARD_SIZE - 4; row < BOARD_SIZE; row++) {
-            for (let col = 0; col < BOARD_SIZE; col++) {
-                if ((row + col) % 2 !== 0) {
-                    newBoard[row][col] = { player: 1, isKing: false };
-                }
-            }
-        }
-        return newBoard;
-    };
-
-    const findValidMoves = useCallback((row: number, col: number, currentBoard: Board, player: Player, forceCaptures: boolean): Move[] => {
-        const piece = currentBoard[row]?.[col];
-        if (!piece || piece.player !== player) return [];
-
-        const moves: Move[] = [];
-        const directions = piece.isKing
-            ? [[-1, -1], [-1, 1], [1, -1], [1, 1]]
-            : player === 1
-                ? [[-1, -1], [-1, 1]]
-                : [[1, -1], [1, 1]];
-
-        for (const [dr, dc] of directions) {
-            let r = row + dr;
-            let c = col + dc;
-
-            // Simple move for kings
-            if (piece.isKing) {
-                while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
-                    if (currentBoard[r][c] === null) {
-                        if (!forceCaptures) moves.push({ to: { row: r, col: c } });
-                    } else {
-                        // Potential capture
-                        if (currentBoard[r][c]?.player !== player) {
-                            const jumpR = r + dr;
-                            const jumpC = c + dc;
-                            if (jumpR >= 0 && jumpR < BOARD_SIZE && jumpC >= 0 && jumpC < BOARD_SIZE && currentBoard[jumpR][jumpC] === null) {
-                                // Found a capture, stop looking for simple moves for this king
-                                moves.push({ to: { row: jumpR, col: c + dc }, captures: { row: r, col: c } });
-                            }
-                        }
-                        break; // Stop after finding any piece
-                    }
-                    r += dr;
-                    c += dc;
-                }
-            } else { // Pawn moves
-                // Simple move
-                if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && currentBoard[r][c] === null) {
-                    if (!forceCaptures) moves.push({ to: { row: r, col: c } });
-                }
-                // Capture move
-                else if (currentBoard[r]?.[c]?.player !== player) {
-                    const jumpR = r + dr;
-                    const jumpC = c + dc;
-                    if (jumpR >= 0 && jumpR < BOARD_SIZE && jumpC >= 0 && jumpC < BOARD_SIZE && currentBoard[jumpR][jumpC] === null) {
-                        moves.push({ to: { row: jumpR, col: jumpC }, captures: { row: r, col: c } });
-                    }
-                }
-            }
-        }
-        return moves;
-    }, []);
-
-    const getAllPlayerMoves = useCallback((player: Player, currentBoard: Board, pieceToMove: {row: number, col: number} | null = null): { piece: { row: number, col: number }, moves: Move[] }[] => {
-        const allMoves: { piece: { row: number, col: number }, moves: Move[] }[] = [];
+const RandomBookingGenerator: React.FC<{
+    onClose: () => void;
+    onGenerate: (bookings: Booking[]) => void;
+}> = ({ onClose, onGenerate }) => {
+    const { animations, bookings, settings } = useContext(AppContext);
+    
+    const generateFakeBookingData = (animation: Animation, date: Date, time: number): Omit<Booking, 'id'> => {
+        const teacherFirstName = FAKE_FIRST_NAMES[Math.floor(Math.random() * FAKE_FIRST_NAMES.length)];
+        const teacherLastName = FAKE_LAST_NAMES[Math.floor(Math.random() * FAKE_LAST_NAMES.length)];
+        const teacherName = `${teacherFirstName} ${teacherLastName}`;
         
-        if (pieceToMove) {
-            const moves = findValidMoves(pieceToMove.row, pieceToMove.col, currentBoard, player, true).filter(m => m.captures);
-            if(moves.length > 0) {
-                 allMoves.push({ piece: pieceToMove, moves });
-            }
-            return allMoves;
-        }
+        // Remove accents and special characters for the pseudo-email
+        const cleanForEmail = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        
+        // Use real settings if available, fallback to fakes if not
+        const levels = (settings.classLevels && settings.classLevels.length > 0) ? settings.classLevels : ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
+        const communes = (settings.communes && settings.communes.length > 0) ? settings.communes.map(c => c.name) : ['Lille', 'Roubaix', 'Tourcoing'];
+        const schools = (settings.schools && settings.schools.length > 0) ? settings.schools.map(s => s.name) : ['École Pasteur', 'École Victor Hugo'];
 
-        for (let r = 0; r < BOARD_SIZE; r++) {
-            for (let c = 0; c < BOARD_SIZE; c++) {
-                if (currentBoard[r][c]?.player === player) {
-                    const moves = findValidMoves(r, c, currentBoard, player, false);
-                    if (moves.length > 0) {
-                        allMoves.push({ piece: { row: r, col: c }, moves });
-                    }
-                }
-            }
-        }
-        return allMoves;
-    }, [findValidMoves]);
+        const classLevel = levels[Math.floor(Math.random() * levels.length)];
+        const commune = communes[Math.floor(Math.random() * communes.length)];
+        const schoolName = schools[Math.floor(Math.random() * schools.length)];
+        
+        return {
+            animationId: animation.id,
+            animationTitle: animation.title,
+            date: toYYYYMMDD(date),
+            time,
+            teacherName,
+            classLevel,
+            commune,
+            schoolName,
+            phoneNumber: `06${String(Math.floor(Math.random() * 100000000)).padStart(8, '0')}`,
+            email: `${cleanForEmail(teacherFirstName)}.${cleanForEmail(teacherLastName)}@ecole-fictive.fr`,
+            studentCount: Math.floor(Math.random() * 11) + 20, // 20-30
+            adultCount: Math.floor(Math.random() * 3) + 2, // 2-4
+            busInfo: `Le bus doit récupérer la classe à l'école primaire de ${teacherLastName}ville à 8h30.`,
+        };
+    };
 
-    const handleSquareClick = useCallback((row: number, col: number) => {
-        if (winner || isAiThinking) return;
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generateAllYear, setGenerateAllYear] = useState(true);
+    const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set());
+    const [bookingCount, setBookingCount] = useState(15);
+    const [error, setError] = useState<string | null>(null);
+
+    const schoolYearMonths = useMemo(() => {
+        const years = settings.activeYear.split('-').map(Number);
+        const startYear = years.length === 2 && !isNaN(years[0]) ? years[0] : new Date().getFullYear();
+        const endYear = years.length === 2 && !isNaN(years[1]) ? years[1] : startYear + 1;
+        
+        const allMonths = [
+            { month: 9, year: startYear, name: 'Octobre' },
+            { month: 10, year: startYear, name: 'Novembre' },
+            { month: 11, year: startYear, name: 'Décembre' },
+            { month: 0, year: endYear, name: 'Janvier' },
+            { month: 1, year: endYear, name: 'Février' },
+            { month: 2, year: endYear, name: 'Mars' },
+            { month: 3, year: endYear, name: 'Avril' },
+            { month: 4, year: endYear, name: 'Mai' },
+            { month: 5, year: endYear, name: 'Juin' },
+        ];
+
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+
+        return allMonths.filter(m => {
+            if (m.year > currentYear) return true;
+            if (m.year < currentYear) return false;
+            return m.month >= currentMonth;
+        });
+    }, [settings.activeYear]);
+
+    const availabilityStats = useMemo(() => {
+        const stats: {
+            total: number;
+            byMonth: Record<string, number>;
+            slots: { animation: Animation; date: Date; time: number }[];
+        } = {
+            total: 0,
+            byMonth: {},
+            slots: [],
+        };
     
-        // A piece is already selected
-        if (selectedPiece) {
-            // Case 1: Clicked on the selected piece again -> DESELECT
-            if (selectedPiece.row === row && selectedPiece.col === col) {
-                setSelectedPiece(null);
-                setValidMoves([]);
-                return;
+        const holidaysSet = new Set<string>();
+        settings.holidays.forEach(h => {
+            let d = new Date(h.startDate.replace(/-/g, '/'));
+            const endDate = new Date(h.endDate.replace(/-/g, '/'));
+            while (d <= endDate) {
+                holidaysSet.add(toYYYYMMDD(d));
+                d.setDate(d.getDate() + 1);
             }
+        });
     
-            // Case 2: Clicked a valid move -> EXECUTE MOVE
-            const move = validMoves.find(m => m.to.row === row && m.to.col === col);
-            if (move) {
-                const newBoard = board.map(r => r.slice());
-                const piece = newBoard[selectedPiece.row][selectedPiece.col]!;
-                newBoard[selectedPiece.row][selectedPiece.col] = null;
-                newBoard[row][col] = piece;
+        const bookingsByDate = bookings.reduce((acc, booking) => {
+            if (!acc[booking.date]) acc[booking.date] = [];
+            acc[booking.date].push(booking);
+            return acc;
+        }, {} as Record<string, Booking[]>);
     
-                // Promote to king if it reaches the last row
-                if (!piece.isKing && ((piece.player === 1 && row === 0) || (piece.player === 2 && row === BOARD_SIZE - 1))) {
-                    piece.isKing = true;
-                }
+        const animationAnimatorMap = animations.reduce((acc, anim) => {
+            if (anim.animator) acc[anim.id] = anim.animator;
+            return acc;
+        }, {} as Record<string, string>);
+
+        const animatorSettings = settings.animatorSettings || {};
+        const allowedDays = settings.allowedDays || [2, 4];
+        const baseTimeSlots = settings.availableTimeSlots || [9, 10, 14, 15];
     
-                if (move.captures) {
-                    newBoard[move.captures.row][move.captures.col] = null;
-                }
+        for (const { month, year } of schoolYearMonths) {
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
     
-                setBoard(newBoard);
-                setLastMove({ from: selectedPiece, to: { row, col } });
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(year, month, day);
+                const dayOfWeek = date.getDay();
     
-                const canMultiJump = move.captures && findValidMoves(row, col, newBoard, currentPlayer, true).some(m => m.captures);
+                if (!allowedDays.includes(dayOfWeek)) continue;
+    
+                const dateStr = toYYYYMMDD(date);
+                if (holidaysSet.has(dateStr)) continue;
                 
-                if (canMultiJump) {
-                    setSelectedPiece({ row, col });
-                    setValidMoves(findValidMoves(row, col, newBoard, currentPlayer, true).filter(m => m.captures));
-                    return; // Player's turn continues
-                } else {
-                    setSelectedPiece(null);
-                    setValidMoves([]);
-                    setCurrentPlayer(p => p === 1 ? 2 : 1);
-                }
-            } 
-            // Case 3: Clicked one of my other pieces -> SWITCH SELECTION
-            else if (board[row][col]?.player === currentPlayer) {
-                const allPlayerMoves = getAllPlayerMoves(currentPlayer, board);
-                const captureMoves = allPlayerMoves.flatMap(p => p.moves.filter(m => m.captures));
-                
-                let pieceMoves: Move[];
-                if (captureMoves.length > 0) {
-                    const movesForThisPiece = findValidMoves(row, col, board, currentPlayer, true).filter(m => m.captures);
-                    if (movesForThisPiece.length > 0) {
-                        setSelectedPiece({ row, col });
-                        setValidMoves(movesForThisPiece);
-                    }
-                } else {
-                    const movesForThisPiece = findValidMoves(row, col, board, currentPlayer, false);
-                    if (movesForThisPiece.length > 0) {
-                        setSelectedPiece({ row, col });
-                        setValidMoves(movesForThisPiece);
-                    } else {
-                         setSelectedPiece(null);
-                         setValidMoves([]);
-                    }
-                }
-            } 
-            // Case 4: Clicked an invalid square (empty or opponent) -> DESELECT
-            else {
-                setSelectedPiece(null);
-                setValidMoves([]);
-            }
-        } 
-        // Case 5: No piece is selected, so SELECT
-        else {
-            if (board[row][col]?.player === currentPlayer) {
-                const allPlayerMoves = getAllPlayerMoves(currentPlayer, board);
-                const captureMoves = allPlayerMoves.flatMap(p => p.moves.filter(m => m.captures));
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                const leadTime = settings.bookingLeadTime !== undefined ? settings.bookingLeadTime : 14;
+                const minLeadDate = new Date(today);
+                minLeadDate.setDate(today.getDate() + leadTime);
+                if (date < minLeadDate) continue;
     
-                let pieceMoves: Move[];
-                if (captureMoves.length > 0) {
-                    pieceMoves = findValidMoves(row, col, board, currentPlayer, true).filter(m => m.captures);
-                } else {
-                    pieceMoves = findValidMoves(row, col, board, currentPlayer, false);
-                }
+                const dayBookings = bookingsByDate[dateStr] || [];
+                const dayBookedTimes = new Set(dayBookings.map(b => b.time));
+                const dayBookedAnimators = new Set(dayBookings.map(b => animationAnimatorMap[b.animationId]).filter(Boolean));
+                const isAfternoonBookedOnDay = dayBookedTimes.has(14) || dayBookedTimes.has(15);
     
-                if (pieceMoves.length > 0) {
-                    setSelectedPiece({ row, col });
-                    setValidMoves(pieceMoves);
-                }
-            }
-        }
-    }, [board, currentPlayer, isAiThinking, selectedPiece, validMoves, winner, findValidMoves, getAllPlayerMoves]);
+                const availableAnimsForDay = animations.filter(a => {
+                    const currentAnimatorSettings = a.animator ? animatorSettings[a.animator] : undefined;
+                    if (currentAnimatorSettings?.unavailableDates.includes(dateStr)) return false;
+                    if (a.animator && dayBookedAnimators.has(a.animator)) return false;
+                    return true;
+                });
     
-    const triggerAiTurn = useCallback(async () => {
-        if (winner || currentPlayer !== 2) return;
+                if (availableAnimsForDay.length === 0) continue;
     
-        setIsAiThinking(true);
-        await new Promise(resolve => setTimeout(resolve, 800)); // Simulate thinking
-    
-        let currentBoard = board.map(r => r.slice());
-        let pieceForMultiJump: { row: number, col: number } | null = null;
-    
-        while (true) {
-            const allAiMoves = getAllPlayerMoves(2, currentBoard, pieceForMultiJump);
-            const captureMoves = allAiMoves.filter(p => p.moves.some(m => m.captures));
-            const possibleMoves = captureMoves.length > 0 ? captureMoves : allAiMoves;
-    
-            if (possibleMoves.length === 0) {
-                break; // No more moves, AI turn ends
-            }
-    
-            let bestMove: { piece: { row: number, col: number }, move: Move };
-            
-            // AI Logic to select a move
-            if (difficulty === 'easy') {
-                const randomPiece = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-                const randomMove = randomPiece.moves[Math.floor(Math.random() * randomPiece.moves.length)];
-                bestMove = { piece: randomPiece.piece, move: randomMove };
-            } else if (difficulty === 'medium') {
-                const movesWithCaptures = possibleMoves.flatMap(p => p.moves.filter(m => m.captures).map(m => ({ piece: p.piece, move: m })));
-                if (movesWithCaptures.length > 0) {
-                    bestMove = movesWithCaptures[Math.floor(Math.random() * movesWithCaptures.length)];
-                } else {
-                     const randomPiece = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-                     const randomMove = randomPiece.moves[Math.floor(Math.random() * randomPiece.moves.length)];
-                     bestMove = { piece: randomPiece.piece, move: randomMove };
-                }
-            } else { // hard
-                let maxScore = -Infinity;
-                let candidateMoves: { piece: { row: number; col: number; }; move: Move; }[] = [];
-                for (const { piece, moves } of possibleMoves) {
-                    for (const move of moves) {
-                        const nextBoard = currentBoard.map(r => r.slice());
-                        const p = nextBoard[piece.row][piece.col];
-                        nextBoard[piece.row][piece.col] = null;
-                        nextBoard[move.to.row][move.to.col] = p;
-                        if(move.captures) nextBoard[move.captures.row][move.captures.col] = null;
+                for (const animation of availableAnimsForDay) {
+                    const animSettings = (animation.animator && animatorSettings[animation.animator])
+                        ? animatorSettings[animation.animator]
+                        : { unavailableDates: [], inactiveSlots: [] };
+
+                    for (const time of baseTimeSlots) {
+                        if (animSettings.inactiveSlots.includes(time)) continue;
+                        if (dayBookedTimes.has(time)) continue;
                         
-                        let score = 0;
-                        for(let r=0; r<BOARD_SIZE; r++) for(let c=0; c<BOARD_SIZE; c++) {
-                            if(nextBoard[r][c]?.player === 2) score += nextBoard[r][c]?.isKing ? 2 : 1;
-                            if(nextBoard[r][c]?.player === 1) score -= nextBoard[r][c]?.isKing ? 2 : 1;
-                        }
-                        if(move.captures) score += 1.5;
-                        if(p && !p.isKing && move.to.row === BOARD_SIZE - 1) score += 1;
+                        const isAfternoon = time === 14 || time === 15;
+                        if (isAfternoon && isAfternoonBookedOnDay) continue;
 
-                        if (score > maxScore) {
-                            maxScore = score;
-                            candidateMoves = [{ piece, move }];
-                        } else if (score === maxScore) {
-                            candidateMoves.push({ piece, move });
-                        }
+                        stats.slots.push({ animation, date, time });
                     }
                 }
-                bestMove = candidateMoves[Math.floor(Math.random() * candidateMoves.length)];
             }
-    
-            // Execute the chosen move on the temporary board
-            const piece = currentBoard[bestMove.piece.row][bestMove.piece.col]!;
-            currentBoard[bestMove.piece.row][bestMove.piece.col] = null;
-            currentBoard[bestMove.move.to.row][bestMove.move.to.col] = piece;
+        }
+        
+        const uniqueDateAndSlots = new Set(
+            stats.slots.map(s => {
+                const slotIdentifier = (s.time === 14 || s.time === 15) ? 'afternoon' : s.time;
+                return `${toYYYYMMDD(s.date)}-${slotIdentifier}`;
+            })
+        );
 
-            if (!piece.isKing && bestMove.move.to.row === BOARD_SIZE - 1) {
-                piece.isKing = true;
+        stats.total = uniqueDateAndSlots.size;
+        
+        const newByMonth: Record<string, number> = {};
+        stats.slots.forEach(s => {
+            const dateStr = toYYYYMMDD(s.date);
+            const slotIdentifier = (s.time === 14 || s.time === 15) ? 'afternoon' : s.time;
+            const key = `${dateStr}-${slotIdentifier}`;
+
+            if(uniqueDateAndSlots.has(key)) {
+                const monthKey = `${s.date.getFullYear()}-${s.date.getMonth()}`;
+                newByMonth[monthKey] = (newByMonth[monthKey] || 0) + 1;
+                uniqueDateAndSlots.delete(key);
             }
-            if (bestMove.move.captures) {
-                currentBoard[bestMove.move.captures.row][bestMove.move.captures.col] = null;
+        });
+        
+        schoolYearMonths.forEach(({ month, year }) => {
+            const monthKey = `${year}-${month}`;
+            if (!newByMonth.hasOwnProperty(monthKey)) {
+                newByMonth[monthKey] = 0;
+            }
+        });
+        stats.byMonth = newByMonth;
+
+        return stats;
+    }, [animations, bookings, settings, schoolYearMonths]);
+    
+    useEffect(() => {
+        if (generateAllYear) {
+            setSelectedMonths(new Set(schoolYearMonths.map(m => m.month)));
+        } else {
+            setSelectedMonths(new Set());
+        }
+    }, [generateAllYear, schoolYearMonths]);
+
+    const handleMonthToggle = (month: number) => {
+        setSelectedMonths(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(month)) {
+                newSet.delete(month);
+            } else {
+                newSet.add(month);
+            }
+            return newSet;
+        });
+    };
+    
+    const handleGenerate = async () => {
+        setError(null);
+        setIsGenerating(true);
+        
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        try {
+            const targetMonthsIndices = new Set(schoolYearMonths.filter(m => selectedMonths.has(m.month)).map(m => m.month));
+    
+            let availableSlots = availabilityStats.slots.filter(slot => {
+                const slotMonth = slot.date.getMonth();
+                return targetMonthsIndices.has(slotMonth);
+            });
+            
+            if (availableSlots.length === 0 && bookingCount > 0) {
+                 setError(`Impossible de générer des réservations. Aucun créneau n'est disponible avec les filtres actuels.`);
+                 setIsGenerating(false);
+                 return;
+            }
+
+            for (let i = availableSlots.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [availableSlots[i], availableSlots[j]] = [availableSlots[j], availableSlots[i]];
+            }
+
+            const newBookings: Booking[] = [];
+            const createdSlots = new Set<string>();
+
+            for (const { animation, date, time } of availableSlots) {
+                if(newBookings.length >= bookingCount) break;
+
+                const dateStr = toYYYYMMDD(date);
+                const slotKey = `${dateStr}-${time}`;
+                if(createdSlots.has(slotKey)) continue;
+                
+                const isAfternoonSlot = time === 14 || time === 15;
+                const afternoonKey = `${dateStr}-afternoon`;
+                if(isAfternoonSlot && createdSlots.has(afternoonKey)) continue;
+
+                const animator = animation.animator;
+                const animatorKey = `${dateStr}-${animator}`;
+                if (animator && animator.trim() !== '' && createdSlots.has(animatorKey)) continue;
+
+
+                const newBookingData = generateFakeBookingData(animation, date, time);
+                const formattedBooking: Booking = {
+                    ...newBookingData,
+                    id: `${Date.now()}-${Math.random()}`,
+                    phoneNumber: formatPhoneNumber(newBookingData.phoneNumber)
+                };
+                newBookings.push(formattedBooking);
+                
+                createdSlots.add(slotKey);
+                if(isAfternoonSlot) {
+                    createdSlots.add(afternoonKey);
+                }
+                if (animator && animator.trim() !== '') {
+                    createdSlots.add(animatorKey);
+                }
+            }
+
+            if (newBookings.length < bookingCount) {
+                setError(`A pu générer seulement ${newBookings.length} sur les ${bookingCount} demandées en raison de conflits de créneaux.`);
             }
             
-            // Update UI
-            setBoard(currentBoard);
-            setLastMove({ from: bestMove.piece, to: bestMove.move.to });
-    
-            // Check for multi-jump
-            const nextJumps = findValidMoves(bestMove.move.to.row, bestMove.move.to.col, currentBoard, 2, true).filter(m => m.captures);
-    
-            if (bestMove.move.captures && nextJumps.length > 0) {
-                pieceForMultiJump = { row: bestMove.move.to.row, col: bestMove.move.to.col };
-                await new Promise(resolve => setTimeout(resolve, 600)); // Pause between jumps
-            } else {
-                break; // End of turn
-            }
+            onGenerate(newBookings);
+
+        } catch (e) {
+            console.error("Failed to generate bookings", e);
+            setError("Une erreur est survenue lors de la génération.");
+        } finally {
+            setIsGenerating(false);
         }
-    
-        // Finalize turn
-        setCurrentPlayer(1);
-        setIsAiThinking(false);
-    
-    }, [board, currentPlayer, difficulty, findValidMoves, getAllPlayerMoves, winner]);
-
-    useEffect(() => {
-        if (gameState === 'playing' && !winner) {
-            const allPlayerMoves = getAllPlayerMoves(currentPlayer, board);
-            if (allPlayerMoves.length === 0) {
-                setWinner(currentPlayer === 1 ? 2 : 1);
-                return;
-            }
-
-            const pieces = board.flat().filter(p => p !== null);
-            if (!pieces.some(p => p.player === 1)) {
-                setWinner(2);
-                return;
-            }
-            if (!pieces.some(p => p.player === 2)) {
-                setWinner(1);
-                return;
-            }
-
-            if (currentPlayer === 2) {
-                triggerAiTurn();
-            }
-        }
-    }, [currentPlayer, board, gameState, winner, triggerAiTurn, getAllPlayerMoves]);
-
-    useEffect(() => {
-        if (winner) {
-            setGameState('gameOver');
-            let msg = '';
-            if (winner === 'draw') {
-                msg = "Match nul !";
-            } else {
-                msg = winner === 1 ? "Vous avez gagné !" : "L'IA a gagné !";
-            }
-            setTurnMessage(msg);
-        } else {
-            const playerLabel = currentPlayer === 1 ? `Votre tour (${pieceSet.name1})` : "L'IA réfléchit...";
-            setTurnMessage(playerLabel);
-        }
-    }, [winner, currentPlayer, pieceSet]);
-
-    useEffect(() => {
-        if (currentPlayer === 1 && lastMove) {
-            const timer = setTimeout(() => setLastMove(null), 700);
-            return () => clearTimeout(timer);
-        }
-    }, [currentPlayer, lastMove]);
-    
-    const startGame = (diff: Difficulty) => {
-        setDifficulty(diff);
-        setBoard(initializeBoard());
-        setCurrentPlayer(1);
-        setSelectedPiece(null);
-        setValidMoves([]);
-        setWinner(null);
-        setGameState('playing');
-        setLastMove(null);
     };
-
-    const handleReturnToMenu = () => {
-        setBoard([]);
-        setCurrentPlayer(1);
-        setSelectedPiece(null);
-        setValidMoves([]);
-        setWinner(null);
-        setLastMove(null);
-        setIsAiThinking(false);
-        setTurnMessage('');
-        setGameState('menu');
-    };
-
-    const renderPiece = (piece: Piece | null) => {
-        if (!piece) return null;
-        const pieceEmoji = piece.player === 1 ? pieceSet.p1 : pieceSet.p2;
-
-        return (
-            <div className="relative text-4xl md:text-5xl transition-transform duration-300 transform group-hover:scale-110 flex items-center justify-center w-full h-full">
-                <span className="relative z-10">{pieceEmoji}</span>
-                {piece.isKing && (
-                    <span 
-                        className="absolute text-lg md:text-xl z-20"
-                        style={{ top: '2px', right: '2px', textShadow: '0px 0px 4px rgba(255, 255, 255, 0.7)' }}
-                        aria-label="Dame"
-                    >
-                        👑
-                    </span>
-                )}
-            </div>
-        );
-    };
-
-    if (gameState === 'menu') {
-        return (
-            <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl mx-auto text-center">
-                <button onClick={onBack} className="text-blue-600 hover:underline mb-6 text-left w-full">&lt; Retour aux jeux</button>
-                <h3 className="text-3xl font-bold text-gray-800 mb-6">Jeu de dames des animaux</h3>
-                
-                <div className="space-y-8">
-                    <div>
-                        <h4 className="text-xl font-semibold text-gray-700 mb-3">Choisissez vos pions</h4>
-                        <div className="flex justify-center gap-4">
-                            {pieceOptions.map(option => (
-                                <button
-                                    key={option.name1}
-                                    onClick={() => setPieceSet(option)}
-                                    className={`p-2 rounded-lg border-2 transition-all ${pieceSet.name1 === option.name1 ? 'border-blue-500 bg-blue-50 scale-110' : 'border-gray-200 hover:border-gray-400'}`}
-                                >
-                                    <span className="text-4xl">{option.p1}</span>
-                                    <span className="text-2xl mx-1">vs</span>
-                                    <span className="text-4xl">{option.p2}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div>
-                        <h4 className="text-xl font-semibold text-gray-700 mb-3">Choisissez la difficulté</h4>
-                        <div className="flex justify-center gap-4">
-                            <button onClick={() => startGame('easy')} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">Facile</button>
-                            <button onClick={() => startGame('medium')} className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600">Moyen</button>
-                            <button onClick={() => startGame('hard')} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">Difficile</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
     
-    const initialPieceCount = 20;
-    const player1Score = initialPieceCount - board.flat().filter(p => p?.player === 2).length;
-    const player2Score = initialPieceCount - board.flat().filter(p => p?.player === 1).length;
 
     return (
-        <div className="bg-white p-4 sm:p-6 rounded-lg shadow-lg w-full max-w-5xl mx-auto">
-            <div className="flex flex-col md:flex-row gap-6">
-                <div className="flex-grow">
-                     <div className="grid grid-cols-10 border-2 border-slate-700 aspect-square">
-                        {board.length > 0 && board.map((row, rIdx) =>
-                            row.map((piece, cIdx) => {
-                                const isDark = (rIdx + cIdx) % 2 !== 0;
-                                const isSelected = selectedPiece?.row === rIdx && selectedPiece?.col === cIdx;
-                                const isValidMove = validMoves.some(m => m.to.row === rIdx && m.to.col === cIdx);
-                                const isLastMove = (lastMove?.from.row === rIdx && lastMove?.from.col === cIdx) || (lastMove?.to.row === rIdx && lastMove?.to.col === cIdx);
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={onClose}>
+            <div className="bg-white rounded-lg shadow-xl p-6 sm:p-8 w-full max-w-3xl max-h-[95vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold mb-6 text-gray-800">Générer des réservations aléatoires</h2>
 
-                                return (
-                                    <div
-                                        key={`${rIdx}-${cIdx}`}
-                                        onClick={() => handleSquareClick(rIdx, cIdx)}
-                                        className={`flex items-center justify-center relative group aspect-square
-                                            ${isDark ? 'bg-slate-500' : 'bg-slate-200'}
-                                            ${(isValidMove || (isDark && board[rIdx][cIdx]?.player === currentPlayer && !selectedPiece)) && !isAiThinking ? 'cursor-pointer' : ''}
-                                        `}
-                                    >
-                                        {isLastMove && <div className="absolute inset-0 bg-yellow-400/50" />}
-                                        {renderPiece(piece)}
-                                        {isSelected && <div className="absolute inset-0 bg-blue-500/30 ring-4 ring-blue-500" />}
-                                        {isValidMove && <div className="absolute w-1/3 h-1/3 bg-green-500/70 rounded-full" />}
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
+                <div className="p-4 border rounded-lg bg-gray-50 mb-6">
+                    <h3 className="text-lg font-medium text-gray-800 mb-3">Disponibilité des créneaux</h3>
+                    {schoolYearMonths.length > 0 ? (
+                        <>
+                            <p className="text-gray-600 mb-4">
+                                Pour l'année {settings.activeYear} (mois restants): <strong className="text-xl text-indigo-600">{availabilityStats.total}</strong> créneaux disponibles.
+                            </p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                                {schoolYearMonths.map(({ month, name, year }) => {
+                                    const key = `${year}-${month}`;
+                                    const count = availabilityStats.byMonth[key] || 0;
+                                    return (
+                                        <div key={key} className="flex justify-between items-center border-b pb-1">
+                                            <span className="text-gray-700">{name}</span>
+                                            <strong className="font-semibold text-gray-900">{count}</strong>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-red-500 italic">Aucun mois restant pour l'année scolaire sélectionnée ({settings.activeYear}).</p>
+                    )}
                 </div>
 
-                <div className="w-full md:w-72 flex-shrink-0 space-y-4">
-                    <div className="bg-gray-100 p-4 rounded-lg text-center">
-                        <h4 className="text-lg font-bold text-gray-800">Statut de la partie</h4>
-                        <p className={`text-xl font-semibold mt-2 ${winner ? 'text-green-600' : 'text-blue-600'}`}>
-                            {turnMessage}
-                        </p>
-                    </div>
-                     <div className="bg-gray-100 p-4 rounded-lg">
-                        <h4 className="text-lg font-bold text-gray-800 mb-2">Scores</h4>
-                        <div className="space-y-2">
-                           <div className="flex justify-between items-center text-lg">
-                               <span>{pieceSet.p1} {pieceSet.name1} (capturés):</span>
-                               <span className="font-bold">{player1Score}</span>
-                           </div>
-                           <div className="flex justify-between items-center text-lg">
-                               <span>{pieceSet.p2} {pieceSet.name2} (capturés):</span>
-                               <span className="font-bold">{player2Score}</span>
-                           </div>
+                {schoolYearMonths.length > 0 && (
+                    <div className="space-y-6">
+                        <div>
+                            <label htmlFor="bookingCount" className="block text-sm font-medium text-gray-700 mb-1">Nombre de réservations à générer</label>
+                            <input
+                                id="bookingCount"
+                                type="number"
+                                value={bookingCount}
+                                onChange={(e) => setBookingCount(Math.max(1, parseInt(e.target.value) || 1))}
+                                className="mt-1 w-full max-w-xs p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                            />
+                        </div>
+                        
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                <div className="w-full border-t border-gray-300" />
+                            </div>
+                            <div className="relative flex justify-center">
+                                <span className="bg-white px-2 text-sm text-gray-500">Période de génération</span>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <label className="flex items-center space-x-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={generateAllYear}
+                                    onChange={(e) => setGenerateAllYear(e.target.checked)}
+                                    className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <span className="font-medium text-gray-700">Générer sur tous les mois restants de l'année scolaire ({settings.activeYear})</span>
+                            </label>
+                            
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pl-8">
+                                {schoolYearMonths.map(({month, name}) => (
+                                    <label key={month} className={`flex items-center space-x-2 p-2 rounded-md transition-colors ${generateAllYear ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer hover:bg-gray-100'}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedMonths.has(month)}
+                                            onChange={() => handleMonthToggle(month)}
+                                            disabled={generateAllYear}
+                                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                                        />
+                                        <span>{name}</span>
+                                    </label>
+                                ))}
+                            </div>
                         </div>
                     </div>
-                    <div className="bg-gray-100 p-4 rounded-lg text-sm text-gray-700">
-                        <h4 className="text-lg font-bold text-gray-800 mb-2">Règles</h4>
-                        <ul className="space-y-1 list-disc list-inside">
-                            <li>Déplacement en diagonale avant sur les cases foncées.</li>
-                            <li>Capture en sautant par-dessus un pion adverse.</li>
-                            <li>Les prises sont obligatoires.</li>
-                            <li>Un pion devient une "Dame" (👑) sur la dernière rangée et peut se déplacer dans toutes les diagonales.</li>
-                        </ul>
-                    </div>
-                     <button onClick={handleReturnToMenu} className="w-full bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600">
-                        {winner ? 'Rejouer' : 'Nouvelle partie'}
-                    </button>
-                    <button onClick={onBack} className="w-full bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600">
-                        Quitter le jeu
+                )}
+
+                {error && <p className="mt-4 text-red-600 bg-red-100 p-3 rounded-md text-sm">{error}</p>}
+                
+                <div className="flex justify-end gap-4 pt-6 mt-6 border-t">
+                    <button type="button" onClick={onClose} disabled={isGenerating} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 disabled:opacity-60">Annuler</button>
+                    <button
+                        type="button"
+                        onClick={handleGenerate}
+                        disabled={isGenerating || selectedMonths.size === 0 || schoolYearMonths.length === 0}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px]"
+                    >
+                        {isGenerating ? (
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        ) : 'Générer'}
                     </button>
                 </div>
             </div>
@@ -525,4 +402,4 @@ const CheckersGame: React.FC<CheckersGameProps> = ({ onBack }) => {
     );
 };
 
-export default CheckersGame;
+export default RandomBookingGenerator;
