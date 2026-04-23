@@ -1,50 +1,77 @@
-/**
- * Determines if a hex color is light or dark to decide text color (black/white).
- */
-export const isLight = (color: string): boolean => {
-    if (color.indexOf('#') === 0) {
-        color = color.slice(1);
+{
+  "entities": {
+    "Animation": {
+      "title": "Animation",
+      "description": "Educational workshop details",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "duration": { "type": "string" },
+        "capacity": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "order": { "type": "number" },
+        "active": { "type": "boolean" },
+        "targetPublic": { "type": "string" },
+        "objectives": { "type": "string" }
+      },
+      "required": ["title", "description", "order"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Workshop reservation",
+      "type": "object",
+      "properties": {
+        "animationId": { "type": "string" },
+        "date": { "type": "string" },
+        "timeslot": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "teacherEmail": { "type": "string" },
+        "schoolName": { "type": "string" },
+        "level": { "type": "string" },
+        "studentCount": { "type": "number" },
+        "comment": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["animationId", "date", "teacherEmail", "status"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global application configuration",
+      "type": "object",
+      "properties": {
+        "adminUsername": { "type": "string" },
+        "adminPassword": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "headerInfoText": { "type": "string" },
+        "headerInfoFontSize": { "type": "string" },
+        "headerInfoFontWeight": { "type": "string" },
+        "headerInfoFontStyle": { "type": "string" },
+        "headerInfoColor": { "type": "string" },
+        "headerInfoWidth": { "type": "number" }
+      }
     }
-    if (color.length === 3) {
-        color = color.split('').map(hex => hex + hex).join('');
+  },
+  "firestore": {
+    "/animations/{animationId}": {
+      "schema": "Animation",
+      "description": "Collection of workshops"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Collection of reservations"
+    },
+    "/settings/global": {
+      "schema": "AppSettings",
+      "description": "Central settings document"
+    },
+    "/admins/{adminId}": {
+      "schema": { "type": "object", "properties": { "role": { "type": "string" } } },
+      "description": "List of authorized administrators"
     }
-    if (color.length !== 6) {
-      return true; // Default to light background assumption
-    }
-
-    const r = parseInt(color.substring(0, 2), 16);
-    const g = parseInt(color.substring(2, 4), 16);
-    const b = parseInt(color.substring(4, 6), 16);
-    
-    // HSP (Highly Sensitive Poo) equation
-    const hsp = Math.sqrt(0.299 * (r * r) + 0.587 * (g * g) + 0.114 * (b * b));
-
-    return hsp > 127.5;
+  }
 }
-
-/**
- * Formats a phone number string to XX-XX-XX-XX-XX.
- */
-export const formatPhoneNumber = (phoneStr: string): string => {
-    if (!phoneStr) return '';
-    // Remove all non-digit characters
-    const cleaned = ('' + phoneStr).replace(/\D/g, '');
-    
-    // Format if it has exactly 10 digits
-    if (cleaned.length === 10) {
-        const match = cleaned.match(/^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
-        if (match) {
-            return `${match[1]}-${match[2]}-${match[3]}-${match[4]}-${match[5]}`;
-        }
-    }
-    
-    // If it has digits but not 10, just return as is (could be international or partial)
-    // But for the sake of the user's request for "always", we try to group any digits
-    if (cleaned.length > 0) {
-        // Group by 2 digits for any length
-        const parts = cleaned.match(/.{1,2}/g);
-        return parts ? parts.join('-') : cleaned;
-    }
-
-    return phoneStr; 
-};

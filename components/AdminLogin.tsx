@@ -57,8 +57,11 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
         await auth.signOut();
       }
     } catch (err: any) {
-      console.error("Login mapping error:", err);
-      setError("Erreur lors de la connexion avec Google.");
+      console.error("Détails de l'erreur de connexion:", err);
+      // Afficher le code d'erreur spécifique pour aider au diagnostic (ex: auth/unauthorized-domain)
+      const errorCode = err.code || "unknown";
+      const errorMessage = err.message || "Erreur inconnue";
+      setError(`Erreur Firebase (${errorCode}): ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
