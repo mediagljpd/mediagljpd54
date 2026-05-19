@@ -12,7 +12,7 @@ export const AppContext = React.createContext<{
   removeAnimation: (animationId: string) => Promise<void>;
   saveBooking: (booking: Booking) => Promise<void>;
   removeBooking: (bookingId: string) => Promise<void>;
-  updateSettings: (settings: AppSettings) => Promise<void>;
+  updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
   updateAnimationsOrder: (animations: Animation[]) => void;
   updateBookings: (bookings: Booking[]) => void;
 }>({

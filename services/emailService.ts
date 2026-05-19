@@ -1,31 +1,37 @@
 
-import { Booking, Animator } from '../types';
+import { Booking, Animator, AppSettings } from '../types';
 
 /**
  * CONFIGURATION EMAILJS
- * 
- * Compte 1 (Principal - mediagljpd54@gmail.com)
- * Gère : Notifications Animateurs et Récupération de mot de passe
  */
 const MAIN_SERVICE_ID = 'service_o5lbm0b'; 
 const MAIN_PUBLIC_KEY = 'f3k30dsN4n8aHPNzR'; 
 
-/**
- * Compte 2 (Enseignants - microfolie54@gmail.com)
- * Gère : Confirmations de réservation aux enseignants
- */
 const TEACHER_SERVICE_ID = 'service_pqptrua'; 
 const TEACHER_PUBLIC_KEY = 'zcDY1OLyk44t-qy2G'; 
 
 const TEMPLATE_ID_RECOVERY = 'template_recovery';
 const TEMPLATE_ID_CONFIRMATION_TEACHER = 'template_enseignant';
 const TEMPLATE_ID_NOTIFICATION_ANIMATOR = 'template_animateur';
+const TEMPLATE_ID_BOOKING_LIST = 'template_liste';
 
 declare global {
     interface Window {
         emailjs: any;
     }
 }
+
+/**
+ * Remplace les variables {{variable}} par leurs valeurs
+ */
+const renderTemplate = (template: string, params: Record<string, any>) => {
+    let rendered = template;
+    Object.entries(params).forEach(([key, value]) => {
+        const regex = new RegExp(`{{${key}}}`, 'g');
+        rendered = rendered.replace(regex, value !== undefined && value !== null ? String(value) : "");
+    });
+    return rendered;
+};
 
 /**
  * Formate une date YYYY-MM-DD en DD/MM/YYYY
@@ -36,10 +42,36 @@ const formatDateFR = (dateStr: string) => {
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
 };
 
+/**
+ * Formate une date YYYY-MM-DD en Format Long FR (ex: Jeudi 4 juin 2026)
+ */
+const formatLongDateOnlyFR = (dateStr: string) => {
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    
+    const options: Intl.DateTimeFormatOptions = { 
+        weekday: 'long', 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+    };
+    
+    let formatted = date.toLocaleDateString('fr-FR', options);
+    // Capitalisation de la première lettre (jour de la semaine)
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+};
+
+/**
+ * Formate une date YYYY-MM-DD en Format Long FR avec horaire
+ */
+const formatLongDateFR = (dateStr: string, time: string) => {
+    return `${formatLongDateOnlyFR(dateStr)} à ${time}h`;
+};
+
 export const emailService = {
     init: () => {
         if (window.emailjs) {
-            // On initialise avec la clé principale par défaut
             window.emailjs.init(MAIN_PUBLIC_KEY);
         }
     },
@@ -61,7 +93,6 @@ export const emailService = {
         };
 
         try {
-            // Utilise le compte Principal
             await window.emailjs.send(MAIN_SERVICE_ID, TEMPLATE_ID_RECOVERY, templateParams, MAIN_PUBLIC_KEY);
             console.log('EmailJS: E-mail de récupération envoyé.');
         } catch (error) {
@@ -70,7 +101,7 @@ export const emailService = {
         }
     },
 
-    sendBookingConfirmation: async (booking: Booking) => {
+    sendBookingConfirmation: async (booking: Booking, settings: AppSettings) => {
         if (!window.emailjs) return;
         
         if (!booking.email || booking.email.trim() === "") {
@@ -78,26 +109,51 @@ export const emailService = {
         }
 
         const targetEmail = booking.email.trim();
-        const templateParams = {
+        const info = settings.establishmentInfo || { name: "Cité des Paysages", email: "", phone: "", address: "" };
+        
+        const params = {
             to_email: targetEmail,
             to_name: booking.teacherName,
+            teacher_name: booking.teacherName, // Synchronized
             animation_title: booking.animationTitle,
-            booking_date: formatDateFR(booking.date),
-            booking_time: `${booking.time}h`,
+            booking_date: formatLongDateOnlyFR(booking.date),
+            booking_date_short: formatDateFR(booking.date), // Kept for flexible templates
+            booking_date_clean: formatDateFR(booking.date).replace(/\//g, '.'), // Added to avoid escaping in subjects
+            booking_time: `${booking.time}h00`, // Standardized
             school_name: booking.schoolName,
-            commune: booking.commune
+            commune: booking.commune,
+            student_count: booking.studentCount,
+            adult_count: booking.adultCount,
+            class_level: booking.classLevel || "", // Added
+            bus_info: booking.noBusRequired ? "Non" : `Oui ${booking.busInfo ? `(${booking.busInfo})` : ""}`, // Added
+            teacher_phone: booking.phoneNumber,
+            teacher_email: booking.email, // Added
+            establishment_name: info.name,
+            logo_url: info.logoUrl || "",
+            header_bg_color: settings.headerBgColor || "#0f172a",
+            reply_to: 'no-reply@grandlongwy.fr' // No-reply strategy
         };
 
+        // Si un template personnalisé existe, on pré-remplit le message
+        // On envoie à la fois les paramètres classiques ET le message_html
+        // L'utilisateur peut ainsi choisir d'utiliser l'un ou l'autre dans EmailJS
+        let dynamicParams: any = { ...params };
+        if (settings.emailTeacherTemplate) {
+            dynamicParams.message_html = renderTemplate(settings.emailTeacherTemplate, params);
+        }
+        if (settings.emailTeacherSubject) {
+            dynamicParams.subject = renderTemplate(settings.emailTeacherSubject, params);
+        }
+
         try {
-            // Utilise le compte Enseignants (microfolie54@gmail.com)
-            await window.emailjs.send(TEACHER_SERVICE_ID, TEMPLATE_ID_CONFIRMATION_TEACHER, templateParams, TEACHER_PUBLIC_KEY);
+            await window.emailjs.send(TEACHER_SERVICE_ID, TEMPLATE_ID_CONFIRMATION_TEACHER, dynamicParams, TEACHER_PUBLIC_KEY);
             console.log('EmailJS: Confirmation enseignant envoyée.');
         } catch (error) {
             console.error('EmailJS Error (Confirmation):', error);
         }
     },
 
-    sendAnimatorNotification: async (booking: Booking, animator: Animator) => {
+    sendAnimatorNotification: async (booking: Booking, animator: Animator, settings: AppSettings) => {
         if (!window.emailjs) return;
         
         if (!animator.email || animator.email.trim() === "") {
@@ -106,32 +162,106 @@ export const emailService = {
 
         const targetEmail = animator.email.trim();
         const busInfoLabel = booking.noBusRequired 
-            ? "Aucune prise en charge bus demandée." 
-            : (booking.busInfo || "Prise en charge bus demandée.");
+            ? "Non" 
+            : `Oui ${booking.busInfo ? `(${booking.busInfo})` : ""}`;
+            
+        const info = settings.establishmentInfo || { name: "Cité des Paysages", email: "", phone: "", address: "" };
 
-        const templateParams = {
+        const params = {
             to_email: targetEmail,
+            to_name: animator.name, // Added for compatibility
             animator_name: animator.name,
             animation_title: booking.animationTitle,
             teacher_name: booking.teacherName,
             class_level: booking.classLevel,
             school_name: booking.schoolName,
             commune: booking.commune,
-            booking_date: formatDateFR(booking.date),
+            booking_date: formatLongDateOnlyFR(booking.date),
+            booking_date_short: formatDateFR(booking.date),
+            booking_date_clean: formatDateFR(booking.date).replace(/\//g, '.'),
             booking_time: `${booking.time}h00`,
             student_count: booking.studentCount,
             adult_count: booking.adultCount,
             bus_info: busInfoLabel,
             teacher_phone: booking.phoneNumber,
-            teacher_email: booking.email
+            teacher_email: booking.email,
+            establishment_name: info.name,
+            logo_url: info.logoUrl || "",
+            header_bg_color: settings.headerBgColor || "#0f172a",
+            reply_to: 'no-reply@grandlongwy.fr'
         };
 
+        let dynamicParams: any = { ...params };
+        if (settings.emailAnimatorTemplate) {
+            dynamicParams.message_html = renderTemplate(settings.emailAnimatorTemplate, params);
+        }
+        if (settings.emailAnimatorSubject) {
+            dynamicParams.subject = renderTemplate(settings.emailAnimatorSubject, params);
+        }
+
         try {
-            // Utilise le compte Principal
-            await window.emailjs.send(MAIN_SERVICE_ID, TEMPLATE_ID_NOTIFICATION_ANIMATOR, templateParams, MAIN_PUBLIC_KEY);
+            await window.emailjs.send(MAIN_SERVICE_ID, TEMPLATE_ID_NOTIFICATION_ANIMATOR, dynamicParams, MAIN_PUBLIC_KEY);
             console.log('EmailJS: Notification animateur envoyée.');
         } catch (error) {
             console.error('EmailJS Error (Notification Animateur):', error);
+        }
+    },
+
+    sendBookingList: async (recipientEmail: string, bookings: Booking[], settings: AppSettings) => {
+        if (!window.emailjs || !recipientEmail) return;
+
+        const info = settings.establishmentInfo || { name: "Médiathèque du Grand Longwy", logoUrl: "" };
+        
+        // Generate table rows with 5 columns as expected by the template
+        const tableRows = bookings.map(b => `
+            <tr style="border-bottom: 1px solid #edf2f7;">
+                <td style="padding: 12px; font-size: 14px; color: #1e293b;">
+                    <div style="font-weight: bold; color: #0f172a;">${b.animationTitle}</div>
+                    <div style="font-weight: bold; color: #2563eb; font-size: 12px;">${formatLongDateFR(b.date, String(b.time))}</div>
+                </td>
+                <td style="padding: 12px; font-size: 14px; color: #1e293b;">${b.teacherName}</td>
+                <td style="padding: 12px; font-size: 14px; color: #1e293b;">${b.schoolName} (${b.commune})</td>
+                <td style="padding: 12px; font-size: 14px; color: #1e293b;">${b.classLevel}</td>
+                <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4;">
+                    <div>${b.studentCount} élèves</div>
+                    <div style="color: #64748b; font-size: 12px;">${b.adultCount} adultes</div>
+                </td>
+            </tr>
+        `).join('');
+
+        const params: any = {
+            to_email: recipientEmail,
+            bookings_count: bookings.length,
+            bookings_rows: tableRows, 
+            establishment_name: info.name,
+            logo_url: info.logoUrl || "",
+            header_bg_color: settings.headerBgColor || "#059669",
+            reply_to: 'no-reply@grandlongwy.fr'
+        };
+
+        // Prepare the final payload for EmailJS
+        let dynamicParams: any = { ...params };
+        
+        // If a template is defined, we render it locally
+        if (settings.emailListTemplate) {
+            dynamicParams.message_html = renderTemplate(settings.emailListTemplate, params);
+            // CRITICAL: once message_html is generated, we can remove the large bookings_rows 
+            // from the root of dynamicParams to avoid doubling the payload size if the EmailJS
+            // dashboard template only uses {{message_html}}.
+            // However, to keep compatibility with templates directly using {{bookings_rows}},
+            // we'll keep it but we know we've already optimized its size above.
+        }
+        
+        if (settings.emailListSubject) {
+            dynamicParams.subject = renderTemplate(settings.emailListSubject, params);
+        }
+
+        try {
+            await window.emailjs.send(TEACHER_SERVICE_ID, TEMPLATE_ID_BOOKING_LIST, dynamicParams, TEACHER_PUBLIC_KEY);
+            console.log('EmailJS: Liste des réservations envoyée.');
+        } catch (error) {
+            console.error('EmailJS Error (Liste):', error);
+            throw error;
         }
     }
 };

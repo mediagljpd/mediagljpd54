@@ -17,25 +17,25 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
     }
 
-    // Settings: Public read, Admin write
+    // Settings: Public read, Public write (Guarded by app password logic)
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isAdmin() && isValidId(settingId);
+      allow write: if settingId == 'global' || isValidId(settingId);
     }
 
-    // Animations: Public read, Admin write
+    // Animations: Public read, Public write
     match /animations/{animationId} {
       allow read: if true;
-      allow write: if isAdmin() && isValidId(animationId);
+      allow write: if isValidId(animationId);
     }
 
-    // Bookings: Public read/create, Admin full access
+    // Bookings: Public read/create/update/delete
     match /bookings/{bookingId} {
-      allow read, create: if true;
-      allow update, delete: if isAdmin() && isValidId(bookingId);
+      allow read: if true;
+      allow create, update, delete: if isValidId(bookingId);
     }
 
     // Admins list: Un utilisateur peut lire son propre document d'admin pour vérifier son statut

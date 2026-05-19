@@ -1,9 +1,11 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, Animation, Booking, AppSettings, AdminUser, CustomLegalPage } from './types';
+import { LEGAL_TEMPLATES } from './constants';
 import { AppContext } from './AppContext';
 import { dataService } from './services/dataService';
-import { db } from './services/firebase';
+import { db, auth } from './services/firebase';
+import { signOut } from 'firebase/auth';
 import { collection, onSnapshot, query, orderBy, writeBatch, doc, getDocs, where, limit } from 'firebase/firestore';
 import BookingSystem from './components/BookingSystem';
 import AdminPanel from './components/AdminPanel';
@@ -36,69 +38,243 @@ export function App() {
     headerInfoColor: "#6b7280",
     headerInfoWidth: 200,
     animators: [],
-    legalNotice: `
-      <h2>1. Présentation du site</h2>
-      <p>En vertu de l'article 6 de la loi n° 2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique, il est précisé aux utilisateurs du site l'identité des différents intervenants dans le cadre de sa réalisation et de son suivi :</p>
-      <p><strong>Propriétaire</strong> : [Nom de l'établissement / Collectivité] – [Adresse complète]</p>
-      <p><strong>Responsable publication</strong> : [Nom du responsable] – [Email de contact]</p>
-      <p><strong>Webmaster</strong> : [Nom du webmaster] – [Email du webmaster]</p>
-      <p><strong>Hébergeur</strong> : Netlify – 2325 3rd Street, Suite 296, San Francisco, California 94107</p>
+    emailTeacherSubject: "✅ Confirmation : {{animation_title}} le {{booking_date_clean}}",
+    emailTeacherTemplate: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Confirmation Réservation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+        <tr>
+            <td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                    <tr>
+                        <td align="center" bgcolor="{{header_bg_color}}" style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            MÉDIATHÈQUE DU GRAND LONGWY
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 40px 30px 20px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                <tr>
+                                    <td style="color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase;">
+                                        {{animation_title}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px 0 25px 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px;">
+                                        Bonjour {{to_name}}, votre réservation a bien été enregistrée.
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td bgcolor="#f8fafc" style="padding: 30px; color: #ffffff; text-align: center; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                            <tr>
+                                                <td width="50%" style="padding: 10px; border-right: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                                    <div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Date</div>
+                                                    <div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_date}}</div>
+                                                </td>
+                                                <td width="50%" style="padding: 10px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                                    <div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Horaire</div>
+                                                    <div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_time}}</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 40px 0 10px 0; font-size: 20px; font-weight: bold; color: #4338ca; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        Votre classe
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px 0 0 0; font-size: 20px; border-top: 1px solid #eef2ff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 1.5;">
+                                        <b>École :</b> {{school_name}} ({{commune}})<br/>
+                                        <b>Niveau :</b> {{class_level}}<br/>
+                                        <b>Effectif :</b> {{student_count}} élèves / {{adult_count}} adultes<br/>
+                                        <b>Transport :</b> {{bus_info}}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#fffbeb" style="border: 1px solid #fef3c7; border-radius: 8px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                <tr>
+                                    <td style="padding: 20px; font-size: 18px; color: #92400e; line-height: 24px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        <b>Note :</b> pour toute demande de renseignement, modification ou annulation de rendez-vous, merci de nous contacter directement par téléphone au 03.82.23.15.76 ou par mail à l'adresse mediatheque@grandlongwy.fr
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
 
-      <h2>2. Conditions générales d’utilisation du site et des services proposés</h2>
-      <p>L’utilisation du site implique l’acceptation pleine et entière des conditions générales d’utilisation ci-après décrites. Ces conditions d’utilisation sont susceptibles d’être modifiées ou complétées à tout moment.</p>
-
-      <h2>3. Description des services fournis</h2>
-      <p>Le site a pour objet de fournir une information concernant l’ensemble des activités de la structure et de permettre la réservation d'animations pédagogiques.</p>
-
-      <h2>4. Propriété intellectuelle et contrefaçons</h2>
-      <p>[Nom de l'établissement] est propriétaire des droits de propriété intellectuelle ou détient les droits d’usage sur tous les éléments accessibles sur le site, notamment les textes, images, graphismes, logo, icônes, sons, logiciels.</p>
-
-      <h2>5. Limitations de responsabilité</h2>
-      <p>[Nom de l'établissement] ne pourra être tenu responsable des dommages directs et indirects causés au matériel de l’utilisateur, lors de l’accès au site.</p>
-    `,
-    privacyPolicy: `
-      <h2>1. Gestion des données personnelles</h2>
-      <p>En France, les données personnelles sont notamment protégées par la loi n° 78-87 du 6 janvier 1978, la loi n° 2004-801 du 6 août 2004, l'article L. 226-13 du Code pénal et le Règlement Général sur la Protection des Données (RGPD : n° 2016-679).</p>
-
-      <h2>2. Finalité des données collectées</h2>
-      <p>Le site est susceptible de traiter tout ou partie des données :</p>
-      <ul>
-        <li>Pour permettre la navigation sur le site</li>
-        <li>Pour prévenir et lutter contre la fraude informatique</li>
-        <li>Pour améliorer la navigation sur le site</li>
-        <li>Pour gérer les réservations d'animations (Nom, Email, Téléphone, École)</li>
-      </ul>
-
-      <h2>3. Droit d’accès, de rectification et d’opposition</h2>
-      <p>Conformément à la réglementation européenne en vigueur, les Utilisateurs disposent des droits suivants :</p>
-      <ul>
-        <li>Droit d'accès (article 15 RGPD) et de rectification (article 16 RGPD)</li>
-        <li>Droit à l'effacement (article 17 du RGPD)</li>
-        <li>Droit de retirer à tout moment un consentement (article 13-2c RGPD)</li>
-        <li>Droit à la limitation du traitement des données (article 18 RGPD)</li>
-      </ul>
-      <p>Pour exercer ces droits, contactez : [Email de contact DPO / Responsable]</p>
-
-      <h2>4. Non-communication des données personnelles</h2>
-      <p>Le site s’interdit de traiter, héberger ou transférer les Informations collectées sur ses Clients vers un pays situé en dehors de l’Union européenne ou reconnu comme « non adéquat » par la Commission européenne sans en informer préalablement le client.</p>
-    `,
-    cookiesPolicy: `
-      <h2>1. Qu'est-ce qu'un cookie ?</h2>
-      <p>Un « cookie » est un petit fichier d’information envoyé sur le navigateur de l’Utilisateur et enregistré au sein du terminal de l’Utilisateur. Ce fichier comprend des informations telles que le nom de domaine de l’Utilisateur, le fournisseur d’accès Internet de l’Utilisateur, le système d’exploitation de l’Utilisateur, ainsi que la date et l’heure d’accès.</p>
-
-      <h2>2. Utilisation des cookies sur ce site</h2>
-      <p>Ce site utilise des cookies strictement nécessaires à son bon fonctionnement :</p>
-      <ul>
-        <li><strong>Cookies de session</strong> : Pour maintenir votre connexion ou l'état de votre réservation en cours.</li>
-        <li><strong>Cookies de sécurité</strong> : Pour prévenir les attaques malveillantes.</li>
-      </ul>
-
-      <h2>3. Cookies tiers</h2>
-      <p>Ce site n'utilise pas de cookies publicitaires. Des cookies de mesure d'audience anonymes peuvent être utilisés pour améliorer l'expérience utilisateur.</p>
-
-      <h2>4. Comment désactiver les cookies ?</h2>
-      <p>L’Utilisateur peut configurer son navigateur pour qu’il lui permette de décider s’il souhaite ou non les accepter de manière à ce que des Cookies soient enregistrés dans le terminal ou, au contraire, qu’ils soient rejetés.</p>
-    `,
+                    <tr>
+                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
+                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
+                            <br/><br/>
+                            Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
+                            Ces informations sont utilisées exclusivement pour la gestion de votre réservation.
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`,
+    emailAnimatorSubject: "🗓️ {{animation_title}} le {{booking_date_clean}} @ {{booking_time}}",
+    emailAnimatorTemplate: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Notification Réservation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+        <tr>
+            <td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                    <tr>
+                        <td align="center" bgcolor="{{header_bg_color}}" style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            MÉDIATHÈQUE DU GRAND LONGWY
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 40px 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                <tr>
+                                    <td style="color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold;">
+                                        {{animation_title}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 20px 0 30px 0; color: #1e293b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 22px; line-height: 24px;">
+                                        Nouvelle réservation enregistrée pour cette séance.
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 2px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                            <tr>
+                                                <td width="50%" style="padding: 20px; border-right: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                                    <div style="font-size: 22px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Date</div>
+                                                    <div style="font-size: 22px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_date}}</div>
+                                                </td>
+                                                <td width="50%" style="padding: 20px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                                    <div style="font-size: 22px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Horaire</div>
+                                                    <div style="font-size: 22px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_time}}</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 35px 0 10px 0; font-size: 22px; font-weight: bold; color: #4338ca; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        Détails de la classe
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px 0; font-size: 22px; border-top: 1px solid #eef2ff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 28px;">
+                                        <b>Enseignant :</b> {{teacher_name}}<br/>
+                                        <b>École :</b> {{school_name}} ({{commune}})<br/>
+                                        <b>Effectif :</b> {{student_count}} élèves / {{adult_count}} adultes<br/>
+                                        <b>Niveau :</b> {{class_level}}<br/>
+                                        <b>Transport :</b> {{bus_info}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px 0 20px 0; font-size: 22px; font-weight: bold; color: #059669; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        Contact enseignant
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px 0; font-size: 22px; border-top: 1px solid #ecfdf5; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 28px;">
+                                        <b>Téléphone :</b> {{teacher_phone}}<br/>
+                                        <b>E-mail :</b> {{teacher_email}}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td bgcolor="#f8fafc" style="padding: 30px; border-top: 1px solid #f1f5f9; text-align: center; color: #94a3b8; font-size: 16px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 1.5;">
+                            E-mail automatique - Plateforme de réservation
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`,
+    emailListSubject: "📋 Liste des réservations ({{bookings_count}} animations)",
+    emailListTemplate: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Liste des Réservations</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+        <tr>
+            <td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="800" style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                    <tr>
+                        <td align="center" bgcolor="{{header_bg_color}}" style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            MÉDIATHÈQUE DU GRAND LONGWY
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 40px 30px 10px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            <h1 style="margin: 0; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase; line-height: 1.2;">
+                                Liste des réservations
+                            </h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            <p style="margin: 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px; line-height: 1.5;">
+                                Voici le récapitulatif des {{bookings_count}} réservations sélectionnées.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; border: 1px solid #e2e8f0; font-family: sans-serif;">
+                                <thead>
+                                    <tr style="background-color: #f8fafc; text-align: left; border-bottom: 2px solid #e2e8f0;">
+                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Animation / Date</th>
+                                        <th width="20%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Enseignant</th>
+                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">École / Commune</th>
+                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Niveau</th>
+                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b;">Effectifs</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{bookings_rows}}
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
+                            Ce récapitulatif a été généré depuis la plateforme d'administration.
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`,
+    ...LEGAL_TEMPLATES
   } as AppSettings);
 
   // 1. Chargement des paramètres (toujours actif)
@@ -114,11 +290,29 @@ export function App() {
         
         // Ensure legal templates have defaults if missing in DB
         const mergedData = { ...data };
+        if (!mergedData.legalNoticeTitle) mergedData.legalNoticeTitle = settings.legalNoticeTitle;
         if (!mergedData.legalNotice) mergedData.legalNotice = settings.legalNotice;
+        if (!mergedData.privacyPolicyTitle) mergedData.privacyPolicyTitle = settings.privacyPolicyTitle;
         if (!mergedData.privacyPolicy) mergedData.privacyPolicy = settings.privacyPolicy;
+        if (!mergedData.cookiesPolicyTitle) mergedData.cookiesPolicyTitle = settings.cookiesPolicyTitle;
         if (!mergedData.cookiesPolicy) mergedData.cookiesPolicy = settings.cookiesPolicy;
+        if (!mergedData.emailListSubject) mergedData.emailListSubject = settings.emailListSubject;
+        if (!mergedData.emailListTemplate) mergedData.emailListTemplate = settings.emailListTemplate;
 
-        setSettings(prev => ({...prev, ...mergedData}));
+        // The data from Firestore should be the source of truth for all fields it contains.
+        // We use a functional update to ensure we have the latest defaults if needed,
+        // but we prioritize Firestore data (mergedData).
+        setSettings(prev => ({
+            ...prev,
+            ...mergedData,
+            // Explicitly handle fields that might be empty/deleted in Firestore
+            // but we want to ensure stay objects/arrays
+            animators: mergedData.animators || prev.animators || [],
+            animatorSettings: mergedData.animatorSettings || {}, // If missing in DB, it's empty
+            holidays: mergedData.holidays || prev.holidays || [],
+            availableTimeSlots: mergedData.availableTimeSlots || prev.availableTimeSlots || [9, 10, 14, 15],
+            infoPages: mergedData.infoPages || prev.infoPages || []
+        }));
       }
       setSettingsLoaded(true);
     }, (err) => { 
@@ -299,9 +493,23 @@ export function App() {
     if (db) dataService.saveBookings(newBookings);
   }, []);
 
-  const updateSettings = useCallback(async (newSettings: AppSettings) => {
-    setSettings(newSettings);
-    await dataService.saveSettings(newSettings);
+  const updateSettings = useCallback(async (newSettings: Partial<AppSettings>) => {
+    try {
+      // 1. Mise à jour de l'état local immédiatement pour la réactivité UI
+      let mergedSettings: AppSettings | null = null;
+      setSettings(prev => {
+        mergedSettings = { ...prev, ...newSettings };
+        return mergedSettings;
+      });
+
+      // 2. Persistance dans Firestore (en dehors du setter d'état)
+      if (mergedSettings) {
+        await dataService.saveSettings(mergedSettings);
+      }
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour des paramètres:", error);
+      throw error;
+    }
   }, []);
   
   const appContextValue = useMemo(() => ({
@@ -349,7 +557,12 @@ export function App() {
     <AppContext.Provider value={appContextValue}>
       <div className="min-h-screen">
         {isAdmin ? (
-          <AdminPanel onLogout={() => { setIsAdmin(false); setCurrentUser(null); handleBackToHome(); }} />
+          <AdminPanel onLogout={async () => { 
+            setIsAdmin(false); 
+            setCurrentUser(null); 
+            handleBackToHome(); 
+            if (auth) await signOut(auth);
+          }} />
         ) : (
           <BookingSystem 
             view={view}

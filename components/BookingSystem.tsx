@@ -67,12 +67,12 @@ const BookingSystem: React.FC<BookingSystemProps> = ({
         await saveBooking(newBooking);
         
         // Envoi des e-mails en arrière-plan
-        emailService.sendBookingConfirmation(newBooking);
+        emailService.sendBookingConfirmation(newBooking, settings);
         
         if (selectedAnimation.animator) {
             const animator = settings.animators.find(a => a.name === selectedAnimation.animator);
             if (animator && animator.email) {
-                emailService.sendAnimatorNotification(newBooking, animator);
+                emailService.sendAnimatorNotification(newBooking, animator, settings);
             }
         }
 
@@ -94,19 +94,19 @@ const BookingSystem: React.FC<BookingSystemProps> = ({
     }
 
     if (view === View.LEGAL_NOTICE) {
-      return <LegalPage title="Mentions Légales" content={settings.legalNotice || ''} onBack={onBackToHome} />;
+      return <LegalPage title={settings.legalNoticeTitle || "Mentions Légales"} content={settings.legalNotice || ''} onBack={onBackToHome} />;
     }
 
     if (view === View.PRIVACY_POLICY) {
-      return <LegalPage title="Politique de Confidentialité" content={settings.privacyPolicy || ''} onBack={onBackToHome} />;
+      return <LegalPage title={settings.privacyPolicyTitle || "Politique de Confidentialité"} content={settings.privacyPolicy || ''} onBack={onBackToHome} />;
     }
 
     if (view === View.COOKIES_POLICY) {
-      return <LegalPage title="Gestion des Cookies" content={settings.cookiesPolicy || ''} onBack={onBackToHome} />;
+      return <LegalPage title={settings.cookiesPolicyTitle || "Gestion des Cookies"} content={settings.cookiesPolicy || ''} onBack={onBackToHome} />;
     }
 
     if (view === View.INFO_PAGE && selectedInfoPage) {
-      return <LegalPage title={selectedInfoPage.title} content={selectedInfoPage.content} onBack={onBackToHome} />;
+      return <LegalPage title={selectedInfoPage.title} content={selectedInfoPage.content} onBack={onBackToHome} hideTitle={selectedInfoPage.hideTitle} />;
     }
 
     if (view === View.CALENDAR && selectedAnimation) {
@@ -119,20 +119,33 @@ const BookingSystem: React.FC<BookingSystemProps> = ({
               <header className="max-w-7xl mx-auto mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                   <button onClick={onBackToHome} className="text-blue-600 hover:underline mb-6 inline-block font-medium">← Retour à la liste</button>
                   <div 
-                      className="p-6 rounded-lg w-full border flex flex-col md:flex-row gap-6 md:items-center"
+                      className="p-6 rounded-lg w-full border flex flex-col md:flex-row gap-6 md:items-center relative overflow-hidden"
                       style={{ 
                           backgroundColor: selectedAnimation.color, 
                           color: fontColor,
                           borderColor: borderColor
                       }}
                   >
-                      <div className="md:w-1/2 md:border-r md:pr-10" style={{ borderColor: borderColor }}>
-                          <h1 className="text-3xl font-bold leading-tight">{selectedAnimation.title}</h1>
+                      {selectedAnimation.imageUrl && (
+                          <div className="absolute -right-4 -top-4 opacity-20 pointer-events-none">
+                              <img src={selectedAnimation.imageUrl} alt="" className="w-48 h-48 object-cover rounded-full rotate-12" />
+                          </div>
+                      )}
+                      
+                      <div className="md:w-1/2 md:border-r md:pr-10 z-10" style={{ borderColor: borderColor }}>
+                          <h1 className="text-3xl font-bold leading-tight flex items-center gap-4">
+                              {selectedAnimation.imageUrl && (
+                                  <div className="w-16 h-16 rounded-xl border-2 border-white/50 shadow-lg overflow-hidden flex-shrink-0">
+                                      <img src={selectedAnimation.imageUrl} alt="" className="w-full h-full object-cover" />
+                                  </div>
+                              )}
+                              {selectedAnimation.title}
+                          </h1>
                           <p className="opacity-90 mt-2 text-lg font-semibold">{selectedAnimation.classLevel}</p>
                       </div>
                       
                       {selectedAnimation.description && (
-                          <div className="md:w-1/2 md:pl-4">
+                          <div className="md:w-1/2 md:pl-4 z-10">
                               <p className="text-lg md:text-xl leading-relaxed opacity-95 italic font-medium">
                                   {selectedAnimation.description}
                               </p>

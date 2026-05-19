@@ -127,7 +127,16 @@ const ManageAnimations: React.FC<AdminSubComponentProps> = ({ showNotification }
                                     <td className={`px-6 py-4 whitespace-nowrap text-gray-400 ${canManage ? 'cursor-move' : 'cursor-not-allowed opacity-30'}`}>
                                         <DragHandleIcon className="w-5 h-5" />
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-base font-medium text-gray-900">{anim.title}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex items-center">
+                                            {anim.imageUrl && (
+                                                <div className="w-10 h-10 rounded shadow-sm overflow-hidden mr-3 border border-gray-100 flex-shrink-0">
+                                                    <img src={anim.imageUrl} alt="" className="w-full h-full object-cover" />
+                                                </div>
+                                            )}
+                                            <div className="text-base font-medium text-gray-900">{anim.title}</div>
+                                        </div>
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-base text-gray-500">{anim.animator || '-'}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-base text-gray-500">{anim.classLevel}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right font-medium">

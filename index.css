@@ -28,3 +28,100 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #cbd5e1;
 }
+
+/* Quill Customization */
+.ql-toolbar.ql-snow {
+  background: white !important;
+  border-top-left-radius: 0.75rem;
+  border-top-right-radius: 0.75rem;
+  border: 1px solid #e2e8f0 !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+.ql-container.ql-snow {
+  border-bottom-left-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
+  border: 1px solid #e2e8f0 !important;
+  border-top: none !important;
+  font-family: inherit !important;
+  max-height: 600px;
+  overflow-y: auto;
+  background: white;
+}
+
+.ql-editor {
+  min-height: 300px;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #1e293b;
+}
+
+/* Remove default paragraph margins in editor as requested */
+.ql-editor p {
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  min-height: 1.2em;
+}
+
+/* Also remove margins for list items */
+.ql-editor li {
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* For expanded mode */
+.quill-maximized {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  background: white !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 1rem !important; /* Smaller padding for more space */
+}
+
+@media (min-width: 1024px) {
+  .quill-maximized {
+    padding: 2rem !important;
+  }
+}
+
+.quill-maximized .ql-toolbar.ql-snow {
+  position: static !important; /* In maximized mode, let it be naturally at top of flex container */
+  border-radius: 0.75rem 0.75rem 0 0 !important;
+}
+
+.quill-maximized .ql-container.ql-snow {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  height: auto !important;
+}
+
+/* Ensure the scrollbar area is correct */
+.ql-container {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.ql-editor {
+  flex: 1 !important;
+  overflow-y: visible !important; /* Let the container handle scrolling if needed, or editor itself */
+}
+
+/* Scrollbar styling for editor */
+.ql-container::-webkit-scrollbar {
+  width: 8px;
+}
+.ql-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.ql-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.ql-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

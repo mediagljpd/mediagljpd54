@@ -5,7 +5,8 @@ import { Booking } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { generateBusPdf } from '../../services/documentGenerator';
 import { formatPhoneNumber } from '../../utils/formatters';
-import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon, XIcon } from '../Icons';
+import { emailService } from '../../services/emailService';
+import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, SendIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon, XIcon } from '../Icons';
 
 import BookingEditForm from './BookingEditForm';
 import BookingsCalendar from './BookingsCalendar';
@@ -50,6 +51,20 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const viewingBooking = useMemo(() => bookings.find(b => b.id === viewingBookingId) || null, [bookings, viewingBookingId]);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+    const [isSendListModalOpen, setIsSendListModalOpen] = useState(false);
+    const [recipientListEmail, setRecipientListEmail] = useState('');
+    const [isSendingList, setIsSendingList] = useState(false);
+
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (viewingBookingId) setViewingBookingId(null);
+                else if (busManagementBooking) setBusManagementBooking(null);
+            }
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [viewingBookingId, busManagementBooking]);
 
     // Filtres
     const animators = useMemo(() => settings.animators || [], [settings.animators]);
@@ -64,27 +79,27 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
         const isLimitedUser = !!(currentUser && currentUser.animatorName);
         
-        let initialAnims: string[] = [];
+        // Uniquement les mois en cours et à venir du cycle scolaire par défaut
+        const now = new Date();
+        const curMonth = now.getMonth();
+        const monthIdx = SCHOOL_YEAR_MONTHS.findIndex(m => m.value === curMonth);
+        
         let initialMonths: number[] = [];
+        if (monthIdx !== -1) {
+            // Mois actuel et suivants (dans l'ordre SCHOOL_YEAR_MONTHS)
+            initialMonths = SCHOOL_YEAR_MONTHS.slice(monthIdx).map(m => m.value);
+        } else {
+            // Si hors cycle scolaire (ex: Juillet/Août), on coche tout par défaut pour la rentrée
+            initialMonths = SCHOOL_YEAR_MONTHS.map(m => m.value);
+        }
 
+        let initialAnims: string[] = [];
         if (isLimitedUser && currentUser?.animatorName) {
             // Mode restreint : Uniquement l'animateur lié
             initialAnims = [currentUser.animatorName];
-            
-            // Uniquement les mois en cours et à venir du cycle scolaire
-            const now = new Date();
-            const curMonth = now.getMonth();
-            const monthIdx = SCHOOL_YEAR_MONTHS.findIndex(m => m.value === curMonth);
-            
-            if (monthIdx !== -1) {
-                initialMonths = SCHOOL_YEAR_MONTHS.slice(monthIdx).map(m => m.value);
-            } else {
-                initialMonths = SCHOOL_YEAR_MONTHS.map(m => m.value);
-            }
         } else {
-            // Mode admin complet : Tout cocher par défaut
+            // Mode admin : Tous les animateurs
             initialAnims = animators.map(a => a.name);
-            initialMonths = SCHOOL_YEAR_MONTHS.map(m => m.value);
         }
 
         setSelectedAnimators(new Set(initialAnims));
@@ -208,10 +223,36 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         }
     };
 
-    const handleGenerateBusSheet = async (format: 'pdf') => {
+    const handleSendList = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!recipientListEmail.trim()) {
+            showNotification("Veuillez renseigner une adresse e-mail.", "error");
+            return;
+        }
+
         const selectedBookings = bookings.filter(b => selectedBookingIds.has(b.id));
         if (selectedBookings.length === 0) {
             showNotification("Aucune réservation sélectionnée.");
+            return;
+        }
+
+        setIsSendingList(true);
+        try {
+            await emailService.sendBookingList(recipientListEmail.trim(), selectedBookings, settings);
+            showNotification("La liste a été envoyée par e-mail.");
+            setIsSendListModalOpen(false);
+            setRecipientListEmail('');
+        } catch (error) {
+            showNotification("Erreur lors de l'envoi de l'e-mail.", "error");
+        } finally {
+            setIsSendingList(false);
+        }
+    };
+
+    const handleGenerateBusSheet = async (format: 'pdf') => {
+        const selectedBookings = bookings.filter(b => selectedBookingIds.has(b.id) && !b.noBusRequired);
+        if (selectedBookings.length === 0) {
+            showNotification("Aucune réservation avec besoin de bus sélectionnée (statut 'Pas de bus' ignoré).");
             return;
         }
         try {
@@ -318,9 +359,6 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                             <SparklesIcon className="w-5 h-5" /> <span className="hidden sm:inline">Générer</span>
                         </button>
                     )}
-                    <button onClick={() => setIsBusSheetModalOpen(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                        <PdfIcon className="w-5 h-5" /> <span className="hidden sm:inline">Fiches bus</span>
-                    </button>
                 </div>
             </div>
             
@@ -360,9 +398,17 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                         {selectedBookingIds.size > 0 && (
                             <div className="bg-indigo-900 text-white p-4 mb-4 rounded-xl flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-4">
                                 <span className="font-black text-sm uppercase tracking-widest">{selectedBookingIds.size} sélectionné(s)</span>
-                                <button onClick={handleDeleteSelected} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-5 py-2 text-xs font-black uppercase rounded-lg transition-colors">
-                                    <TrashIcon className="w-4 h-4" /> Supprimer
-                                </button>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setIsSendListModalOpen(true)} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2 text-xs font-black uppercase rounded-lg transition-colors">
+                                        <SendIcon className="w-4 h-4" /> Envoi Liste
+                                    </button>
+                                    <button onClick={() => setIsBusSheetModalOpen(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 text-xs font-black uppercase rounded-lg transition-colors">
+                                        <PdfIcon className="w-4 h-4" /> Fiches bus
+                                    </button>
+                                    <button onClick={handleDeleteSelected} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-5 py-2 text-xs font-black uppercase rounded-lg transition-colors">
+                                        <TrashIcon className="w-4 h-4" /> Supprimer
+                                    </button>
+                                </div>
                             </div>
                         )}
                         <div className="bg-white shadow-sm border border-gray-100 rounded-2xl overflow-x-auto">
@@ -430,7 +476,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             
             {/* Détails de la réservation */}
             {viewingBooking && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setViewingBookingId(null)}>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[500]">
                     <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-between items-start mb-6">
                             <div>
@@ -528,7 +574,16 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                         </div>
 
                         <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end gap-3">
-                            <button type="button" onClick={() => { setEditingBooking(viewingBooking); }} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-indigo-700 transition-all">
+                            <button 
+                                type="button" 
+                                onClick={() => { 
+                                    const b = viewingBooking;
+                                    setViewingBookingId(null);
+                                    // Utilisation d'un timeout pour s'assurer que le changement d'état est bien process et éviter les conflits de modales
+                                    setTimeout(() => setEditingBooking(b), 10);
+                                }} 
+                                className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                            >
                                 Modifier
                             </button>
                             <button type="button" onClick={() => setViewingBookingId(null)} className="px-6 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all">
@@ -541,8 +596,15 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             
             {/* Modales conservées */}
             {busManagementBooking && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setBusManagementBooking(null)}>
-                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[1000]">
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md relative" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                            type="button" 
+                            onClick={() => setBusManagementBooking(null)} 
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <XIcon className="w-6 h-6" />
+                        </button>
                         <div className="flex justify-between items-start mb-2">
                             <h2 className="text-2xl font-black text-gray-800">Gestion du transport</h2>
                             {currentUser?.role !== 'admin' && <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-1 rounded-lg uppercase tracking-tight">Lecture seule</span>}
@@ -603,7 +665,71 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             )}
 
             {isGeneratorOpen && <RandomBookingGenerator onClose={() => setIsGeneratorOpen(false)} onGenerate={(newB) => { updateBookings([...bookings, ...newB]); setIsGeneratorOpen(false); showNotification(`${newB.length} générées !`); }} />}
-            {isBusSheetModalOpen && <BusSheetGeneratorModal bookingCount={selectedBookingIds.size} onClose={() => setIsBusSheetModalOpen(false)} onGenerate={handleGenerateBusSheet} />}
+            {isBusSheetModalOpen && (
+                <BusSheetGeneratorModal 
+                    bookingCount={bookings.filter(b => selectedBookingIds.has(b.id) && !b.noBusRequired).length} 
+                    onClose={() => setIsBusSheetModalOpen(false)} 
+                    onGenerate={handleGenerateBusSheet} 
+                />
+            )}
+            
+            {/* Modal Envoi Liste */}
+            {isSendListModalOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[1000]">
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md relative" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                            type="button" 
+                            onClick={() => setIsSendListModalOpen(false)} 
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <XIcon className="w-6 h-6" />
+                        </button>
+                        <h2 className="text-2xl font-black text-gray-800 mb-2 uppercase tracking-tight">Envoyer la liste</h2>
+                        <p className="text-sm text-gray-500 mb-6 font-medium">Saisissez l'adresse e-mail pour envoyer le tableau récapitulatif des {selectedBookingIds.size} réservation(s) sélectionnée(s).</p>
+                        
+                        <form onSubmit={handleSendList} className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Adresse e-mail destinataire</label>
+                                <input 
+                                    type="email" 
+                                    required
+                                    value={recipientListEmail}
+                                    onChange={(e) => setRecipientListEmail(e.target.value)}
+                                    placeholder="exemple@mail.com"
+                                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold text-gray-800 focus:border-green-500 outline-none transition-all placeholder:text-gray-300"
+                                />
+                            </div>
+                            
+                            <div className="flex gap-3 pt-2">
+                                <button 
+                                    type="button" 
+                                    onClick={() => setIsSendListModalOpen(false)} 
+                                    className="flex-grow py-3 rounded-2xl font-bold text-gray-400 hover:bg-gray-100 transition-colors"
+                                >
+                                    Annuler
+                                </button>
+                                <button 
+                                    type="submit" 
+                                    disabled={isSendingList}
+                                    className="flex-[2] py-3 bg-green-600 text-white rounded-2xl font-black text-sm uppercase tracking-wider hover:bg-green-700 shadow-lg shadow-green-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                >
+                                    {isSendingList ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            Envoi...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <SendIcon className="w-4 h-4" /> Envoyer la liste
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {editingBooking && <BookingEditForm booking={editingBooking} animations={animations} bookings={bookings} onSave={(b) => { 
                 saveBooking(b); 
                 setEditingBooking(null); 

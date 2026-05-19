@@ -1,15 +1,30 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Booking } from '../../types';
-import { CheckIcon } from '../Icons';
+import { CheckIcon, XIcon } from '../Icons';
 
 const BookingConfirmation: React.FC<{ booking: Booking, onOk: () => void }> = ({ booking, onOk }) => {
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onOk();
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [onOk]);
+
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={onOk}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div 
-                className="bg-white rounded-2xl shadow-2xl p-8 text-center max-w-md w-full transform animate-in fade-in zoom-in duration-300" 
+                className="bg-white rounded-2xl shadow-2xl p-8 text-center max-w-md w-full transform animate-in fade-in zoom-in duration-300 relative" 
                 onClick={(e) => e.stopPropagation()}
             >
+                <button 
+                    onClick={onOk}
+                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                    <XIcon className="w-6 h-6" />
+                </button>
+
                 <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
                     <CheckIcon className="w-10 h-10" />
                 </div>
@@ -28,9 +43,9 @@ const BookingConfirmation: React.FC<{ booking: Booking, onOk: () => void }> = ({
                 </div>
 
                 <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                    <p className="text-blue-800 text-sm">
-                        Un mail de confirmation vient de vous être envoyé à l'adresse : <br/>
-                        <span className="font-semibold">{booking.email}</span>
+                    <p className="text-blue-800 text-sm leading-relaxed">
+                        Un mail de confirmation a été envoyé à l'adresse ci-dessous, si vous n'avez rien reçu pensez à vérifier votre dossier courrier indésirable : <br/>
+                        <span className="font-bold text-blue-950 text-base mt-1 block">{booking.email}</span>
                     </p>
                 </div>
 

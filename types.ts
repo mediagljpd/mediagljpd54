@@ -8,6 +8,7 @@ export interface Animation {
   color: string;
   fontColor: string;
   order: number;
+  imageUrl?: string;
 }
 
 export interface Booking {
@@ -40,6 +41,7 @@ export interface Holiday {
 export interface AnimatorSettings {
   inactiveSlots: number[];
   unavailableDates: string[];
+  monthlyBookingLimit?: number;
 }
 
 export interface Animator {
@@ -68,6 +70,7 @@ export interface CustomLegalPage {
   title: string;
   content: string;
   slug: string;
+  hideTitle?: boolean;
 }
 
 export interface Commune {
@@ -143,8 +146,11 @@ export interface AppSettings {
   // Footer & Legal
   footerLinks?: FooterLink[];
   establishmentInfo?: EstablishmentInfo;
+  legalNoticeTitle?: string;
   legalNotice?: string;
+  privacyPolicyTitle?: string;
   privacyPolicy?: string;
+  cookiesPolicyTitle?: string;
   cookiesPolicy?: string;
 
   // Contact
@@ -167,6 +173,14 @@ export interface AppSettings {
   headerInfoFontStyle?: string;
   headerInfoColor?: string;
   headerInfoWidth?: number;
+
+  // Email Templates
+  emailTeacherTemplate?: string;
+  emailTeacherSubject?: string;
+  emailAnimatorTemplate?: string;
+  emailAnimatorSubject?: string;
+  emailListTemplate?: string;
+  emailListSubject?: string;
 }
 
 export enum View {

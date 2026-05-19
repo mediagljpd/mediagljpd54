@@ -25,10 +25,19 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     isDanger = false
 }) => {
     useEffect(() => {
-        if (isOpen) {
-            console.log("ConfirmationModal is now OPEN:", title);
-        }
-    }, [isOpen, title]);
+        if (!isOpen) return;
+        
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onCancel();
+        };
+        
+        window.addEventListener('keydown', handleEsc);
+        console.log("ConfirmationModal is now OPEN:", title);
+        
+        return () => {
+            window.removeEventListener('keydown', handleEsc);
+        };
+    }, [isOpen, title, onCancel]);
 
     if (!isOpen) return null;
 

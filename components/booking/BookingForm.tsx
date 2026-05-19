@@ -1,12 +1,20 @@
 
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { Animation, Booking } from '../../types';
 import { toYYYYMMDD } from '../../utils/date';
 import { AppContext } from '../../AppContext';
-import { SearchIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon } from '../Icons';
+import { SearchIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, XIcon } from '../Icons';
 
 const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, onConfirm: (formData: Omit<Booking, 'id' | 'animationTitle'>) => void, onCancel: () => void }> = ({ animation, date, time, onConfirm, onCancel }) => {
     const { settings } = useContext(AppContext);
+    
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onCancel();
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [onCancel]);
     const [formData, setFormData] = useState({
         animationId: animation.id,
         date: toYYYYMMDD(date),
@@ -82,9 +90,17 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={onCancel}>
-            <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold mb-4 text-gray-800">Réservation pour "{animation.title}"</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto relative animate-in zoom-in-95 duration-200">
+                <button 
+                    onClick={onCancel}
+                    className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
+                    title="Fermer"
+                >
+                    <XIcon className="w-6 h-6" />
+                </button>
+
+                <h2 className="text-2xl font-bold mb-1 text-gray-800">Réservation pour "{animation.title}"</h2>
                 <p className="mb-6 text-gray-600">Le {date.toLocaleDateString('fr-FR')} à {time}h00</p>
                 <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-x-6 gap-y-4">
                     <div>

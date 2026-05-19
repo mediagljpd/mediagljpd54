@@ -21,19 +21,19 @@ const AppFooter: React.FC<AppFooterProps> = ({ onNavigate }) => {
               onClick={() => onNavigate(View.LEGAL_NOTICE)}
               className="text-base text-gray-600 hover:text-blue-600 transition-colors font-medium"
             >
-              Mentions légales
+              {settings.legalNoticeTitle || 'Mentions légales'}
             </button>
             <button 
               onClick={() => onNavigate(View.PRIVACY_POLICY)}
               className="text-base text-gray-600 hover:text-blue-600 transition-colors font-medium"
             >
-              Politique de confidentialité
+              {settings.privacyPolicyTitle || 'Politique de confidentialité'}
             </button>
             <button 
               onClick={() => onNavigate(View.COOKIES_POLICY)}
               className="text-base text-gray-600 hover:text-blue-600 transition-colors font-medium"
             >
-              Cookies
+              {settings.cookiesPolicyTitle || 'Cookies'}
             </button>
             {footerLinks?.map((link) => (
               link.url && (
@@ -69,7 +69,22 @@ const AppFooter: React.FC<AppFooterProps> = ({ onNavigate }) => {
           )}
           
           <div className="flex flex-col text-base text-gray-600">
-            {establishmentInfo?.name && <span className="font-bold text-gray-900 mb-1.5 text-lg">{establishmentInfo.name}</span>}
+            {establishmentInfo?.name && (
+              <span className="font-bold text-gray-900 mb-1.5 text-lg block leading-tight">
+                {establishmentInfo.name.includes("Longwy") && establishmentInfo.name.includes("Jean-Paul Durieux") ? (
+                  <>
+                    {establishmentInfo.name.split("Jean-Paul Durieux").map((part, i, arr) => (
+                      <React.Fragment key={i}>
+                        {part}
+                        {i < arr.length - 1 && <><br />Jean-Paul Durieux</>}
+                      </React.Fragment>
+                    ))}
+                  </>
+                ) : (
+                  establishmentInfo.name
+                )}
+              </span>
+            )}
             {establishmentInfo?.address && <span className="mb-1">{establishmentInfo.address}</span>}
             {establishmentInfo?.phone && <span className="mb-1">Tél : {establishmentInfo.phone}</span>}
             {establishmentInfo?.email && (

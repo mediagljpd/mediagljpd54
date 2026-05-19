@@ -5,9 +5,10 @@ interface LegalPageProps {
   title: string;
   content: string;
   onBack: () => void;
+  hideTitle?: boolean;
 }
 
-const LegalPage: React.FC<LegalPageProps> = ({ title, content, onBack }) => {
+const LegalPage: React.FC<LegalPageProps> = ({ title, content, onBack, hideTitle }) => {
   /**
    * Cette fonction est la clé : elle transforme le HTML brut en une structure
    * où chaque mot est protégé dans un span 'inline-block'.
@@ -82,8 +83,9 @@ const LegalPage: React.FC<LegalPageProps> = ({ title, content, onBack }) => {
           display: block;
         }
         .legal-safe-container p {
-          margin-bottom: 1.5rem;
+          margin-bottom: 0;
           display: block;
+          min-height: 1.25em;
         }
         .legal-safe-container ul, .legal-safe-container ol {
           margin-bottom: 1.5rem;
@@ -91,7 +93,7 @@ const LegalPage: React.FC<LegalPageProps> = ({ title, content, onBack }) => {
           display: block;
         }
         .legal-safe-container li {
-          margin-bottom: 0.75rem;
+          margin-bottom: 0;
           display: list-item;
         }
         .legal-safe-container strong {
@@ -108,7 +110,9 @@ const LegalPage: React.FC<LegalPageProps> = ({ title, content, onBack }) => {
           ← Retour à l'accueil
         </button>
         
-        <h1 className="text-4xl font-extrabold mb-10 text-gray-900 tracking-tight">{title}</h1>
+        {!hideTitle && (
+            <h1 className="text-4xl font-extrabold mb-10 text-gray-900 tracking-tight">{title}</h1>
+        )}
         
         <div 
           className="legal-safe-container"

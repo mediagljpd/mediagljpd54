@@ -129,6 +129,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
         setCurrentUser(updatedUser);
         onLoginSuccess();
     } catch (err) {
+        console.error("Erreur lors de l'enregistrement du mot de passe:", err);
         setError("Une erreur est survénue lors du changement de mot de passe.");
     } finally {
         setIsLoading(false);

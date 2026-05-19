@@ -1,5 +1,5 @@
 
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../../AppContext';
 import { Animation } from '../../types';
 import { CogIcon, BellIcon, XIcon } from '../Icons';
@@ -23,7 +23,7 @@ const AnimationCard: React.FC<{ animation: Animation; onSelect: () => void }> = 
 
     return (
         <div
-            className="rounded-xl shadow-md overflow-hidden cursor-pointer transform hover:scale-[1.02] transition-all duration-300 flex flex-col p-4 border h-[250px] w-full"
+            className="rounded-xl shadow-md overflow-hidden cursor-pointer transform hover:scale-[1.02] transition-all duration-300 flex flex-col p-4 border h-[270px] w-full relative"
             style={{ ...cardStyle, borderColor: borderColor }}
             onClick={onSelect}
             role="button"
@@ -31,8 +31,23 @@ const AnimationCard: React.FC<{ animation: Animation; onSelect: () => void }> = 
             onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelect()}
             aria-label={`Sélectionner l'animation ${animation.title}`}
         >
-            <div className="overflow-hidden flex-grow">
-                <div className="mb-2">
+            {animation.imageUrl && (
+                <div className="absolute top-4 right-4 z-10">
+                    <div className="w-14 h-14 rounded-xl border-2 border-white/50 shadow-lg overflow-hidden bg-white/20 backdrop-blur-sm rotate-3 transform hover:rotate-0 transition-transform">
+                        <img 
+                            src={animation.imageUrl} 
+                            alt="" 
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
+            
+            <div className="overflow-hidden flex-grow relative">
+                <div className={`mb-2 ${animation.imageUrl ? 'pr-16' : ''}`}>
                     <h3 className="text-lg font-bold line-clamp-2 leading-tight" title={animation.title}>
                         {animation.title}
                     </h3>
@@ -73,6 +88,14 @@ const AnimationSelection: React.FC<{
 }> = ({ onSelectAnimation, onNavigateToAdmin, onNavigateToInfoPage }) => {
   const { animations, settings } = useContext(AppContext);
   const [showContact, setShowContact] = useState(false);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowContact(false);
+    };
+    if (showContact) window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showContact]);
 
   const headerStyle = {
       backgroundColor: settings.headerBgColor || '#ffffff',
@@ -162,7 +185,7 @@ const AnimationSelection: React.FC<{
 
       {/* Fenêtre modale de contact */}
       {showContact && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in fade-in duration-300" onClick={() => setShowContact(false)}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in fade-in duration-300">
             <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full relative transform animate-in zoom-in duration-300" onClick={e => e.stopPropagation()}>
                 <button 
                     onClick={() => setShowContact(false)} 

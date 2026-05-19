@@ -1,7 +1,7 @@
 
 import React, { useContext, useMemo } from 'react';
 import { AppContext } from '../../AppContext';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LabelList } from 'recharts';
 import * as XLSX from 'xlsx';
 import { DownloadIcon } from '../Icons';
 
@@ -13,17 +13,36 @@ const ManageStats: React.FC = () => {
         const totalStudents = bookings.reduce((sum, b) => sum + (b.studentCount || 0), 0);
         
         const byCommune: Record<string, number> = {};
+        const communeLabels: Record<string, string> = {}; // To keep the most complete version (with postal code)
         const bySchool: Record<string, number> = {};
         const byLevel: Record<string, number> = {};
 
         bookings.forEach(b => {
-            if (b.commune) byCommune[b.commune] = (byCommune[b.commune] || 0) + 1;
+            if (b.commune) {
+                // Normalize commune name by removing the postal code part for grouping
+                const cleanCommune = b.commune.replace(/\s*\(\d{5}\)$/, '').trim().toUpperCase();
+                byCommune[cleanCommune] = (byCommune[cleanCommune] || 0) + 1;
+                
+                // Keep the version with postal code if available
+                if (!communeLabels[cleanCommune] || (b.commune.includes('(') && !communeLabels[cleanCommune].includes('('))) {
+                    communeLabels[cleanCommune] = b.commune;
+                }
+            }
             if (b.schoolName) bySchool[b.schoolName] = (bySchool[b.schoolName] || 0) + 1;
-            if (b.classLevel) byLevel[b.classLevel] = (byLevel[b.classLevel] || 0) + 1;
+            if (b.classLevel) {
+                // Sépare les niveaux multiples (ex: "CP, CE1") pour les compter individuellement
+                const levels = b.classLevel.split(',').map(l => l.trim()).filter(Boolean);
+                levels.forEach(level => {
+                    byLevel[level] = (byLevel[level] || 0) + 1;
+                });
+            }
         });
 
         const communeData = Object.entries(byCommune)
-            .map(([name, value]) => ({ name, value }))
+            .map(([cleanName, value]) => ({ 
+                name: communeLabels[cleanName] || cleanName, 
+                value 
+            }))
             .sort((a, b) => b.value - a.value)
             .slice(0, 10);
 
@@ -60,7 +79,22 @@ const ManageStats: React.FC = () => {
         XLSX.writeFile(wb, `Statistiques_Reservations_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
-    const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+    const COLORS = [
+        '#3B82F6', // Blue
+        '#10B981', // Emerald
+        '#F59E0B', // Amber
+        '#EF4444', // Red
+        '#8B5CF6', // Violet
+        '#EC4899', // Pink
+        '#06B6D4', // Cyan
+        '#F97316', // Orange
+        '#84CC16', // Lime
+        '#6366F1', // Indigo
+        '#D946EF', // Fuchsia
+        '#14B8A6', // Teal
+        '#F43F5E', // Rose
+        '#0EA5E9', // Sky
+    ];
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -82,10 +116,10 @@ const ManageStats: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[450px]">
                     <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">Top 10 des Communes</h3>
-                    <div className="h-80 w-full">
+                    <div className="h-80 w-full" style={{ minHeight: '320px' }}>
                         {stats.communeData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%" minHeight={320}>
-                                <BarChart data={stats.communeData} layout="vertical" margin={{ left: 40, right: 20 }}>
+                            <ResponsiveContainer width="100%" height={320}>
+                                <BarChart data={stats.communeData} layout="vertical" margin={{ left: 40, right: 30, top: 10, bottom: 10 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f0f0f0" />
                                     <XAxis type="number" hide />
                                     <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 10, fontWeight: 'bold' }} axisLine={false} tickLine={false} />
@@ -93,7 +127,9 @@ const ManageStats: React.FC = () => {
                                         contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                                         cursor={{ fill: '#f8fafc' }}
                                     />
-                                    <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} barSize={20} />
+                                    <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} barSize={20}>
+                                        <LabelList dataKey="value" position="right" offset={10} style={{ fontSize: 10, fontWeight: '900', fill: '#3B82F6' }} />
+                                    </Bar>
                                 </BarChart>
                             </ResponsiveContainer>
                         ) : (
@@ -104,9 +140,9 @@ const ManageStats: React.FC = () => {
 
                 <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[450px]">
                     <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">Répartition par Niveau</h3>
-                    <div className="h-80 w-full">
+                    <div className="h-80 w-full" style={{ minHeight: '320px' }}>
                         {stats.levelData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%" minHeight={320}>
+                            <ResponsiveContainer width="100%" height={320}>
                                 <PieChart>
                                     <Pie
                                         data={stats.levelData}
@@ -116,6 +152,7 @@ const ManageStats: React.FC = () => {
                                         outerRadius={100}
                                         paddingAngle={5}
                                         dataKey="value"
+                                        label={({ name, value }) => `${name} (${value})`}
                                     >
                                         {stats.levelData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

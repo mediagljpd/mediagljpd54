@@ -4,6 +4,7 @@ import { AppContext } from '../../AppContext';
 import { Animation, Booking } from '../../types';
 import { toYYYYMMDD } from '../../utils/date';
 import { formatPhoneNumber } from '../../utils/formatters';
+import { XIcon } from '../Icons';
 
 const FAKE_LAST_NAMES = ['Lefebvre', 'Martin', 'Bernard', 'Dubois', 'Thomas', 'Robert', 'Richard', 'Petit', 'Durand', 'Leroy'];
 const FAKE_FIRST_NAMES = ['Alice', 'Benjamin', 'Chloé', 'David', 'Eva', 'François', 'Gabrielle', 'Hugo', 'Inès', 'Jules'];
@@ -12,6 +13,14 @@ const RandomBookingGenerator: React.FC<{
     onClose: () => void;
     onGenerate: (bookings: Booking[]) => void;
 }> = ({ onClose, onGenerate }) => {
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [onClose]);
+
     const { animations, bookings, settings } = useContext(AppContext);
     
     const generateFakeBookingData = (animation: Animation, date: Date, time: number): Omit<Booking, 'id'> => {
@@ -24,7 +33,9 @@ const RandomBookingGenerator: React.FC<{
         
         // Use real settings if available, fallback to fakes if not
         const levels = (settings.classLevels && settings.classLevels.length > 0) ? settings.classLevels : ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
-        const communes = (settings.communes && settings.communes.length > 0) ? settings.communes.map(c => c.name) : ['Lille', 'Roubaix', 'Tourcoing'];
+        const communes = (settings.communes && settings.communes.length > 0) 
+            ? settings.communes.map(c => `${c.name} (${c.postalCode})`) 
+            : ['MEXY (54135)', 'LONGWY (54400)', 'HERSERANGE (54440)'];
         const schools = (settings.schools && settings.schools.length > 0) ? settings.schools.map(s => s.name) : ['École Pasteur', 'École Victor Hugo'];
 
         const classLevel = levels[Math.floor(Math.random() * levels.length)];
@@ -269,7 +280,7 @@ const RandomBookingGenerator: React.FC<{
                 const newBookingData = generateFakeBookingData(animation, date, time);
                 const formattedBooking: Booking = {
                     ...newBookingData,
-                    id: `${Date.now()}-${Math.random()}`,
+                    id: `${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
                     phoneNumber: formatPhoneNumber(newBookingData.phoneNumber)
                 };
                 newBookings.push(formattedBooking);
@@ -299,8 +310,14 @@ const RandomBookingGenerator: React.FC<{
     
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={onClose}>
-            <div className="bg-white rounded-lg shadow-xl p-6 sm:p-8 w-full max-w-3xl max-h-[95vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl p-6 sm:p-8 w-full max-w-3xl max-h-[95vh] overflow-y-auto relative" onClick={(e) => e.stopPropagation()}>
+                <button 
+                    onClick={onClose} 
+                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                    <XIcon className="w-6 h-6" />
+                </button>
                 <h2 className="text-2xl font-bold mb-6 text-gray-800">Générer des réservations aléatoires</h2>
 
                 <div className="p-4 border rounded-lg bg-gray-50 mb-6">

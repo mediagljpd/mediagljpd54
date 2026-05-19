@@ -3,7 +3,7 @@ import React, { useState, useContext, useEffect, useMemo } from 'react';
 import { AppContext } from '../../AppContext';
 import { AdminUser, UserRole, UserPermissions } from '../../types';
 import { AdminSubComponentProps } from './types';
-import { TrashIcon, CogIcon, PlusIcon, CheckIcon, ShieldCheckIcon, UserIcon, LockIcon, UserGroupIcon, ShieldIcon } from '../Icons';
+import { TrashIcon, CogIcon, PlusIcon, CheckIcon, ShieldCheckIcon, UserIcon, LockIcon, UserGroupIcon, ShieldIcon, XIcon } from '../Icons';
 import { validatePassword } from '../../utils/validators';
 import PasswordPolicy from './PasswordPolicy';
 import { dataService } from '../../services/dataService';
@@ -39,6 +39,17 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
         });
         return () => unsub();
     }, []);
+
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (isAddingAdmin) setIsAddingAdmin(false);
+                else if (isAdding) { setIsAdding(false); setEditingUser(null); }
+            }
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [isAddingAdmin, isAdding]);
 
     const handleAddAdmin = async () => {
         if (!newAdminUid || !newAdminEmail) return;
@@ -331,8 +342,15 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
             </div>
 
             {isAddingAdmin && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70]" onClick={() => setIsAddingAdmin(false)}>
-                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70]">
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md relative" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                            type="button" 
+                            onClick={() => setIsAddingAdmin(false)} 
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <XIcon className="w-6 h-6" />
+                        </button>
                         <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight mb-6">Ajouter un Admin Google</h3>
                         <div className="space-y-4">
                             <div>
@@ -366,7 +384,7 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
             )}
 
             {isAdding && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => { setIsAdding(false); setEditingUser(null); }}>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
                     <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">

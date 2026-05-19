@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Holiday } from '../../types';
+import { XIcon } from '../Icons';
 
 const HolidayEditModal: React.FC<{
     holiday: Holiday;
@@ -7,6 +8,14 @@ const HolidayEditModal: React.FC<{
     onCancel: () => void;
 }> = ({ holiday, onSave, onCancel }) => {
     const [formState, setFormState] = useState(holiday);
+
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onCancel();
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [onCancel]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormState({ ...formState, [e.target.name]: e.target.value });
@@ -18,9 +27,16 @@ const HolidayEditModal: React.FC<{
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={onCancel}>
-            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-semibold mb-4">Modifier la période de vacances</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg relative animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                <button 
+                    onClick={onCancel}
+                    className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
+                    title="Fermer"
+                >
+                    <XIcon className="w-6 h-6" />
+                </button>
+                <h3 className="text-xl font-bold mb-4 text-gray-800">Modifier la période de vacances</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label htmlFor="holiday-name" className="block text-sm font-medium text-gray-700">Nom de la période</label>

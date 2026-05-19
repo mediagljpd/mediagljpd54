@@ -100,7 +100,27 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
         }, {} as Record<string, Booking[]>);
     }, [bookings]);
 
+    const currentMonthBookingCount = useMemo(() => {
+        const currentAnimator = animation.animator?.trim().toLowerCase();
+        if (!currentAnimator || animatorSettings.monthlyBookingLimit === undefined) return 0;
+
+        return bookings.filter(booking => {
+            const bookingDate = new Date(booking.date.replace(/-/g, '/'));
+            const isSameMonth = bookingDate.getFullYear() === year && bookingDate.getMonth() === month;
+            if (!isSameMonth) return false;
+
+            const bookingAnimator = animationAnimatorMap[booking.animationId]?.trim().toLowerCase();
+            return bookingAnimator === currentAnimator;
+        }).length;
+    }, [bookings, year, month, animation.animator, animatorSettings.monthlyBookingLimit, animationAnimatorMap]);
+
+    const isLimitReached = useMemo(() => {
+        return animatorSettings.monthlyBookingLimit !== undefined && currentMonthBookingCount >= animatorSettings.monthlyBookingLimit;
+    }, [animatorSettings.monthlyBookingLimit, currentMonthBookingCount]);
+
     const isSlotAvailable = (date: Date, time: number): boolean => {
+        if (isLimitReached) return false;
+        
         const dateString = toYYYYMMDD(date);
         const dayBookings = bookingsByDate[dateString] || [];
         
@@ -185,7 +205,7 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
                 </button>
             </div>
-
+            
             {/* Liste des jours optimisée : 3 colonnes sur desktop */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {availableDaysInMonth.length > 0 ? (

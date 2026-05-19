@@ -22,8 +22,12 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         if (isRestrictedUser && linkedAnimator) return linkedAnimator;
         return (animators[0] && animators[0].name) || '';
     });
-    const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+    const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [inactiveSlots, setInactiveSlots] = useState<number[]>([]);
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+    
+    const [noLimit, setNoLimit] = useState<boolean>(true);
+    const [monthlyBookingLimit, setMonthlyBookingLimit] = useState<number | undefined>(undefined);
     
     const [startYear, endYear] = useMemo(() => {
         const years = settings.activeYear.split('-').map(Number);
@@ -80,13 +84,23 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         }
     }, [startYear, endYear]);
     
-     useEffect(() => {
+    useEffect(() => {
         if (selectedAnimatorName) {
-            setInactiveSlots(selectedAnimatorSettings.inactiveSlots);
+            const animSettings = settings.animatorSettings?.[selectedAnimatorName] || { unavailableDates: [], inactiveSlots: [] };
+            setInactiveSlots(animSettings.inactiveSlots || []);
+            setSelectedDates(animSettings.unavailableDates || []);
+            const limit = animSettings.monthlyBookingLimit;
+            setMonthlyBookingLimit(limit);
+            setNoLimit(limit === undefined);
+            setHasUnsavedChanges(false);
         } else {
             setInactiveSlots([]);
+            setSelectedDates([]);
+            setMonthlyBookingLimit(undefined);
+            setNoLimit(true);
+            setHasUnsavedChanges(false);
         }
-    }, [selectedAnimatorSettings, selectedAnimatorName]);
+    }, [selectedAnimatorName, settings.animatorSettings]);
 
     const schoolYears = useMemo(() => {
         const now = new Date();
@@ -117,26 +131,20 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
 
     const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const newActiveYear = e.target.value;
-        updateSettings({ ...settings, activeYear: newActiveYear });
+        updateSettings({ activeYear: newActiveYear });
         showNotification("Année scolaire active mise à jour !");
     };
 
     const handleDateClick = (dateStr: string) => {
         if (!selectedAnimatorName) return;
         
-        const isCurrentlyUnavailable = selectedAnimatorSettings.unavailableDates.includes(dateStr);
+        const isCurrentlyUnavailable = selectedDates.includes(dateStr);
         const newUnavailabilities = isCurrentlyUnavailable
-            ? selectedAnimatorSettings.unavailableDates.filter(d => d !== dateStr)
-            : [...selectedAnimatorSettings.unavailableDates, dateStr].sort();
+            ? selectedDates.filter(d => d !== dateStr)
+            : [...selectedDates, dateStr].sort();
 
-        const newAnimatorSettings = { ...(settings.animatorSettings || {}) };
-        newAnimatorSettings[selectedAnimatorName] = {
-            ...selectedAnimatorSettings,
-            unavailableDates: newUnavailabilities,
-        };
-        
-        updateSettings({ ...settings, animatorSettings: newAnimatorSettings });
-        showNotification(isCurrentlyUnavailable ? "Date de nouveau disponible" : "Date rendue indisponible");
+        setSelectedDates(newUnavailabilities);
+        setHasUnsavedChanges(true);
     };
 
     const toggleCheckDate = (dateStr: string) => {
@@ -149,21 +157,16 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
     const deleteCheckedDates = () => {
         if (!selectedAnimatorName || checkedDates.size === 0) return;
         
-        const newAnimatorSettings = { ...(settings.animatorSettings || {}) };
-        newAnimatorSettings[selectedAnimatorName] = {
-            ...selectedAnimatorSettings,
-            unavailableDates: selectedAnimatorSettings.unavailableDates.filter(d => !checkedDates.has(d)),
-        };
-
-        updateSettings({ ...settings, animatorSettings: newAnimatorSettings });
+        const newUnavailabilities = selectedDates.filter(d => !checkedDates.has(d));
+        setSelectedDates(newUnavailabilities);
         setCheckedDates(new Set());
-        showNotification(`${checkedDates.size} date(s) supprimée(s).`);
+        setHasUnsavedChanges(true);
     };
 
     const groupedUnavailabilities = useMemo(() => {
         const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
         
-        const sortedDates = [...selectedAnimatorSettings.unavailableDates].sort();
+        const sortedDates = [...selectedDates].sort();
         
         const grouped: Record<string, { label: string, dates: string[], sortKey: number }> = {};
         
@@ -184,19 +187,12 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         });
         
         return Object.values(grouped).sort((a, b) => a.sortKey - b.sortKey);
-    }, [selectedAnimatorSettings.unavailableDates]);
+    }, [selectedDates]);
 
     const removeUnavailability = (dateStr: string) => {
         if (!selectedAnimatorName) return;
-        
-        const newAnimatorSettings = { ...(settings.animatorSettings || {}) };
-        newAnimatorSettings[selectedAnimatorName] = {
-            ...selectedAnimatorSettings,
-            unavailableDates: selectedAnimatorSettings.unavailableDates.filter(d => d !== dateStr),
-        };
-
-        updateSettings({ ...settings, animatorSettings: newAnimatorSettings });
-        showNotification('Indisponibilité supprimée.');
+        setSelectedDates(prev => prev.filter(d => d !== dateStr));
+        setHasUnsavedChanges(true);
     };
     
     const handleSlotToggle = (slot: number) => {
@@ -211,23 +207,33 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         });
     };
     
-    const handleSaveSlots = () => {
+    const handleSaveAnimatorSettings = () => {
         if (!selectedAnimatorName) return;
 
-        const newAnimatorSettings = { ...(settings.animatorSettings || {}) };
-        newAnimatorSettings[selectedAnimatorName] = {
+        const updatedAnimatorSettings: AnimatorSettings = {
             ...selectedAnimatorSettings,
             inactiveSlots: inactiveSlots,
+            unavailableDates: selectedDates
         };
+
+        if (noLimit) {
+            delete updatedAnimatorSettings.monthlyBookingLimit;
+        } else {
+            updatedAnimatorSettings.monthlyBookingLimit = monthlyBookingLimit === undefined || isNaN(monthlyBookingLimit) ? 0 : monthlyBookingLimit;
+        }
+
+        const newAnimatorSettings = { ...(settings.animatorSettings || {}) };
+        newAnimatorSettings[selectedAnimatorName] = updatedAnimatorSettings;
     
-        updateSettings({ ...settings, animatorSettings: newAnimatorSettings });
-        showNotification("Créneaux horaires mis à jour !");
+        updateSettings({ animatorSettings: newAnimatorSettings });
+        setHasUnsavedChanges(false);
+        showNotification("Paramètres de l'animateur (dates et créneaux) enregistrés !");
     };
 
     const handleAddHoliday = (e: React.FormEvent) => {
         e.preventDefault();
         if(newHoliday.name && newHoliday.startDate && newHoliday.endDate) {
-            updateSettings({ ...settings, holidays: [...settings.holidays, newHoliday] });
+            updateSettings({ holidays: [...settings.holidays, newHoliday] });
             setNewHoliday({ name: '', startDate: '', endDate: ''});
             showNotification('Période de vacances ajoutée.');
         }
@@ -236,7 +242,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
     const handleUpdateHoliday = (updatedHoliday: Holiday) => {
         const originalHolidayName = editingHoliday!.name;
         const newHolidays = settings.holidays.map(h => h.name === originalHolidayName ? updatedHoliday : h);
-        updateSettings({ ...settings, holidays: newHolidays });
+        updateSettings({ holidays: newHolidays });
         setEditingHoliday(null);
         showNotification("Période de vacances mise à jour.");
     };
@@ -247,7 +253,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
 
     const confirmDeleteHoliday = () => {
         if (!holidayToDelete) return;
-        updateSettings({ ...settings, holidays: settings.holidays.filter(h => h.name !== holidayToDelete) });
+        updateSettings({ holidays: settings.holidays.filter(h => h.name !== holidayToDelete) });
         showNotification('Période de vacances supprimée.');
         setHolidayToDelete(null);
     };
@@ -329,23 +335,63 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                     {selectedAnimatorName && (
                         <>
                             <div className="mb-6 p-4 border rounded-lg bg-gray-50">
-                                <h4 className="font-semibold mb-2 text-gray-700">Désactiver des créneaux pour "{selectedAnimatorName}" :</h4>
-                                <div className="flex gap-4 mb-3">
-                                    {timeSlots.map(slot => (
-                                        <label key={slot} className="flex items-center space-x-2 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={inactiveSlots.map(Number).includes(Number(slot))}
-                                                onChange={() => handleSlotToggle(Number(slot))}
-                                                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                            />
-                                            <span>{slot}h</span>
-                                        </label>
-                                    ))}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                                    <div>
+                                        <h4 className="font-semibold mb-2 text-gray-700">Désactiver des créneaux pour "{selectedAnimatorName}" :</h4>
+                                        <div className="flex gap-4 mb-3">
+                                            {timeSlots.map(slot => (
+                                                <label key={slot} className="flex items-center space-x-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={inactiveSlots.map(Number).includes(Number(slot))}
+                                                        onChange={() => {
+                                                            handleSlotToggle(Number(slot));
+                                                            setHasUnsavedChanges(true);
+                                                        }}
+                                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                    />
+                                                    <span>{slot}h</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold mb-2 text-gray-700">Limite mensuelle de réservations :</h4>
+                                        <div className="space-y-3">
+                                            <label className="flex items-center gap-2 cursor-pointer group">
+                                                <input 
+                                                    type="checkbox"
+                                                    checked={noLimit}
+                                                    onChange={(e) => {
+                                                        const checked = e.target.checked;
+                                                        setNoLimit(checked);
+                                                        if (checked) setMonthlyBookingLimit(undefined);
+                                                        else if (monthlyBookingLimit === undefined) setMonthlyBookingLimit(0);
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span className="text-sm font-medium text-gray-600 group-hover:text-gray-900 transition-colors">Pas de limite</span>
+                                            </label>
+                                            
+                                            {!noLimit && (
+                                                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-1 duration-200">
+                                                    <input 
+                                                        type="number" 
+                                                        min="0"
+                                                        value={monthlyBookingLimit ?? 0}
+                                                        onChange={(e) => {
+                                                            setMonthlyBookingLimit(parseInt(e.target.value) || 0);
+                                                            setHasUnsavedChanges(true);
+                                                        }}
+                                                        className="w-20 p-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm"
+                                                    />
+                                                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-tight">réservations / mois</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
-                                <button onClick={handleSaveSlots} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm">
-                                    Sauvegarder les créneaux
-                                </button>
                             </div>
                         
                             <h4 className="font-semibold mb-2 text-gray-700">Gérer les jours d'indisponibilité :</h4>
@@ -375,13 +421,35 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     const day = dayIndex + 1;
                                     const date = new Date(year, month, day);
                                     const dateStr = toYYYYMMDD(date);
-                                    const isUnavailable = selectedAnimatorSettings.unavailableDates.includes(dateStr);
+                                    const isUnavailable = selectedDates.includes(dateStr);
                                     let classes = "p-1 rounded cursor-pointer transition-colors ";
                                     if (isUnavailable) classes += "bg-red-500 text-white font-bold shadow-sm";
                                     else classes += "hover:bg-gray-200 text-gray-700";
 
                                     return <div key={day} className={classes} onClick={() => handleDateClick(dateStr)}>{day}</div>;
                                 })}
+                            </div>
+
+                            <div className="mb-8">
+                                <button 
+                                    onClick={handleSaveAnimatorSettings} 
+                                    className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-3 ${
+                                        hasUnsavedChanges 
+                                        ? 'bg-blue-600 text-white hover:bg-blue-700 animate-pulse' 
+                                        : 'bg-green-500 text-white hover:bg-green-600'
+                                    }`}
+                                >
+                                    {hasUnsavedChanges ? (
+                                        <>💾 Sauvegarder les modifications</>
+                                    ) : (
+                                        <>✅ Paramètres à jour</>
+                                    )}
+                                </button>
+                                {hasUnsavedChanges && (
+                                    <p className="text-center text-amber-600 text-sm font-bold mt-2 animate-bounce">
+                                        ⚠️ Pensez à enregistrer vos modifications avant de quitter !
+                                    </p>
+                                )}
                             </div>
                             
                             {selectedAnimatorSettings.unavailableDates.length > 0 && (

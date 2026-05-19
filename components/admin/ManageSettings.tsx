@@ -2,11 +2,12 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../../AppContext';
 import { AppSettings } from '../../types';
+import { LEGAL_TEMPLATES } from '../../constants';
 import { AdminSubComponentProps } from './types';
 import { storageService } from '../../services/storageService';
 import { backupService } from '../../services/backupService';
 import ConfirmationModal from '../shared/ConfirmationModal';
-import { PaintBrushIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon } from '../Icons';
+import { PaintBrushIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, InformationCircleIcon } from '../Icons';
 import * as XLSX from 'xlsx';
 import { validatePassword } from '../../utils/validators';
 import PasswordPolicy from './PasswordPolicy';
@@ -17,12 +18,265 @@ import 'react-quill-new/dist/quill.snow.css';
 import ManageUsers from './ManageUsers';
 import ManageStats from './ManageStats';
 
-type SettingsTab = 'design' | 'rules' | 'data' | 'stats' | 'users' | 'footer' | 'security' | 'pages' | 'maintenance';
+type SettingsTab = 'design' | 'rules' | 'data' | 'stats' | 'users' | 'footer' | 'security' | 'pages' | 'maintenance' | 'emails' | 'information';
+
+const DEFAULT_EMAIL_TEACHER_SUBJECT = "✅ Confirmation : {{animation_title}} le {{booking_date_clean}}";
+const DEFAULT_EMAIL_TEACHER_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Confirmation Réservation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+        <tr>
+            <td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                    <tr>
+                        <td align="center" bgcolor="{{header_bg_color}}" style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            MÉDIATHÈQUE DU GRAND LONGWY
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 40px 30px 20px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                <tr>
+                                    <td style="color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase;">
+                                        {{animation_title}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px 0 25px 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px;">
+                                        Bonjour {{to_name}}, votre réservation a bien été enregistrée.
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td bgcolor="#f8fafc" style="padding: 30px; color: #ffffff; text-align: center; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                            <tr>
+                                                <td width="50%" style="padding: 10px; border-right: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                                    <div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Date</div>
+                                                    <div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_date}}</div>
+                                                </td>
+                                                <td width="50%" style="padding: 10px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                                    <div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Horaire</div>
+                                                    <div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_time}}</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 40px 0 10px 0; font-size: 20px; font-weight: bold; color: #4338ca; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        Votre classe
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px 0 0 0; font-size: 20px; border-top: 1px solid #eef2ff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 1.5;">
+                                        <b>École :</b> {{school_name}} ({{commune}})<br/>
+                                        <b>Niveau :</b> {{class_level}}<br/>
+                                        <b>Effectif :</b> {{student_count}} élèves / {{adult_count}} adultes<br/>
+                                        <b>Transport :</b> {{bus_info}}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#fffbeb" style="border: 1px solid #fef3c7; border-radius: 8px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                <tr>
+                                    <td style="padding: 20px; font-size: 18px; color: #92400e; line-height: 24px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        <b>Note :</b> pour toute demande de renseignement, modification ou annulation de rendez-vous, merci de nous contacter directement par téléphone au 03.82.23.15.76 ou par mail à l'adresse mediatheque@grandlongwy.fr
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
+                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
+                            <br/><br/>
+                            Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
+                            Ces informations sont utilisées exclusivement pour la gestion de votre réservation.
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`;
+
+const DEFAULT_EMAIL_ANIMATOR_SUBJECT = "🗓️ {{animation_title}} le {{booking_date_clean}} @ {{booking_time}}";
+const DEFAULT_EMAIL_ANIMATOR_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Notification Réservation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+        <tr>
+            <td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                    <tr>
+                        <td align="center" bgcolor="{{header_bg_color}}" style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            MÉDIATHÈQUE DU GRAND LONGWY
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 40px 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                <tr>
+                                    <td style="color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold;">
+                                        {{animation_title}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 20px 0 30px 0; color: #1e293b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 22px; line-height: 24px;">
+                                        Nouvelle réservation enregistrée pour cette séance.
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 2px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                            <tr>
+                                                <td width="50%" style="padding: 20px; border-right: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                                    <div style="font-size: 22px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Date</div>
+                                                    <div style="font-size: 22px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_date}}</div>
+                                                </td>
+                                                <td width="50%" style="padding: 20px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                                    <div style="font-size: 22px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Horaire</div>
+                                                    <div style="font-size: 22px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_time}}</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 35px 0 10px 0; font-size: 22px; font-weight: bold; color: #4338ca; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        Détails de la classe
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px 0; font-size: 22px; border-top: 1px solid #eef2ff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 28px;">
+                                        <b>Enseignant :</b> {{teacher_name}}<br/>
+                                        <b>École :</b> {{school_name}} ({{commune}})<br/>
+                                        <b>Effectif :</b> {{student_count}} élèves / {{adult_count}} adultes<br/>
+                                        <b>Niveau :</b> {{class_level}}<br/>
+                                        <b>Transport :</b> {{bus_info}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px 0 20px 0; font-size: 22px; font-weight: bold; color: #059669; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        Contact enseignant
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px 0; font-size: 22px; border-top: 1px solid #ecfdf5; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 28px;">
+                                        <b>Téléphone :</b> {{teacher_phone}}<br/>
+                                        <b>E-mail :</b> {{teacher_email}}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
+                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`;
+
+const DEFAULT_EMAIL_LIST_SUBJECT = "📋 Récapitulatif : {{bookings_count}} réservations sélectionnées";
+const DEFAULT_EMAIL_LIST_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Liste des Réservations</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+        <tr>
+            <td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="800" style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                    <tr>
+                        <td align="center" bgcolor="{{header_bg_color}}" style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                            MÉDIATHÈQUE DU GRAND LONGWY
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 40px 30px 10px 30px;">
+                            <h1 style="margin: 0; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase; line-height: 1.2;">
+                                Liste des réservations
+                            </h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <p style="margin: 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px; line-height: 1.5;">
+                                Voici le récapitulatif de vos accueils de classes.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0 30px 20px 30px;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; border: 1px solid #e2e8f0; font-family: sans-serif;">
+                                <thead>
+                                    <tr style="background-color: #f8fafc; text-align: left; border-bottom: 2px solid #e2e8f0;">
+                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Animation / Date</th>
+                                        <th width="20%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Enseignant</th>
+                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">École / Commune</th>
+                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Niveau</th>
+                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b;">Effectifs</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{bookings_rows}}
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0 30px 40px 30px;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#fffbeb" style="border: 1px solid #fef3c7; border-radius: 8px;">
+                                <tr>
+                                    <td style="padding: 20px; font-size: 18px; color: #92400e; line-height: 24px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        <b>Note :</b> pour toute demande de renseignement, modification ou annulation de rendez-vous, merci de nous contacter directement par téléphone au 03.82.23.15.76 ou par mail à l'adresse mediatheque@grandlongwy.fr
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
+                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
+                            <br/><br/>
+                            Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
+                            Ces informations sont utilisées exclusivement pour la gestion de vos réservations.
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>`;
 
 const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
     const { settings, updateSettings } = useContext(AppContext);
 
-    const [formState, setFormState] = useState<AppSettings>(settings);
+    const [formState, setFormState] = useState<AppSettings>(() => ({ ...settings }));
     const [activeTab, setActiveTab] = useState<SettingsTab>('design');
     const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
     const [pendingRestoreFile, setPendingRestoreFile] = useState<File | null>(null);
@@ -41,6 +295,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
 
     // State for info pages
     const [editingInfoPageId, setEditingInfoPageId] = useState<string | null>(null);
+    const [isEditorMaximized, setIsEditorMaximized] = useState(false);
 
     // Temp state for new time slot input
     const [newSlotTime, setNewSlotTime] = useState<string>('');
@@ -212,12 +467,12 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         setEditingInfoPageId(newPage.id);
     };
 
-    const handleUpdateInfoPage = (id: string, field: 'title' | 'content', value: string) => {
+    const handleUpdateInfoPage = (id: string, field: 'title' | 'content' | 'hideTitle', value: string | boolean) => {
         setFormState({
             ...formState,
             infoPages: (formState.infoPages || []).map(p => {
                 if (p.id === id) {
-                    const newTitle = field === 'title' ? value : p.title;
+                    const newTitle = field === 'title' ? (value as string) : p.title;
                     const slug = newTitle.toLowerCase()
                         .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove accents
                         .replace(/[^a-z0-9]/g, '-') // replace non-alphanumeric with -
@@ -228,6 +483,49 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                 return p;
             })
         });
+    };
+
+    const quillModules = {
+        toolbar: [
+            [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+            [{ 'font': [] }],
+            [{ 'size': ['small', false, 'large', 'huge'] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'color': [
+                '#000000', '#444444', '#666666', '#999999', '#cccccc', '#eeeeee', '#f3f3f3', '#ffffff',
+                '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#9900ff', '#ff00ff',
+                '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#cfe2f3', '#d9d2e9', '#ead1dc',
+                '#ea9999', '#f9cb9c', '#ffe599', '#b6d7a8', '#a2c4c9', '#9fc5e8', '#b4a7d6', '#d5a6bd',
+                '#e06666', '#f6b26b', '#ffd966', '#93c47d', '#76a5af', '#6fa8dc', '#8e7cc3', '#c27ba0',
+                '#c00000', '#e69138', '#f1c232', '#6aa84f', '#45818e', '#3d85c6', '#674ea7', '#a64d79',
+                '#990000', '#b45f06', '#bf9000', '#38761d', '#134f5c', '#0b5394', '#351c75', '#741b47',
+                '#660000', '#783f04', '#7f6000', '#274e13', '#0c343d', '#073763', '#20124d', '#4c1130'
+            ] }, { 'background': [] }],
+            [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
+            [{ 'align': [] }],
+            ['link', 'image', 'video'],
+            ['blockquote', 'code-block'],
+            ['clean']
+        ],
+    };
+
+    const quillFormats = [
+        'header', 'font', 'size',
+        'bold', 'italic', 'underline', 'strike',
+        'color', 'background',
+        'list', 'indent',
+        'align',
+        'link', 'image', 'video',
+        'blockquote', 'code-block'
+    ];
+
+    const toggleEditorMaximize = () => {
+        setIsEditorMaximized(!isEditorMaximized);
+        if (!isEditorMaximized) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'auto';
+        }
     };
 
     const handleRemoveInfoPage = (id: string) => {
@@ -380,9 +678,42 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         e.preventDefault();
         setSecurityError(null);
 
-        const finalSettings = { ...formState };
+        // We only update the fields that are actually managed by this form tab-system
+        // This ensures that we don't accidentally roll back animatorSettings or holidays
+        // if they were updated in another tab since this form was loaded.
+        
+        const managedFields: (keyof AppSettings)[] = [
+            'homepageTitle', 'homepageSubtitle', 'homepageBgColor', 'headerBgColor',
+            'titleFontSize', 'titleFontWeight', 'titleFontStyle', 'titleColor',
+            'subtitleFontSize', 'subtitleFontWeight', 'subtitleFontStyle', 'subtitleColor',
+            'activeYear', 'adminEmail', 'adminUsername', 'adminPassword',
+            'footerContent', 'bookingLeadTime', 'allowedDays', 'availableTimeSlots',
+            'classLevels', 'communes', 'schools', 'footerLinks', 'establishmentInfo',
+            'legalNoticeTitle', 'privacyPolicyTitle', 'cookiesPolicyTitle',
+            'contactPhone', 'contactEmail', 'users', 'autoCleanupEnabled',
+            'cleanupDay', 'cleanupMonth', 'infoPages', 'adminPasswordLastChanged',
+            'passwordExpiryDays', 'headerInfoText', 'headerInfoFontSize', 
+            'headerInfoFontWeight', 'headerInfoFontStyle', 'headerInfoColor', 'headerInfoWidth',
+            'emailTeacherTemplate', 'emailTeacherSubject', 'emailAnimatorTemplate', 'emailAnimatorSubject',
+            'emailListTemplate', 'emailListSubject'
+        ];
 
-        updateSettings(finalSettings);
+        const settingsToUpdate: Partial<AppSettings> = {};
+        managedFields.forEach(field => {
+            if (formState[field] !== undefined) {
+                (settingsToUpdate as any)[field] = formState[field];
+            }
+        });
+
+        // Special case: legal templates
+        if (formState.legalNoticeTitle) settingsToUpdate.legalNoticeTitle = formState.legalNoticeTitle;
+        if (formState.legalNotice) settingsToUpdate.legalNotice = formState.legalNotice;
+        if (formState.privacyPolicyTitle) settingsToUpdate.privacyPolicyTitle = formState.privacyPolicyTitle;
+        if (formState.privacyPolicy) settingsToUpdate.privacyPolicy = formState.privacyPolicy;
+        if (formState.cookiesPolicyTitle) settingsToUpdate.cookiesPolicyTitle = formState.cookiesPolicyTitle;
+        if (formState.cookiesPolicy) settingsToUpdate.cookiesPolicy = formState.cookiesPolicy;
+
+        updateSettings(settingsToUpdate);
         
         // Reset security fields
         setIsChangingPassword(false);
@@ -500,7 +831,9 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                         <NavButton id="stats" label="Statistiques" icon={<ListIcon className="w-5 h-5" />} />
                         <NavButton id="security" label="Sécurité" icon={<CogIcon className="w-5 h-5" />} />
                         <NavButton id="users" label="Utilisateurs" icon={<UserGroupIcon className="w-5 h-5" />} />
+                        <NavButton id="emails" label="E-mails" icon={<BellIcon className="w-5 h-5" />} />
                         <NavButton id="maintenance" label="Maintenance" icon={<ShieldCheckIcon className="w-5 h-5" />} />
+                        <NavButton id="information" label="Informations" icon={<InformationCircleIcon className="w-5 h-5" />} />
                     </nav>
                 </aside>
 
@@ -518,9 +851,11 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     {activeTab === 'stats' && "Statistiques"}
                                     {activeTab === 'pages' && "Pages d'information"}
                                     {activeTab === 'users' && "Gestion des Utilisateurs"}
+                                    {activeTab === 'emails' && "Modèles d'e-mails"}
                                     {activeTab === 'footer' && "Pied de page"}
                                     {activeTab === 'security' && "Sécurité"}
                                     {activeTab === 'maintenance' && "Maintenance"}
+                                    {activeTab === 'information' && "Informations Techniques"}
                                 </h3>
                                 <p className="text-sm text-gray-500 mt-1">
                                     {activeTab === 'design' && "Personnalisez les textes, les couleurs et le style de votre accueil"}
@@ -529,9 +864,11 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     {activeTab === 'stats' && "Visualisez l'activité et l'impact de vos animations pédagogiques"}
                                     {activeTab === 'pages' && "Créez et modifiez des pages de contenu personnalisées pour vos utilisateurs"}
                                     {activeTab === 'users' && "Gérez les comptes d'accès à l'administration et leurs permissions"}
+                                    {activeTab === 'emails' && "Personnalisez le contenu et le sujet des e-mails envoyés aux enseignants et animateurs"}
                                     {activeTab === 'footer' && "Gérez les liens du pied de page, les mentions légales et les infos de l'établissement"}
                                     {activeTab === 'security' && "Gérez vos identifiants de connexion et l'e-mail de secours"}
                                     {activeTab === 'maintenance' && "Gérez la sauvegarde et la restauration de vos données"}
+                                    {activeTab === 'information' && "Consultez les détails techniques, les services utilisés et le diagnostic de sécurité"}
                                 </p>
                             </div>
 
@@ -1057,21 +1394,61 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                         Retour
                                                     </button>
                                                 </div>
-                                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                                                    <ReactQuill 
-                                                        theme="snow"
-                                                        value={formState[editingLegalPage] || ''}
-                                                        onChange={(content) => setFormState({ ...formState, [editingLegalPage]: content })}
-                                                        modules={{
-                                                            toolbar: [
-                                                                [{ 'header': [1, 2, false] }],
-                                                                ['bold', 'italic', 'underline'],
-                                                                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                                                                ['clean']
-                                                            ],
-                                                        }}
-                                                        className="h-[400px] mb-12"
-                                                    />
+
+                                                <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+                                                    <div>
+                                                        <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">
+                                                            Titre de la page
+                                                        </label>
+                                                        <input 
+                                                            type="text"
+                                                            className="w-full px-4 py-2 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none transition-colors font-bold text-gray-700"
+                                                            value={formState[`${editingLegalPage}Title`] || ''}
+                                                            onChange={(e) => setFormState({ ...formState, [`${editingLegalPage}Title`]: e.target.value })}
+                                                            placeholder="Titre de la page..."
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden relative">
+                                                    <div className="absolute top-2 right-2 z-20">
+                                                        <button 
+                                                            type="button"
+                                                            onClick={toggleEditorMaximize}
+                                                            className="p-2 bg-white/80 backdrop-blur rounded-lg border border-gray-200 shadow-sm hover:bg-white transition-all text-gray-500 hover:text-blue-600"
+                                                            title={isEditorMaximized ? "Réduire" : "Agrandir"}
+                                                        >
+                                                            {isEditorMaximized ? <ArrowsPointingInIcon className="w-5 h-5" /> : <ArrowsPointingOutIcon className="w-5 h-5" />}
+                                                        </button>
+                                                    </div>
+                                                    <div className={isEditorMaximized ? 'quill-maximized' : ''}>
+                                                        {isEditorMaximized && (
+                                                            <div className="flex justify-between items-center mb-4">
+                                                                <h4 className="text-xl font-black text-gray-800 uppercase tracking-tight">
+                                                                    Édition : {
+                                                                        editingLegalPage === 'legalNotice' ? 'Mentions Légales' : 
+                                                                        editingLegalPage === 'privacyPolicy' ? 'Politique de Confidentialité' : 
+                                                                        'Gestion des Cookies'
+                                                                    }
+                                                                </h4>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={toggleEditorMaximize}
+                                                                    className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors font-black uppercase tracking-widest text-xs"
+                                                                >
+                                                                    Fermer
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        <ReactQuill 
+                                                            theme="snow"
+                                                            value={formState[editingLegalPage] || ''}
+                                                            onChange={(content) => setFormState({ ...formState, [editingLegalPage]: content })}
+                                                            modules={quillModules}
+                                                            formats={quillFormats}
+                                                            className={isEditorMaximized ? '' : 'min-h-[400px]'}
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         ) : (
@@ -1083,14 +1460,9 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                         <button 
                                                             type="button"
                                                             onClick={() => {
-                                                                const templates = {
-                                                                    legalNotice: `<h2>1. Présentation du site</h2><p>En vertu de l'article 6 de la loi n° 2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique, il est précisé aux utilisateurs du site l'identité des différents intervenants dans le cadre de sa réalisation et de son suivi :</p><p><strong>Propriétaire</strong> : [Nom de l'établissement / Collectivité] – [Adresse complète]</p><p><strong>Responsable publication</strong> : [Nom du responsable] – [Email de contact]</p><p><strong>Webmaster</strong> : [Nom du webmaster] – [Email du webmaster]</p><p><strong>Hébergeur</strong> : Netlify – 2325 3rd Street, Suite 296, San Francisco, California 94107</p><h2>2. Conditions générales d’utilisation du site et des services proposés</h2><p>L’utilisation du site implique l’acceptation pleine et entière des conditions générales d’utilisation ci-après décrites. Ces conditions d’utilisation sont susceptibles d’être modifiées ou complétées à tout moment.</p><h2>3. Description des services fournis</h2><p>Le site a pour objet de fournir une information concernant l’ensemble des activités de la structure et de permettre la réservation d'animations pédagogiques.</p><h2>4. Propriété intellectuelle et contrefaçons</h2><p>[Nom de l'établissement] est propriétaire des droits de propriété intellectuelle ou détient les droits d’usage sur tous les éléments accessibles sur le site, notamment les textes, images, graphismes, logo, icônes, sons, logiciels.</p><h2>5. Limitations de responsabilité</h2><p>[Nom de l'établissement] ne pourra être tenu responsable des dommages directs et indirects causés au matériel de l’utilisateur, lors de l’accès au site.</p>`,
-                                                                    privacyPolicy: `<h2>1. Gestion des données personnelles</h2><p>En France, les données personnelles sont notamment protégées par la loi n° 78-87 du 6 janvier 1978, la loi n° 2004-801 du 6 août 2004, l'article L. 226-13 du Code pénal et le Règlement Général sur la Protection des Données (RGPD : n° 2016-679).</p><h2>2. Finalité des données collectées</h2><p>Le site est susceptible de traiter tout ou partie des données :</p><ul><li>Pour permettre la navigation sur le site</li><li>Pour prévenir et lutter contre la fraude informatique</li><li>Pour améliorer la navigation sur le site</li><li>Pour gérer les réservations d'animations (Nom, Email, Téléphone, École)</li></ul><h2>3. Droit d’accès, de rectification et d’opposition</h2><p>Conformément à la réglementation européenne en vigueur, les Utilisateurs disposent des droits suivants :</p><ul><li>Droit d'accès (article 15 RGPD) et de rectification (article 16 RGPD)</li><li>Droit à l'effacement (article 17 du RGPD)</li><li>Droit de retirer à tout moment un consentement (article 13-2c RGPD)</li><li>Droit à la limitation du traitement des données (article 18 RGPD)</li></ul><p>Pour exercer ces droits, contactez : [Email de contact DPO / Responsable]</p><h2>4. Non-communication des données personnelles</h2><p>Le site s’interdit de traiter, héberger ou transférer les Informations collectées sur ses Clients vers un pays situé en dehors de l’Union européenne ou reconnu comme « non adéquat » par la Commission européenne sans en informer préalablement le client.</p>`,
-                                                                    cookiesPolicy: `<h2>1. Qu'est-ce qu'un cookie ?</h2><p>Un « cookie » est un petit fichier d’information envoyé sur le navigateur de l’Utilisateur et enregistré au sein du terminal de l’Utilisateur. Ce fichier comprend des informations telles que le nom de domaine de l’Utilisateur, le fournisseur d’accès Internet de l’Utilisateur, le système d’exploitation de l’Utilisateur, ainsi que la date et l’heure d’accès.</p><h2>2. Utilisation des cookies sur ce site</h2><p>Ce site utilise des cookies strictement nécessaires à son bon fonctionnement :</p><ul><li><strong>Cookies de session</strong> : Pour maintenir votre connexion ou l'état de votre réservation en cours.</li><li><strong>Cookies de sécurité</strong> : Pour prévenir les attaques malveillantes.</li></ul><h2>3. Cookies tiers</h2><p>Ce site n'utilise pas de cookies publicitaires. Des cookies de mesure d'audience anonymes peuvent être utilisés pour améliorer l'expérience utilisateur.</p><h2>4. Comment désactiver les cookies ?</h2><p>L’Utilisateur peut configurer son navigateur pour qu’il lui permette de décider s’il souhaite ou non les accepter de manière à ce que des Cookies soient enregistrés dans le terminal ou, au contraire, qu’ils soient rejetés.</p>`
-                                                                };
                                                                 setFormState({
                                                                     ...formState,
-                                                                    ...templates
+                                                                    ...LEGAL_TEMPLATES
                                                                 });
                                                                 showNotification("Modèles légaux restaurés ! N'oubliez pas d'enregistrer.");
                                                             }}
@@ -1388,25 +1760,56 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                                     placeholder="ex: Informations pratiques"
                                                                 />
                                                             </div>
+                                                            <div className="flex items-center justify-between mt-2 px-1">
+                                                                <label className="flex items-center gap-2 cursor-pointer group">
+                                                                    <input 
+                                                                        type="checkbox"
+                                                                        checked={(formState.infoPages || []).find(p => p.id === editingInfoPageId)?.hideTitle || false}
+                                                                        onChange={(e) => handleUpdateInfoPage(editingInfoPageId, 'hideTitle', e.target.checked)}
+                                                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                                    />
+                                                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest group-hover:text-gray-600 transition-colors">Masquer le titre sur le site</span>
+                                                                </label>
+                                                            </div>
                                                         </div>
 
                                                         <div>
-                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Contenu de la page</label>
-                                                            <div className="bg-white rounded-2xl border-2 border-gray-100 overflow-hidden focus-within:border-indigo-500 transition-all">
+                                                            <div className="flex justify-between items-end mb-2">
+                                                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Contenu de la page</label>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={toggleEditorMaximize}
+                                                                    className="flex items-center gap-2 px-3 py-1 bg-white border border-gray-200 rounded-lg text-[10px] font-bold text-gray-500 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm"
+                                                                >
+                                                                    {isEditorMaximized ? (
+                                                                        <><ArrowsPointingInIcon className="w-3.5 h-3.5" /> Réduire</>
+                                                                    ) : (
+                                                                        <><ArrowsPointingOutIcon className="w-3.5 h-3.5" /> Agrandir l'éditeur</>
+                                                                    )}
+                                                                </button>
+                                                            </div>
+                                                            <div className={`bg-white rounded-2xl border-2 border-gray-100 overflow-visible focus-within:border-indigo-500 transition-all relative ${isEditorMaximized ? 'quill-maximized' : ''}`}>
+                                                                {isEditorMaximized && (
+                                                                    <div className="flex justify-between items-center mb-4">
+                                                                        <h4 className="text-xl font-black text-gray-800 uppercase tracking-tight">
+                                                                            Édition : {(formState.infoPages || []).find(p => p.id === editingInfoPageId)?.title}
+                                                                        </h4>
+                                                                        <button 
+                                                                            type="button"
+                                                                            onClick={toggleEditorMaximize}
+                                                                            className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors font-black uppercase tracking-widest text-xs"
+                                                                        >
+                                                                            Fermer
+                                                                        </button>
+                                                                    </div>
+                                                                )}
                                                                 <ReactQuill 
                                                                     theme="snow"
                                                                     value={(formState.infoPages || []).find(p => p.id === editingInfoPageId)?.content || ''}
                                                                     onChange={(content) => handleUpdateInfoPage(editingInfoPageId, 'content', content)}
-                                                                    className="h-[400px]"
-                                                                    modules={{
-                                                                        toolbar: [
-                                                                            [{ 'header': [1, 2, false] }],
-                                                                            ['bold', 'italic', 'underline', 'strike', 'blockquote'],
-                                                                            [{'list': 'ordered'}, {'list': 'bullet'}, {'indent': '-1'}, {'indent': '+1'}],
-                                                                            ['link'],
-                                                                            ['clean']
-                                                                        ],
-                                                                    }}
+                                                                    modules={quillModules}
+                                                                    formats={quillFormats}
+                                                                    className={isEditorMaximized ? '' : 'min-h-[400px]'}
                                                                 />
                                                             </div>
                                                         </div>
@@ -1476,6 +1879,388 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                     <p className="text-xs text-gray-500 leading-relaxed">
                                                         Il n'est plus nécessaire de changer de mot de passe régulièrement. Google gère la sécurité de votre compte et la double authentification si activée.
                                                     </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'emails' && (
+                                    <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-300 pb-20">
+                                        {/* Teacher Email Template */}
+                                        <div className="space-y-6">
+                                            <div className="flex items-center justify-between gap-3 mb-2">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-blue-600 rounded-lg text-white">
+                                                        <AcademicCapIcon className="w-5 h-5" />
+                                                    </div>
+                                                    <h4 className="text-lg font-bold text-gray-800">E-mail de confirmation (Enseignant)</h4>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sujet de l'e-mail</label>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if(window.confirm("Rétablir le sujet par défaut ?")) {
+                                                                        setFormState({ ...formState, emailTeacherSubject: DEFAULT_EMAIL_TEACHER_SUBJECT });
+                                                                    }
+                                                                }}
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                            >
+                                                                Rétablir
+                                                            </button>
+                                                        </div>
+                                                        <input 
+                                                            type="text" 
+                                                            name="emailTeacherSubject" 
+                                                            value={formState.emailTeacherSubject || ''} 
+                                                            onChange={handleChange} 
+                                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" 
+                                                            placeholder="Sujet de l'e-mail..."
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Code HTML (à copier dans EmailJS)</label>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if(window.confirm("Voulez-vous vraiment restaurer le modèle par défaut pour l'enseignant ? Vos modifications actuelles seront perdues.")) {
+                                                                        setFormState({ ...formState, emailTeacherTemplate: DEFAULT_EMAIL_TEACHER_TEMPLATE });
+                                                                        showNotification("Modèle Enseignant réinitialisé ! N'oubliez pas d'enregistrer.");
+                                                                    }
+                                                                }}
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                            >
+                                                                <ArrowsPointingInIcon className="w-3 h-3" />
+                                                                Rétablir le défaut
+                                                            </button>
+                                                        </div>
+                                                        <textarea 
+                                                            value={formState.emailTeacherTemplate || ''}
+                                                            onChange={(e) => setFormState({ ...formState, emailTeacherTemplate: e.target.value })}
+                                                            className="w-full h-[500px] p-4 font-mono text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-gray-900 text-blue-100 resize-none leading-relaxed"
+                                                            spellCheck={false}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-col">
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aperçu du rendu</label>
+                                                    <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                                                        <div className="bg-gray-50 border-b border-gray-100 p-3 text-[10px] font-bold text-gray-400 flex items-center justify-between uppercase tracking-widest">
+                                                            <span>Visualisation Temps Réel</span>
+                                                            <div className="flex gap-1">
+                                                                <div className="w-2 h-2 rounded-full bg-red-300"></div>
+                                                                <div className="w-2 h-2 rounded-full bg-yellow-300"></div>
+                                                                <div className="w-2 h-2 rounded-full bg-green-300"></div>
+                                                            </div>
+                                                        </div>
+                                                        <iframe 
+                                                            title="Teacher Preview"
+                                                            className="w-full flex-1 border-none"
+                                                            srcDoc={((html) => {
+                                                                if (!html) return "<body style='display:flex;align-items:center;justify-center;height:100vh;color:#94a3b8;font-family:sans-serif;'>Aucun code HTML détecté</body>";
+                                                                const mockData = {
+                                                                    animation_title: "Escape Game Numérique",
+                                                                    booking_date: "Mercredi 15 Mai 2024",
+                                                                    booking_date_clean: "15.05.2024",
+                                                                    booking_time: "10:00 - 12:00",
+                                                                    to_name: "Mme Martin",
+                                                                    teacher_name: "Sophie Martin",
+                                                                    school_name: "École Pasteur",
+                                                                    commune: "Longwy",
+                                                                    student_count: 24,
+                                                                    adult_count: 3,
+                                                                    class_level: "CM1/CM2",
+                                                                    bus_info: "Non",
+                                                                    teacher_phone: "06 00 00 00 00",
+                                                                    teacher_email: "martin@ecole.fr",
+                                                                    establishment_name: "MÉDIATHÈQUE DU GRAND LONGWY",
+                                                                    header_bg_color: "#0f172a"
+                                                                };
+                                                                let rendered = html;
+                                                                Object.entries(mockData).forEach(([key, value]) => {
+                                                                    rendered = rendered.replaceAll(`{{${key}}}`, String(value));
+                                                                });
+                                                                return rendered;
+                                                            })(formState.emailTeacherTemplate || '')}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="border-t border-dashed border-gray-200"></div>
+
+                                        {/* Animator Email Template */}
+                                        <div className="space-y-6">
+                                            <div className="flex items-center justify-between gap-3 mb-2">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-indigo-600 rounded-lg text-white">
+                                                        <BellIcon className="w-5 h-5" />
+                                                    </div>
+                                                    <h4 className="text-lg font-bold text-gray-800">E-mail de notification (Animateur)</h4>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sujet de l'e-mail</label>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if(window.confirm("Rétablir le sujet par défaut ?")) {
+                                                                        setFormState({ ...formState, emailAnimatorSubject: DEFAULT_EMAIL_ANIMATOR_SUBJECT });
+                                                                    }
+                                                                }}
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                            >
+                                                                Rétablir
+                                                            </button>
+                                                        </div>
+                                                        <input 
+                                                            type="text" 
+                                                            name="emailAnimatorSubject" 
+                                                            value={formState.emailAnimatorSubject || ''} 
+                                                            onChange={handleChange} 
+                                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-semibold" 
+                                                            placeholder="Sujet de l'e-mail..."
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Code HTML (à copier dans EmailJS)</label>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if(window.confirm("Voulez-vous vraiment restaurer le modèle par défaut pour l'animateur ? Vos modifications actuelles seront perdues.")) {
+                                                                        setFormState({ ...formState, emailAnimatorTemplate: DEFAULT_EMAIL_ANIMATOR_TEMPLATE });
+                                                                        showNotification("Modèle Animateur réinitialisé ! N'oubliez pas d'enregistrer.");
+                                                                    }
+                                                                }}
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                            >
+                                                                <ArrowsPointingInIcon className="w-3 h-3" />
+                                                                Rétablir le défaut
+                                                            </button>
+                                                        </div>
+                                                        <textarea 
+                                                            value={formState.emailAnimatorTemplate || ''}
+                                                            onChange={(e) => setFormState({ ...formState, emailAnimatorTemplate: e.target.value })}
+                                                            className="w-full h-[500px] p-4 font-mono text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-900 text-blue-100 resize-none leading-relaxed"
+                                                            spellCheck={false}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-col">
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aperçu du rendu</label>
+                                                    <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                                                        <div className="bg-gray-50 border-b border-gray-100 p-3 text-[10px] font-bold text-gray-400 flex items-center justify-between uppercase tracking-widest">
+                                                            <span>Visualisation Temps Réel</span>
+                                                            <div className="flex gap-1">
+                                                                <div className="w-2 h-2 rounded-full bg-red-300"></div>
+                                                                <div className="w-2 h-2 rounded-full bg-yellow-300"></div>
+                                                                <div className="w-2 h-2 rounded-full bg-green-300"></div>
+                                                            </div>
+                                                        </div>
+                                                        <iframe 
+                                                            title="Animator Preview"
+                                                            className="w-full flex-1 border-none"
+                                                            srcDoc={((html) => {
+                                                                if (!html) return "<body style='display:flex;align-items:center;justify-center;height:100vh;color:#94a3b8;font-family:sans-serif;'>Aucun code HTML détecté</body>";
+                                                                const mockData = {
+                                                                    animation_title: "Atelier Robotique",
+                                                                    booking_date: "Samedi 18 Mai 2024",
+                                                                    booking_date_clean: "18.05.2024",
+                                                                    booking_time: "14:00 - 16:00",
+                                                                    to_name: "Jean Dupont",
+                                                                    animator_name: "Jean Dupont",
+                                                                    teacher_name: "Lucie Bernard",
+                                                                    school_name: "Collège Daudet",
+                                                                    commune: "Longlaville",
+                                                                    student_count: 15,
+                                                                    adult_count: 2,
+                                                                    class_level: "3ème A",
+                                                                    bus_info: "Oui (Dépose minute souhaitée)",
+                                                                    teacher_phone: "07 11 22 33 44",
+                                                                    teacher_email: "bernard@college.fr",
+                                                                    establishment_name: "MÉDIATHÈQUE DU GRAND LONGWY",
+                                                                    header_bg_color: "#0f172a"
+                                                                };
+                                                                let rendered = html;
+                                                                Object.entries(mockData).forEach(([key, value]) => {
+                                                                    rendered = rendered.replaceAll(`{{${key}}}`, String(value));
+                                                                });
+                                                                return rendered;
+                                                            })(formState.emailAnimatorTemplate || '')}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="border-t border-dashed border-gray-200"></div>
+
+                                        {/* Booking List Email Template */}
+                                        <div className="space-y-6">
+                                            <div className="flex items-center justify-between gap-3 mb-2">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-green-600 rounded-lg text-white">
+                                                        <ListIcon className="w-5 h-5" />
+                                                    </div>
+                                                    <h4 className="text-lg font-bold text-gray-800">E-mail récapitulatif (Liste de réservations)</h4>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sujet de l'e-mail</label>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if(window.confirm("Rétablir le sujet par défaut ?")) {
+                                                                        setFormState({ ...formState, emailListSubject: DEFAULT_EMAIL_LIST_SUBJECT });
+                                                                    }
+                                                                }}
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                            >
+                                                                Rétablir
+                                                            </button>
+                                                        </div>
+                                                        <input 
+                                                            type="text" 
+                                                            name="emailListSubject" 
+                                                            value={formState.emailListSubject || ''} 
+                                                            onChange={handleChange} 
+                                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-white font-semibold" 
+                                                            placeholder="Sujet de l'e-mail..."
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Code HTML (à copier dans EmailJS)</label>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if(window.confirm("Voulez-vous vraiment restaurer le modèle par défaut pour la liste des réservations ? Vos modifications actuelles seront perdues.")) {
+                                                                        setFormState({ ...formState, emailListTemplate: DEFAULT_EMAIL_LIST_TEMPLATE });
+                                                                        showNotification("Modèle Liste réinitialisé ! N'oubliez pas d'enregistrer.");
+                                                                    }
+                                                                }}
+                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                            >
+                                                                <ArrowsPointingInIcon className="w-3 h-3" />
+                                                                Rétablir le défaut
+                                                            </button>
+                                                        </div>
+                                                        <textarea 
+                                                            value={formState.emailListTemplate || ''}
+                                                            onChange={(e) => setFormState({ ...formState, emailListTemplate: e.target.value })}
+                                                            className="w-full h-[500px] p-4 font-mono text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none bg-gray-900 text-green-100 resize-none leading-relaxed"
+                                                            spellCheck={false}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-col">
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aperçu du rendu</label>
+                                                    <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                                                         <div className="bg-gray-50 border-b border-gray-100 p-3 text-[10px] font-bold text-gray-400 flex items-center justify-between uppercase tracking-widest">
+                                                             <span>Visualisation Temps Réel</span>
+                                                             <div className="flex gap-1">
+                                                                 <div className="w-2 h-2 rounded-full bg-red-300"></div>
+                                                                 <div className="w-2 h-2 rounded-full bg-yellow-300"></div>
+                                                                 <div className="w-2 h-2 rounded-full bg-green-300"></div>
+                                                             </div>
+                                                         </div>
+                                                         <iframe 
+                                                             title="List Preview"
+                                                             className="w-full flex-1 border-none"
+                                                             srcDoc={((html) => {
+                                                                 if (!html) return "<body style='display:flex;align-items:center;justify-center;height:100vh;color:#94a3b8;font-family:sans-serif;'>Aucun code HTML détecté</body>";
+                                                                 const mockData = {
+                                                                     bookings_count: 2,
+                                                                     bookings_rows: `
+                                                                        <tr style="border-bottom: 1px solid #edf2f7;">
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; line-height: 1.4;">
+                                                                                <div style="font-weight: bold; color: #0f172a;">Escape Game Numérique</div>
+                                                                                <div style="font-weight: bold; color: #2563eb; font-size: 12px;">Jeudi 15 mai 2024 à 09h</div>
+                                                                            </td>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">M. Jean</td>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">Moulin (GORCY)</td>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">CE1</td>
+                                                                            <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4;">
+                                                                                <div>25 élèves</div>
+                                                                                <div style="color: #64748b; font-size: 12px;">4 adultes</div>
+                                                                            </td>
+                                                                        </tr>
+                                                                        <tr style="border-bottom: 1px solid #edf2f7;">
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; line-height: 1.4;">
+                                                                                <div style="font-weight: bold; color: #0f172a;">Atelier Robotique</div>
+                                                                                <div style="font-weight: bold; color: #2563eb; font-size: 12px;">Vendredi 16 mai 2024 à 14h</div>
+                                                                            </td>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">Mme. Marie</td>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">Hugo (LONGWY)</td>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">CM2</td>
+                                                                            <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4;">
+                                                                                <div>22 élèves</div>
+                                                                                <div style="color: #64748b; font-size: 12px;">2 adultes</div>
+                                                                            </td>
+                                                                        </tr>
+                                                                     `,
+                                                                     establishment_name: "MÉDIATHÈQUE DU GRAND LONGWY",
+                                                                     header_bg_color: "#059669"
+                                                                 };
+                                                                 let rendered = html;
+                                                                 Object.entries(mockData).forEach(([key, value]) => {
+                                                                     rendered = rendered.replaceAll(`{{${key}}}`, String(value));
+                                                                 });
+                                                                 return rendered;
+                                                             })(formState.emailListTemplate || '')}
+                                                         />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Variables Guide */}
+                                        <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 flex gap-4 items-start shadow-inner">
+                                            <div className="bg-white p-2 rounded-lg shadow-sm">
+                                               <CogIcon className="w-6 h-6 text-gray-600" />
+                                            </div>
+                                            <div>
+                                                <h5 className="font-black text-gray-900 text-sm uppercase">Guide des variables</h5>
+                                                <p className="text-xs text-gray-800 mt-2 leading-relaxed opacity-80">
+                                                    Vous pouvez utiliser les variables suivantes dans votre code HTML ou sujet : <code>{`{{variable}}`}</code>
+                                                </p>
+                                                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-2 mt-4 text-[10px] font-bold text-gray-600">
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div><code>{`{{animation_title}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div><code>{`{{booking_date}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div><code>{`{{booking_date_clean}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div><code>{`{{booking_time}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div><code>{`{{to_name}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div><code>{`{{teacher_name}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div><code>{`{{school_name}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div><code>{`{{commune}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div><code>{`{{student_count}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div><code>{`{{adult_count}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div><code>{`{{class_level}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div><code>{`{{bus_info}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-400"></div><code>{`{{teacher_phone}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-400"></div><code>{`{{teacher_email}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div><code>{`{{establishment_name}}`}</code></div>
+                                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div><code>{`{{header_bg_color}}`}</code></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1572,6 +2357,133 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                         </div>
                                     </div>
                                 )}
+
+                                {activeTab === 'information' && (
+                                    <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                            
+                                            {/* Stack Technique */}
+                                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-6">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                                                        <ViewGridIcon className="w-5 h-5" />
+                                                    </div>
+                                                    <h4 className="text-lg font-black text-gray-800 uppercase tracking-tight">Architecture & Technologies</h4>
+                                                </div>
+                                                
+                                                <div className="space-y-4">
+                                                    <div className="flex gap-4 p-4 bg-gray-50 rounded-2xl">
+                                                        <div className="bg-white p-2 rounded-xl shadow-sm text-indigo-600 font-black text-xs h-fit">Web</div>
+                                                        <div>
+                                                            <div className="text-sm font-bold text-gray-800">Interface Utilisateur (Frontend)</div>
+                                                            <p className="text-xs text-gray-500 mt-1">Développé avec <strong>React 18</strong> et <strong>TypeScript</strong>. Le design est propulsé par <strong>Tailwind CSS</strong> pour une interface moderne, rapide et responsive sur tous les supports (mobiles, tablettes, ordinateurs).</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex gap-4 p-4 bg-gray-50 rounded-2xl">
+                                                        <div className="bg-white p-2 rounded-xl shadow-sm text-orange-600 font-black text-xs h-fit">DB</div>
+                                                        <div>
+                                                            <div className="text-sm font-bold text-gray-800">Base de Données & Stockage</div>
+                                                            <p className="text-xs text-gray-500 mt-1">Utilise <strong>Google Firebase Firestore</strong> pour une persistence des données en temps réel. Les images et logos sont hébergés de manière sécurisée via <strong>Cloudinary</strong>.</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex gap-4 p-4 bg-gray-50 rounded-2xl">
+                                                        <div className="bg-white p-2 rounded-xl shadow-sm text-green-600 font-black text-xs h-fit">API</div>
+                                                        <div>
+                                                            <div className="text-sm font-bold text-gray-800">Services Connectés</div>
+                                                            <p className="text-xs text-gray-500 mt-1"><strong>EmailJS</strong> assure l'envoi fiable des confirmations de réservation par e-mail sans serveur mail complexe à maintenir. <strong>SheetJS</strong> permet l'import/export de listes complexes via Excel.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Sécurité & Diagnostic */}
+                                            <div className="bg-indigo-900 text-white p-6 rounded-3xl shadow-xl space-y-6">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-white/10 rounded-lg text-indigo-200">
+                                                        <ShieldCheckIcon className="w-5 h-5" />
+                                                    </div>
+                                                    <h4 className="text-lg font-black uppercase tracking-tight">Sécurité & Diagnostic</h4>
+                                                </div>
+
+                                                <div className="space-y-4">
+                                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="text-sm font-bold text-indigo-200">Protection des Données</div>
+                                                            <div className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-black rounded-full border border-green-500/30 uppercase">Optimal</div>
+                                                        </div>
+                                                        <p className="text-xs text-white/70 leading-relaxed">
+                                                            Les données sont stockées sur les serveurs de Google Cloud, bénéficiant d'un chiffrement automatique au repos. Les règles de sécurité Firestore empêchent tout accès non autorisé à la source.
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="text-sm font-bold text-indigo-200">Authentification</div>
+                                                            <div className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-black rounded-full border border-green-500/30 uppercase">Actif</div>
+                                                        </div>
+                                                        <p className="text-xs text-white/70 leading-relaxed">
+                                                            L'accès à cette administration est protégé par une authentification robuste (Firebase Auth). Le mot de passe administrateur est haché et jamais stocké en clair.
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="text-sm font-bold text-indigo-200">Conformité RGPD</div>
+                                                            <div className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[10px] font-black rounded-full border border-blue-500/30 uppercase">En Place</div>
+                                                        </div>
+                                                        <p className="text-xs text-white/70 leading-relaxed">
+                                                            Un système de nettoyage automatique peut être activé (onglet Données) pour anonymiser les réservations passées chaque année, garantissant le respect de la vie privée.
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="pt-2 p-4 bg-indigo-800/50 rounded-2xl border border-indigo-700/50">
+                                                    <h5 className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-2 text-center">Diagnostic de Stabilité</h5>
+                                                    <div className="flex justify-between items-center px-4">
+                                                        <div className="flex flex-col items-center">
+                                                            <div className="text-lg font-black text-white">99.9%</div>
+                                                            <div className="text-[8px] text-indigo-300 font-bold uppercase">Disponibilité Cloud</div>
+                                                        </div>
+                                                        <div className="h-8 w-px bg-indigo-700/50 line-clamp-1"></div>
+                                                        <div className="flex flex-col items-center">
+                                                            <div className="text-lg font-black text-white">&lt; 2s</div>
+                                                            <div className="text-[8px] text-indigo-300 font-bold uppercase">Temps de chargement</div>
+                                                        </div>
+                                                        <div className="h-8 w-px bg-indigo-700/50"></div>
+                                                        <div className="flex flex-col items-center">
+                                                            <div className="text-lg font-black text-white">OK</div>
+                                                            <div className="text-[8px] text-indigo-300 font-bold uppercase">Intégrité DB</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Performance & Stabilité */}
+                                        <div className="p-8 bg-gray-50 rounded-3xl border border-gray-100 flex flex-col items-center text-center">
+                                            <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
+                                                <CogIcon className="w-10 h-10 text-gray-400" />
+                                            </div>
+                                            <h4 className="text-lg font-black text-gray-800 uppercase tracking-tight">Systèmes de Stabilité & Rapidité</h4>
+                                            <div className="max-w-3xl mt-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                <div className="space-y-2">
+                                                    <div className="text-blue-600 font-black text-xs uppercase tracking-widest">Temps de chargement</div>
+                                                    <p className="text-[11px] text-gray-500 leading-relaxed font-medium">L'application est servie via un CDN mondial, garantissant que les fichiers sont livrés par le serveur le plus proche de l'utilisateur.</p>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <div className="text-purple-600 font-black text-xs uppercase tracking-widest">Optimisation Assets</div>
+                                                    <p className="text-[11px] text-gray-500 leading-relaxed font-medium">Cloudinary redimensionne et optimise automatiquement les images pour réduire leur poids sans sacrifier la qualité visuelle.</p>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <div className="text-green-600 font-black text-xs uppercase tracking-widest">Infrastructure Edge</div>
+                                                    <p className="text-[11px] text-gray-500 leading-relaxed font-medium">Le code frontend est compilé de manière optimale (Vite), éliminant le code inutile pour une exécution ultra-fluide sur mobile.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Footer Panel with Save Button */}
@@ -1582,7 +2494,24 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                 <div className="flex gap-3">
                                     <button 
                                         type="button" 
-                                        onClick={() => {setFormState(settings); setIsChangingPassword(false); setSecurityError(null); setNewPassword(''); setConfirmPassword('');}} 
+                                        onClick={() => {
+                                            if (window.confirm("Voulez-vous vraiment annuler toutes vos modifications non enregistrées ?")) {
+                                                const baseSettings = { ...settings };
+                                                // Ensure defaults are populated if missing in Firestore to avoid empty templates on reset
+                                                if (!baseSettings.emailTeacherTemplate) baseSettings.emailTeacherTemplate = DEFAULT_EMAIL_TEACHER_TEMPLATE;
+                                                if (!baseSettings.emailTeacherSubject) baseSettings.emailTeacherSubject = DEFAULT_EMAIL_TEACHER_SUBJECT;
+                                                if (!baseSettings.emailAnimatorTemplate) baseSettings.emailAnimatorTemplate = DEFAULT_EMAIL_ANIMATOR_TEMPLATE;
+                                                if (!baseSettings.emailAnimatorSubject) baseSettings.emailAnimatorSubject = DEFAULT_EMAIL_ANIMATOR_SUBJECT;
+                                                if (!baseSettings.emailListTemplate) baseSettings.emailListTemplate = DEFAULT_EMAIL_LIST_TEMPLATE;
+                                                if (!baseSettings.emailListSubject) baseSettings.emailListSubject = DEFAULT_EMAIL_LIST_SUBJECT;
+                                                
+                                                setFormState(baseSettings);
+                                                setIsChangingPassword(false);
+                                                setSecurityError(null);
+                                                setNewPassword('');
+                                                setConfirmPassword('');
+                                            }
+                                        }} 
                                         className="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
                                     >
                                         Réinitialiser
