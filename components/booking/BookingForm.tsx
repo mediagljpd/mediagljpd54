@@ -266,32 +266,39 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
 
                     {/* Section Bus */}
                     <div className="col-span-2 mt-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                        <label className="flex items-center gap-3 cursor-pointer mb-4">
-                            <input 
-                                type="checkbox" 
-                                name="noBusRequired" 
-                                checked={formData.noBusRequired} 
-                                onChange={handleChange}
-                                className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-blue-300"
-                            />
-                            <span className="text-sm font-bold text-blue-900">
-                                Nous ne souhaitons pas bénéficier de la prise en charge du bus par le Grand Longwy
-                            </span>
-                        </label>
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+                            {/* Left block: the instructions text area */}
+                            <div className={`col-span-1 md:col-span-7 ${formData.noBusRequired ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
+                                <label htmlFor="busInfo" className="block text-sm font-bold text-gray-700 mb-1">
+                                    Consignes pour le bus
+                                </label>
+                                <textarea 
+                                    id="busInfo" 
+                                    name="busInfo" 
+                                    value={formData.busInfo}
+                                    placeholder="Où et quelle heure doit passer le bus ? Précisez l'adresse et l'horaire..." 
+                                    onChange={handleChange} 
+                                    required={!formData.noBusRequired}
+                                    rows={2}
+                                    className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 h-[58px] resize-none text-xs"
+                                />
+                            </div>
 
-                        <div className={formData.noBusRequired ? 'opacity-40 grayscale pointer-events-none' : ''}>
-                            <label htmlFor="busInfo" className="block text-sm font-bold text-gray-700 mb-1">
-                                Consignes pour le bus
-                            </label>
-                            <textarea 
-                                id="busInfo" 
-                                name="busInfo" 
-                                value={formData.busInfo}
-                                placeholder="Où et à quelle heure doit passer le bus ? Précisez l'horaire et l'adresse…" 
-                                onChange={handleChange} 
-                                required={!formData.noBusRequired}
-                                className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 h-24"
-                            />
+                            {/* Right block: the option to not benefit from bus arrangement */}
+                            <div className="col-span-1 md:col-span-5 bg-white/50 px-3 py-1.5 rounded-lg border border-blue-200/50 flex items-start h-[82px]">
+                                <label className="flex items-start gap-2.5 cursor-pointer select-none h-full">
+                                    <input 
+                                        type="checkbox" 
+                                        name="noBusRequired" 
+                                        checked={formData.noBusRequired} 
+                                        onChange={handleChange}
+                                        className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-blue-500 border-blue-300 flex-shrink-0"
+                                    />
+                                    <span className="text-xs sm:text-sm font-bold text-blue-900 leading-snug pt-0.5">
+                                        Nous ne souhaitons pas bénéficier de la prise en charge du bus par le Grand Longwy
+                                    </span>
+                                </label>
+                            </div>
                         </div>
                     </div>
 

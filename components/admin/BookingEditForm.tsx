@@ -36,6 +36,84 @@ const BookingEditForm: React.FC<{
         return animations.find(a => a.id === formData.animationId) || animations[0];
     }, [animations, formData.animationId]);
 
+    const animationAnimatorMap = useMemo(() => {
+        return animations.reduce((acc, anim) => {
+            if (anim.animator) acc[anim.id] = anim.animator;
+            return acc;
+        }, {} as Record<string, string>);
+    }, [animations]);
+
+    const animatorSettings = useMemo(() => {
+        const animName = currentAnimation?.animator?.trim();
+        if (!animName) return { unavailableDates: [], inactiveSlots: [] };
+        
+        const matchingKey = Object.keys(settings.animatorSettings || {}).find(
+            key => key.trim().toLowerCase() === animName.toLowerCase()
+        );
+        
+        return matchingKey ? settings.animatorSettings![matchingKey] : { unavailableDates: [], inactiveSlots: [] };
+    }, [currentAnimation, settings.animatorSettings]);
+
+    const animatorAvailability = useMemo(() => {
+        const animatorName = currentAnimation?.animator?.trim();
+        if (!animatorName) {
+            return { available: true, reason: "" };
+        }
+
+        const dateString = formData.date;
+        const timeVal = formData.time;
+
+        // 1. Check if the date is marked as unavailable for this animator
+        if ((animatorSettings.unavailableDates || []).includes(dateString)) {
+            return { available: false, reason: "L'animateur est marqué comme indisponible à cette date." };
+        }
+
+        // 2. Check if the slot (time) is inactive for this animator
+        if ((animatorSettings.inactiveSlots || []).some(s => Number(s) === Number(timeVal))) {
+            return { available: false, reason: `Le créneau de ${timeVal}h est désactivé pour cet animateur.` };
+        }
+
+        // 3. Check if the animator has another booking on that date (excluding this booking itself)
+        const otherBookings = bookings.filter(b => b.id !== formData.id);
+        const animatorHasBookingOnDate = otherBookings.find(booking => {
+            if (booking.date !== dateString) return false;
+            const bookingAnimator = animationAnimatorMap[booking.animationId]?.trim().toLowerCase();
+            return bookingAnimator === animatorName.toLowerCase();
+        });
+
+        if (animatorHasBookingOnDate) {
+            return { 
+                available: false, 
+                reason: `L'animateur a déjà une autre animation ce jour-là ("${animatorHasBookingOnDate.animationTitle}" à ${animatorHasBookingOnDate.time}h).` 
+            };
+        }
+
+        // 4. Check monthly bookings limit for this animator
+        if (animatorSettings.monthlyBookingLimit !== undefined) {
+            const bookingDate = new Date(dateString.replace(/-/g, '/'));
+            const bYear = bookingDate.getFullYear();
+            const bMonth = bookingDate.getMonth();
+
+            const currentMonthBookingCount = otherBookings.filter(booking => {
+                const bD = new Date(booking.date.replace(/-/g, '/'));
+                const isSameMonth = bD.getFullYear() === bYear && bD.getMonth() === bMonth;
+                if (!isSameMonth) return false;
+
+                const bookingAnimator = animationAnimatorMap[booking.animationId]?.trim().toLowerCase();
+                return bookingAnimator === animatorName.toLowerCase();
+            }).length;
+
+            if (currentMonthBookingCount >= animatorSettings.monthlyBookingLimit) {
+                return { 
+                    available: false, 
+                    reason: `L'animateur a atteint sa limite mensuelle de réservations (${animatorSettings.monthlyBookingLimit}) pour ce mois.` 
+                };
+            }
+        }
+
+        return { available: true, reason: "" };
+    }, [currentAnimation, formData.date, formData.time, formData.id, animatorSettings, bookings, animationAnimatorMap]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
         let finalValue: any = value;
@@ -71,6 +149,11 @@ const BookingEditForm: React.FC<{
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
+        if (!animatorAvailability.available) {
+            alert(`Impossible de sauvegarder : ${animatorAvailability.reason}`);
+            return;
+        }
+
         // Final sanity check for conflicts in case multi-user environment
         const otherBookings = bookings.filter(b => b.id !== formData.id);
         
@@ -126,6 +209,39 @@ const BookingEditForm: React.FC<{
                         >
                             {animations.map(anim => <option key={anim.id} value={anim.id}>{anim.title}</option>)}
                         </select>
+
+                        {/* Animator & Availability Status */}
+                        <div className="mt-2.5 text-xs">
+                            {currentAnimation?.animator ? (
+                                <div className={`flex flex-col gap-1 p-3.5 rounded-2xl border transition-all ${
+                                    animatorAvailability.available 
+                                    ? 'bg-emerald-50/40 border-emerald-100 text-emerald-800' 
+                                    : 'bg-rose-50/40 border-rose-100 text-rose-800'
+                                }`}>
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold">
+                                            Animateur : <span className="underline decoration-dotted">{currentAnimation.animator}</span>
+                                        </span>
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                            animatorAvailability.available 
+                                            ? 'bg-emerald-100/80 text-emerald-700' 
+                                            : 'bg-rose-100/80 text-rose-700'
+                                        }`}>
+                                            {animatorAvailability.available ? '✓ Disponible' : '✗ Indisponible'}
+                                        </span>
+                                    </div>
+                                    {!animatorAvailability.available && (
+                                        <p className="text-[11px] font-semibold mt-1 text-rose-700 font-sans tracking-wide leading-relaxed">
+                                            ⚠️ {animatorAvailability.reason}
+                                        </p>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="p-3.5 rounded-2xl border border-gray-150 bg-gray-50 text-gray-500 italic">
+                                    Aucun animateur assigné à cette animation.
+                                </div>
+                            )}
+                        </div>
                     </div>
                     
                     {/* Slot Display & Trigger */}
@@ -192,73 +308,19 @@ const BookingEditForm: React.FC<{
                         </div>
                     </div>
 
-                    {/* Section Bus Admin */}
-                    <div className={`p-5 bg-blue-50 border border-blue-100 rounded-2xl space-y-4 ${!isAdmin ? 'opacity-70 grayscale-[0.5]' : ''}`}>
-                        <div className="flex justify-between items-center">
-                            <h4 className="text-sm font-black text-blue-900 uppercase tracking-widest">Administration du transport</h4>
-                            {!isAdmin && <span className="text-[10px] font-black bg-blue-200 text-blue-800 px-2 py-0.5 rounded uppercase tracking-tighter">Consultation uniquement</span>}
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <label className={`flex items-center gap-2 ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-                                <input 
-                                    type="checkbox" 
-                                    name="noBusRequired" 
-                                    checked={formData.noBusRequired} 
-                                    onChange={handleChange} 
-                                    disabled={!isAdmin}
-                                    className="w-4 h-4 rounded text-blue-600"
-                                />
-                                <span className="text-sm font-bold text-blue-800 italic">Pas de bus nécessaire</span>
-                            </label>
-                        </div>
-                        {!formData.noBusRequired && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in duration-200">
-                                <div>
-                                    <label className="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Statut prise en charge</label>
-                                    <select 
-                                        name="busStatus" 
-                                        value={formData.busStatus} 
-                                        onChange={handleChange} 
-                                        disabled={!isAdmin}
-                                        className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-bold text-blue-900 disabled:bg-gray-100"
-                                    >
-                                        <option value="pending">En attente</option>
-                                        <option value="validated">Validé</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Coût (€)</label>
-                                    <input 
-                                        type="text" 
-                                        inputMode="numeric"
-                                        pattern="[0-9]*"
-                                        name="busCost" 
-                                        value={formData.busCost} 
-                                        onChange={(e) => {
-                                            const val = e.target.value.replace(/\D/g, '');
-                                            setFormData(prev => ({ ...prev, busCost: parseInt(val) || 0 }));
-                                        }} 
-                                        disabled={!isAdmin}
-                                        className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-bold text-blue-900 disabled:bg-gray-100"
-                                    />
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Infos de passage</label>
-                                    <textarea 
-                                        name="busInfo" 
-                                        value={formData.busInfo} 
-                                        onChange={handleChange} 
-                                        disabled={!isAdmin}
-                                        className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-medium h-20 disabled:bg-gray-100"
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
                     <div className="flex justify-end gap-3 pt-6 border-t border-gray-100 sticky bottom-0 bg-white">
                         <button type="button" onClick={onCancel} className="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors">Annuler</button>
-                        <button type="submit" className="px-10 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-indigo-700 shadow-lg shadow-indigo-100 transform active:scale-95 transition-all">Sauvegarder</button>
+                        <button 
+                            type="submit" 
+                            disabled={!animatorAvailability.available}
+                            className={`px-10 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider shadow-lg transform active:scale-95 transition-all ${
+                                animatorAvailability.available 
+                                ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100' 
+                                : 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none active:scale-100'
+                            }`}
+                        >
+                            Sauvegarder
+                        </button>
                     </div>
                 </form>
             </div>

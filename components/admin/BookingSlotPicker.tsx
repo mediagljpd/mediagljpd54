@@ -38,20 +38,57 @@ const BookingSlotPicker: React.FC<BookingSlotPickerProps> = ({
     }, [settings.activeYear]);
 
     // Initial date should be the currently selected date of the booking being edited
+    // Constrained between the current month and June of the current school year
     const [viewDate, setViewDate] = useState(() => {
-        if (selectedDate) return new Date(selectedDate.replace(/-/g, '/'));
-        return new Date();
+        const today = new Date();
+        const curYear = today.getFullYear();
+        const curMonth = today.getMonth();
+        const minDate = new Date(curYear, curMonth, 1);
+        
+        const juneYear = curMonth >= 8 ? curYear + 1 : curYear;
+        const maxDate = new Date(juneYear, 5, 30);
+
+        if (selectedDate) {
+            const selDateObj = new Date(selectedDate.replace(/-/g, '/'));
+            if (selDateObj < minDate) {
+                return minDate;
+            }
+            if (selDateObj > maxDate) {
+                return minDate;
+            }
+            return selDateObj;
+        }
+        return today;
     });
 
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
     const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 
+    const todayObj = new Date();
+    const currentYear = todayObj.getFullYear();
+    const currentMonthIdx = todayObj.getMonth();
+    const juneYearVal = currentMonthIdx >= 8 ? currentYear + 1 : currentYear;
+
+    const isMinMonthReached = year < currentYear || (year === currentYear && month <= currentMonthIdx);
+    const isMaxMonthReached = year > juneYearVal || (year === juneYearVal && month >= 5);
+
     const changeMonth = (offset: number) => {
-        const newDate = new Date(viewDate);
-        newDate.setDate(1);
-        newDate.setMonth(viewDate.getMonth() + offset);
-        setViewDate(newDate);
+        const nextDate = new Date(viewDate);
+        nextDate.setDate(1);
+        nextDate.setMonth(viewDate.getMonth() + offset);
+        
+        const nextYear = nextDate.getFullYear();
+        const nextMonth = nextDate.getMonth();
+        
+        if (nextYear < currentYear || (nextYear === currentYear && nextMonth < currentMonthIdx)) {
+            return;
+        }
+        if (nextYear > juneYearVal || (nextYear === juneYearVal && nextMonth > 5)) {
+            return;
+        }
+        
+        setViewDate(nextDate);
     };
 
     const isDateInHoliday = (date: Date, holidays: Holiday[]): boolean => {
@@ -188,13 +225,23 @@ const BookingSlotPicker: React.FC<BookingSlotPickerProps> = ({
             <div className="flex items-center justify-between mb-4">
                 <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Choisir Date & Horaire</h3>
                 <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => changeMonth(-1)} className="p-1 hover:bg-gray-200 rounded-lg text-gray-600">
+                    <button 
+                        type="button" 
+                        onClick={() => changeMonth(-1)} 
+                        disabled={isMinMonthReached}
+                        className={`p-1 rounded-lg text-gray-600 transition-opacity ${isMinMonthReached ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-200'}`}
+                    >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
                     </button>
                     <span className="text-xs font-black text-gray-700 uppercase min-w-[100px] text-center">
                         {monthNames[month]} {year}
                     </span>
-                    <button type="button" onClick={() => changeMonth(1)} className="p-1 hover:bg-gray-200 rounded-lg text-gray-600">
+                    <button 
+                        type="button" 
+                        onClick={() => changeMonth(1)} 
+                        disabled={isMaxMonthReached}
+                        className={`p-1 rounded-lg text-gray-600 transition-opacity ${isMaxMonthReached ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-200'}`}
+                    >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
                     </button>
                 </div>

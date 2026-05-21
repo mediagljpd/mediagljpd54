@@ -114,7 +114,7 @@ export function App() {
                     </tr>
 
                     <tr>
-                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
+                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;">
                             Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
                             <br/><br/>
                             Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
@@ -202,11 +202,7 @@ export function App() {
                             </table>
                         </td>
                     </tr>
-                    <tr>
-                        <td bgcolor="#f8fafc" style="padding: 30px; border-top: 1px solid #f1f5f9; text-align: center; color: #94a3b8; font-size: 16px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 1.5;">
-                            E-mail automatique - Plateforme de réservation
-                        </td>
-                    </tr>
+
                 </table>
             </td>
         </tr>
@@ -220,6 +216,24 @@ export function App() {
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>Liste des Réservations</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style type="text/css">
+        /* Disable automatic underlining and coloring of address/location links added by Outlook */
+        a, a:hover, a:active, a:focus, span.MsoHyperlink, span.MsoHyperlinkFollowed {
+            color: inherit !important;
+            text-decoration: none !important;
+            border-bottom: none !important;
+        }
+        /* Specific elements for detected data */
+        [x-apple-data-detectors], .x-gmail-data-detectors, .x-gmail-data-detectors *, .aBn {
+            border-bottom: none !important;
+            color: inherit !important;
+            text-decoration: none !important;
+            font-size: inherit !important;
+            font-family: inherit !important;
+            font-weight: inherit !important;
+            line-height: inherit !important;
+        }
+    </style>
 </head>
 <body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
     <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
@@ -249,12 +263,12 @@ export function App() {
                         <td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; border: 1px solid #e2e8f0; font-family: sans-serif;">
                                 <thead>
-                                    <tr style="background-color: #f8fafc; text-align: left; border-bottom: 2px solid #e2e8f0;">
-                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Animation / Date</th>
-                                        <th width="20%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Enseignant</th>
-                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">École / Commune</th>
-                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Niveau</th>
-                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b;">Effectifs</th>
+                                    <tr style="background-color: #f8fafc; text-align: left;">
+                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;">Animation / Date</th>
+                                        <th width="20%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;">Enseignant</th>
+                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;">École / Commune</th>
+                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;">Niveau</th>
+                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #e2e8f0;">Effectifs</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -264,8 +278,11 @@ export function App() {
                         </td>
                     </tr>
                     <tr>
-                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
-                            Ce récapitulatif a été généré depuis la plateforme d'administration.
+                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;">
+                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
+                            <br/><br/>
+                            Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
+                            Ces informations sont utilisées exclusivement pour la gestion de vos réservations.
                         </td>
                     </tr>
                 </table>
@@ -298,6 +315,107 @@ export function App() {
         if (!mergedData.cookiesPolicy) mergedData.cookiesPolicy = settings.cookiesPolicy;
         if (!mergedData.emailListSubject) mergedData.emailListSubject = settings.emailListSubject;
         if (!mergedData.emailListTemplate) mergedData.emailListTemplate = settings.emailListTemplate;
+
+        // Auto-migration to align existing DB templates with the new styling requirements
+        let needsMigration = false;
+
+        // 1. Teacher Email Template
+        if (mergedData.emailTeacherTemplate && mergedData.emailTeacherTemplate.includes('font-size: 14px; color: #94a3b8;')) {
+          mergedData.emailTeacherTemplate = mergedData.emailTeacherTemplate.replace(
+            'font-size: 14px; color: #94a3b8;',
+            'font-size: 16px; color: #334155;'
+          );
+          needsMigration = true;
+        }
+
+        // 2. Animator Email Template (removing auto email notification footer)
+        if (mergedData.emailAnimatorTemplate) {
+          let updatedAnimatorTemplate = mergedData.emailAnimatorTemplate;
+          const searchTxts = [
+            "Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.",
+            "E-mail automatique - Plateforme de réservation"
+          ];
+          searchTxts.forEach(txt => {
+            if (updatedAnimatorTemplate.includes(txt)) {
+              // Try replacing whole <tr> if matches standard pattern
+              const regex = new RegExp(`\\s*<tr>\\s*<td[^>]*>\\s*${txt}\\s*</td>\\s*</tr>`, 'g');
+              if (regex.test(updatedAnimatorTemplate)) {
+                updatedAnimatorTemplate = updatedAnimatorTemplate.replace(regex, '');
+              } else {
+                updatedAnimatorTemplate = updatedAnimatorTemplate.replace(txt, '');
+              }
+              needsMigration = true;
+            }
+          });
+          if (needsMigration) {
+            mergedData.emailAnimatorTemplate = updatedAnimatorTemplate;
+          }
+        }
+
+        // 3. Recap/List Email Template
+        if (mergedData.emailListTemplate) {
+          if (mergedData.emailListTemplate.includes('font-size: 14px; color: #94a3b8;')) {
+            mergedData.emailListTemplate = mergedData.emailListTemplate.replace(
+              'font-size: 14px; color: #94a3b8;',
+              'font-size: 16px; color: #334155;'
+            );
+            needsMigration = true;
+          }
+          const oldListFooter = `                    <tr>\n                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">\n                            Ce récapitulatif a été généré depuis la plateforme d'administration.\n                        </td>\n                    </tr>`;
+          if (mergedData.emailListTemplate.includes(oldListFooter)) {
+            const newListFooter = `                    <tr>\n                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;">\n                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.\n                            <br/><br/>\n                            Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. \n                            Ces informations sont utilisées exclusivement pour la gestion de vos réservations.\n                        </td>\n                    </tr>`;
+            mergedData.emailListTemplate = mergedData.emailListTemplate.replace(oldListFooter, newListFooter);
+            needsMigration = true;
+          }
+          
+          // Migrate header row borders to individual headers (for Outlook border-bottom bug on TR)
+          if (mergedData.emailListTemplate.includes('tr style="background-color: #f8fafc; text-align: left; border-bottom: 2px solid #e2e8f0;"')) {
+            mergedData.emailListTemplate = mergedData.emailListTemplate
+              .replace(
+                'tr style="background-color: #f8fafc; text-align: left; border-bottom: 2px solid #e2e8f0;"',
+                'tr style="background-color: #f8fafc; text-align: left;"'
+              )
+              .replace(
+                /style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;"/g,
+                'style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;"'
+              )
+              .replace(
+                /style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b;"/g,
+                'style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #e2e8f0;"'
+              );
+            needsMigration = true;
+          }
+
+          // Inject Outlook data style override in <head> if missing
+          if (!mergedData.emailListTemplate.includes('span.MsoHyperlink') && !mergedData.emailListTemplate.includes('span.MsoHyperlinkFollowed')) {
+            const headTail = '</head>';
+            const injection = `    <style type="text/css">
+        /* Disable automatic underlining and coloring of address/location links added by Outlook */
+        a, a:hover, a:active, a:focus, span.MsoHyperlink, span.MsoHyperlinkFollowed {
+            color: inherit !important;
+            text-decoration: none !important;
+            border-bottom: none !important;
+        }
+        /* Specific elements for detected data */
+        [x-apple-data-detectors], .x-gmail-data-detectors, .x-gmail-data-detectors *, .aBn {
+            border-bottom: none !important;
+            color: inherit !important;
+            text-decoration: none !important;
+            font-size: inherit !important;
+            font-family: inherit !important;
+            font-weight: inherit !important;
+            line-height: inherit !important;
+        }
+    </style>\n</head>`;
+            mergedData.emailListTemplate = mergedData.emailListTemplate.replace(headTail, injection);
+            needsMigration = true;
+          }
+        }
+
+        if (needsMigration) {
+          console.log("Migrating email templates to match new style requirements...", mergedData);
+          dataService.saveSettings(mergedData).catch(e => console.error("Auto-migration of settings failed:", e));
+        }
 
         // The data from Firestore should be the source of truth for all fields it contains.
         // We use a functional update to ensure we have the latest defaults if needed,

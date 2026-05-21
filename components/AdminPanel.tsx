@@ -5,7 +5,7 @@ import ManageCalendar from './admin/ManageCalendar';
 import ViewBookings from './admin/ViewBookings';
 import ManageSettings from './admin/ManageSettings';
 import { AdminView } from './admin/types';
-import { PaintBrushIcon, CalendarIcon, ListIcon, CogIcon, CheckIcon, XIcon, ShieldCheckIcon, DownloadIcon } from './Icons';
+import { SparklesIcon, CalendarIcon, ListIcon, CogIcon, CheckIcon, XIcon, ShieldCheckIcon, DownloadIcon } from './Icons';
 import { db, auth } from '../services/firebase';
 import { signOut } from 'firebase/auth';
 import { AppContext } from '../AppContext';
@@ -126,7 +126,7 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                     )}
 
                     <nav className="flex items-center justify-center flex-wrap gap-3 mt-4">
-                       <NavLink view="animations" label="Animations" icon={<PaintBrushIcon className="w-6 h-6" />} />
+                       <NavLink view="animations" label="Animations" icon={<SparklesIcon className="w-6 h-6" />} />
                        <NavLink view="calendar" label="Calendrier" icon={<CalendarIcon className="w-6 h-6" />} />
                        <NavLink view="bookings" label="Réservations" icon={<ListIcon className="w-6 h-6" />} />
                        {(currentUser?.role === 'admin' || currentUser?.permissions.canModifySettings) && (

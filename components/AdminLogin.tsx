@@ -26,6 +26,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
   
   // States for mandatory password change
   const [pendingUser, setPendingUser] = useState<AdminUser | null>(null);
+  const [isExpiredByPeriod, setIsExpiredByPeriod] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -78,10 +79,25 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
       // Requis pour les nouveaux utilisateurs OU les anciens qui n'ont jamais changé (flag absent)
       // Seulement pour les comptes "Utilisateur" (accès limité)
       const isLimitedUser = user.role === UserRole.USER;
-      const needsChange = isLimitedUser && (user.mustChangePassword === true || user.mustChangePassword === undefined);
+      
+      let isExpired = false;
+      if (isLimitedUser && user.forcePasswordExpiry) {
+        if (!user.passwordLastChanged) {
+          isExpired = true;
+        } else {
+          const lastChangedDate = new Date(user.passwordLastChanged);
+          const interval = user.passwordExpiryDaysInterval || 30;
+          const expiryTime = lastChangedDate.getTime() + (interval * 24 * 60 * 60 * 1000);
+          isExpired = Date.now() > expiryTime;
+        }
+      }
+
+      const isFirstLogin = user.mustChangePassword === true || user.mustChangePassword === undefined;
+      const needsChange = isLimitedUser && (isFirstLogin || isExpired);
 
       if (needsChange) {
         setPendingUser(user);
+        setIsExpiredByPeriod(isExpired && !isFirstLogin);
       } else {
         setCurrentUser(user);
         onLoginSuccess();
@@ -145,7 +161,11 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
                         <LockIcon className="w-8 h-8" />
                     </div>
                     <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight mb-2">Sécurité Requise</h2>
-                    <p className="text-gray-500 text-sm">C'est votre première connexion. Veuillez choisir un nouveau mot de passe personnel pour continuer.</p>
+                    <p className="text-gray-500 text-sm">
+                      {isExpiredByPeriod 
+                        ? `Votre mot de passe a expiré (renouvellement périodique obligatoire tous les ${pendingUser?.passwordExpiryDaysInterval || 30} jours). Veuillez définir un nouveau mot de passe.`
+                        : "C'est votre première connexion. Veuillez choisir un nouveau mot de passe personnel pour continuer."}
+                    </p>
                 </div>
 
                 <form onSubmit={handleChangePassword} className="space-y-6">

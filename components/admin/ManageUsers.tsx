@@ -75,8 +75,20 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
         password: '',
         role: UserRole.USER,
         animatorName: '',
-        permissions: { ...initialPermissions }
+        permissions: { ...initialPermissions },
+        mustChangePassword: true,
+        forcePasswordExpiry: false,
+        passwordExpiryDaysInterval: 30
     });
+
+    const handleResetToDefault = () => {
+        setFormData(prev => ({
+            ...prev,
+            password: 'GrandLongwy@2026',
+            mustChangePassword: true
+        }));
+        showNotification("L'utilisateur a été configuré avec le mot de passe par défaut 'GrandLongwy@2026'. L'état de première connexion est rétabli.", "success");
+    };
 
     const handleSave = async () => {
         const complexityError = validatePassword(formData.password);
@@ -91,11 +103,12 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
 
             if (editingUser) {
                 const isPasswordChanged = formData.password !== editingUser.password;
+                const finalMustChange = isPasswordChanged || formData.mustChangePassword || false;
                 newUsers = currentUsers.map(u => u.id === editingUser.id ? { 
                     ...formData, 
                     id: u.id,
                     passwordLastChanged: isPasswordChanged ? new Date().toISOString() : u.passwordLastChanged,
-                    mustChangePassword: isPasswordChanged ? true : u.mustChangePassword
+                    mustChangePassword: finalMustChange
                 } : u);
             } else {
                 const newUser: AdminUser = {
@@ -115,7 +128,10 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
                 password: '',
                 role: UserRole.USER,
                 animatorName: '',
-                permissions: { ...initialPermissions }
+                permissions: { ...initialPermissions },
+                mustChangePassword: true,
+                forcePasswordExpiry: false,
+                passwordExpiryDaysInterval: 30
             });
             showNotification(editingUser ? 'Utilisateur mis à jour !' : 'Utilisateur créé !');
         } catch (err) {
@@ -206,12 +222,22 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <div className="flex flex-col">
+                                    <div className="flex flex-col gap-1">
                                         <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full w-fit ${user.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
                                             {user.role === UserRole.ADMIN ? 'Administrateur' : 'Compte Utilisateur'}
                                         </span>
                                         {user.animatorName && (
-                                            <span className="text-xs text-gray-500 mt-1 font-medium">Lié à : {user.animatorName}</span>
+                                            <span className="text-xs text-gray-500 font-medium">Lié à : {user.animatorName}</span>
+                                        )}
+                                        {user.forcePasswordExpiry && (
+                                            <span className="text-[9px] text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded font-bold w-fit uppercase tracking-wide">
+                                                🔄 Expire tous les {user.passwordExpiryDaysInterval || 30} jours
+                                            </span>
+                                        )}
+                                        {user.mustChangePassword && (
+                                            <span className="text-[9px] text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded font-bold w-fit uppercase tracking-wide">
+                                                🔑 Première connexion requise
+                                            </span>
                                         )}
                                     </div>
                                 </td>
@@ -237,11 +263,14 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
                                                     password: user.password || '',
                                                     role: user.role,
                                                     animatorName: user.animatorName || '',
-                                                    permissions: { ...user.permissions }
+                                                    permissions: { ...user.permissions },
+                                                    mustChangePassword: user.mustChangePassword !== undefined ? user.mustChangePassword : true,
+                                                    forcePasswordExpiry: user.forcePasswordExpiry || false,
+                                                    passwordExpiryDaysInterval: user.passwordExpiryDaysInterval || 30
                                                  });
                                                 setIsAdding(true);
                                             }}
-                                            className="p-2.5 text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 rounded-xl border border-gray-200 hover:border-blue-200 transition-all cursor-pointer relative z-[20]"
+                                            className="p-2.5 text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 rounded-xl border border-gray-200 hover:border-blue-200 transition-all cursor-pointer relative z-10"
                                             title="Modifier"
                                         >
                                             <CogIcon className="w-5 h-5" />
@@ -254,7 +283,7 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
                                                 console.log("Delete button clicked for ID:", user.id);
                                                 handleDelete(user.id);
                                             }}
-                                            className="p-2.5 text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 rounded-xl border border-gray-200 hover:border-red-200 transition-all cursor-pointer relative z-[20]"
+                                            className="p-2.5 text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 rounded-xl border border-gray-200 hover:border-red-200 transition-all cursor-pointer relative z-10"
                                             title="Supprimer"
                                         >
                                             <TrashIcon className="w-5 h-5" />
@@ -430,6 +459,24 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
                                 </div>
                             </div>
 
+                            {editingUser && (
+                                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+                                    <div>
+                                        <p className="text-xs font-bold text-amber-900">Rétablir l'état par défaut (Première connexion)</p>
+                                        <p className="text-[10px] text-amber-700/80 mt-1 leading-snug">
+                                            Réinitialise le mot de passe sur <code className="font-mono bg-white/70 px-1 py-0.5 rounded border border-amber-200 font-bold">GrandLongwy@2026</code> et force l'utilisateur à définir un nouveau mot de passe lors de sa prochaine connexion (Première connexion).
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleResetToDefault}
+                                        className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black uppercase shadow-sm transition-colors whitespace-nowrap self-start sm:self-center cursor-pointer"
+                                    >
+                                        Rétablir par défaut
+                                    </button>
+                                </div>
+                            )}
+
                             <div className="space-y-1">
                                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Animateur relié</label>
                                 <div className="relative">
@@ -491,6 +538,50 @@ const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => 
                                             className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
                                         />
                                     </label>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 p-6 bg-gray-50 rounded-2xl border border-gray-100 text-left">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <LockIcon className="w-5 h-5 text-blue-600" />
+                                    <h4 className="text-sm font-black text-gray-800 uppercase tracking-widest">Sécurité & Expiration</h4>
+                                </div>
+                                <p className="text-xs text-gray-500 italic mb-4">Gérez la politique de renouvellement obligatoire du mot de passe périodique.</p>
+                                
+                                <div className="flex flex-col gap-4">
+                                    <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 transition-all">
+                                        <div className="flex flex-col pr-4">
+                                            <span className="text-xs font-bold text-gray-700">Forcer le changement de mot de passe périodiquement</span>
+                                            <span className="text-[10px] text-gray-400">Le mot de passe expirera automatiquement après l'intervalle sélectionné</span>
+                                        </div>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={formData.forcePasswordExpiry || false}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, forcePasswordExpiry: e.target.checked }))}
+                                            className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"
+                                        />
+                                    </label>
+
+                                    {formData.forcePasswordExpiry && (
+                                        <div className="p-4 bg-white rounded-xl border border-gray-100 space-y-2">
+                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Intervalle de jours choisi</label>
+                                            <div className="flex items-center gap-3">
+                                                <input 
+                                                    type="number"
+                                                    min={1}
+                                                    max={365}
+                                                    required
+                                                    value={formData.passwordExpiryDaysInterval || 30}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value) || 30;
+                                                        setFormData(prev => ({ ...prev, passwordExpiryDaysInterval: val }));
+                                                    }}
+                                                    className="w-24 px-3 py-2 bg-gray-50 border-2 border-gray-100 rounded-lg font-bold text-sm focus:border-blue-500 outline-none"
+                                                />
+                                                <span className="text-xs text-gray-500 font-medium">jours avant obligation de changement.</span>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

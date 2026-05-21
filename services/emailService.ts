@@ -214,15 +214,15 @@ export const emailService = {
         
         // Generate table rows with 5 columns as expected by the template
         const tableRows = bookings.map(b => `
-            <tr style="border-bottom: 1px solid #edf2f7;">
-                <td style="padding: 12px; font-size: 14px; color: #1e293b;">
+            <tr>
+                <td style="padding: 12px; font-size: 14px; color: #1e293b; border-bottom: 1px solid #edf2f7;">
                     <div style="font-weight: bold; color: #0f172a;">${b.animationTitle}</div>
                     <div style="font-weight: bold; color: #2563eb; font-size: 12px;">${formatLongDateFR(b.date, String(b.time))}</div>
                 </td>
-                <td style="padding: 12px; font-size: 14px; color: #1e293b;">${b.teacherName}</td>
-                <td style="padding: 12px; font-size: 14px; color: #1e293b;">${b.schoolName} (${b.commune})</td>
-                <td style="padding: 12px; font-size: 14px; color: #1e293b;">${b.classLevel}</td>
-                <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4;">
+                <td style="padding: 12px; font-size: 14px; color: #1e293b; border-bottom: 1px solid #edf2f7;">${b.teacherName}</td>
+                <td style="padding: 12px; font-size: 14px; color: #1e293b; border-bottom: 1px solid #edf2f7;">${b.schoolName} (${b.commune})</td>
+                <td style="padding: 12px; font-size: 14px; color: #1e293b; border-bottom: 1px solid #edf2f7;">${b.classLevel}</td>
+                <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4; border-bottom: 1px solid #edf2f7;">
                     <div>${b.studentCount} élèves</div>
                     <div style="color: #64748b; font-size: 12px;">${b.adultCount} adultes</div>
                 </td>

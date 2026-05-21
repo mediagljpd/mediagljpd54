@@ -7,7 +7,7 @@ import { AdminSubComponentProps } from './types';
 import { storageService } from '../../services/storageService';
 import { backupService } from '../../services/backupService';
 import ConfirmationModal from '../shared/ConfirmationModal';
-import { PaintBrushIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, InformationCircleIcon } from '../Icons';
+import { PaintBrushIcon, PaletteIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, InformationCircleIcon } from '../Icons';
 import * as XLSX from 'xlsx';
 import { validatePassword } from '../../utils/validators';
 import PasswordPolicy from './PasswordPolicy';
@@ -96,7 +96,7 @@ const DEFAULT_EMAIL_TEACHER_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML
                     </tr>
 
                     <tr>
-                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
+                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;">
                             Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
                             <br/><br/>
                             Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
@@ -185,11 +185,7 @@ const DEFAULT_EMAIL_ANIMATOR_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTM
                             </table>
                         </td>
                     </tr>
-                    <tr>
-                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
-                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
-                        </td>
-                    </tr>
+
                 </table>
             </td>
         </tr>
@@ -204,6 +200,24 @@ const DEFAULT_EMAIL_LIST_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>Liste des Réservations</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style type="text/css">
+        /* Disable automatic underlining and coloring of address/location links added by Outlook */
+        a, a:hover, a:active, a:focus, span.MsoHyperlink, span.MsoHyperlinkFollowed {
+            color: inherit !important;
+            text-decoration: none !important;
+            border-bottom: none !important;
+        }
+        /* Specific elements for detected data */
+        [x-apple-data-detectors], .x-gmail-data-detectors, .x-gmail-data-detectors *, .aBn {
+            border-bottom: none !important;
+            color: inherit !important;
+            text-decoration: none !important;
+            font-size: inherit !important;
+            font-family: inherit !important;
+            font-weight: inherit !important;
+            line-height: inherit !important;
+        }
+    </style>
 </head>
 <body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
     <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
@@ -233,12 +247,12 @@ const DEFAULT_EMAIL_LIST_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.
                         <td style="padding: 0 30px 20px 30px;">
                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; border: 1px solid #e2e8f0; font-family: sans-serif;">
                                 <thead>
-                                    <tr style="background-color: #f8fafc; text-align: left; border-bottom: 2px solid #e2e8f0;">
-                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Animation / Date</th>
-                                        <th width="20%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Enseignant</th>
-                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">École / Commune</th>
-                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0;">Niveau</th>
-                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b;">Effectifs</th>
+                                    <tr style="background-color: #f8fafc; text-align: left;">
+                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;">Animation / Date</th>
+                                        <th width="20%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;">Enseignant</th>
+                                        <th width="25%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;">École / Commune</th>
+                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-right: 1px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;">Niveau</th>
+                                        <th width="15%" style="padding: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #e2e8f0;">Effectifs</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -259,7 +273,7 @@ const DEFAULT_EMAIL_LIST_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.
                         </td>
                     </tr>
                     <tr>
-                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
+                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;">
                             Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
                             <br/><br/>
                             Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
@@ -781,14 +795,15 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
 
     const NavButton: React.FC<{ id: SettingsTab, label: string, icon: React.ReactNode }> = ({ id, label, icon }) => (
         <button
+            type="button"
             onClick={() => {
                 setActiveTab(id);
                 setEditingLegalPage(null);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all duration-200 text-sm font-bold ${
                 activeTab === id 
-                ? 'bg-blue-600 text-white shadow-md transform scale-[1.02]' 
-                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                ? 'bg-blue-600 text-white shadow-sm scale-[1.01]' 
+                : 'text-gray-600 bg-white border border-gray-200/50 hover:bg-gray-50'
             }`}
         >
             <span className={activeTab === id ? 'text-white' : 'text-gray-400'}>{icon}</span>
@@ -815,27 +830,38 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
 
     return (
         <div className="max-w-6xl mx-auto pb-12">
-            <div className="flex flex-col lg:flex-row gap-8 items-start">
+            <div className="flex flex-col gap-6">
                 
-                {/* Sidebar Navigation */}
-                <aside className="w-full lg:w-64 flex-shrink-0 bg-white p-3 rounded-2xl shadow-sm border border-gray-100 lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto custom-scrollbar">
-                    <div className="hidden lg:block px-4 py-3 mb-2 border-b border-gray-50">
-                        <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest">Configuration</h2>
+                {/* Sticky Horizontal Navigation */}
+                <div className="sticky top-[-16px] sm:top-[-24px] lg:top-[-32px] z-30 bg-gray-100 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 -mt-4 sm:-mt-6 lg:-mt-8 pt-4 sm:pt-6 lg:pt-8 pb-3 border-b border-gray-200/80">
+                    <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-center gap-3 md:gap-6">
+                        {/* Left Block: Configuration Label */}
+                        <div className="flex items-center justify-center md:pr-6 md:border-r md:border-gray-200/60 h-full py-1">
+                            <span className="text-sm font-black text-gray-500 uppercase tracking-widest whitespace-nowrap">Configuration</span>
+                        </div>
+                        
+                        {/* Right Block: Two rows of buttons */}
+                        <div className="flex-grow flex flex-col gap-2 w-full items-center">
+                            {/* Row 1: Apparence, Pages d'info, Pied de page, Calendrier, Données, E-mails */}
+                            <div className="flex flex-wrap gap-2 justify-center">
+                                <NavButton id="design" label="Apparence" icon={<PaintBrushIcon className="w-5 h-5" />} />
+                                <NavButton id="pages" label="Pages d'info" icon={<ViewGridIcon className="w-5 h-5" />} />
+                                <NavButton id="footer" label="Pied de page" icon={<PencilIcon className="w-5 h-5" />} />
+                                <NavButton id="rules" label="Calendrier" icon={<CalendarDaysIcon className="w-5 h-5" />} />
+                                <NavButton id="data" label="Données" icon={<DatabaseIcon className="w-5 h-5" />} />
+                                <NavButton id="emails" label="E-mails" icon={<BellIcon className="w-5 h-5" />} />
+                            </div>
+                            {/* Row 2: Statistiques, Sécurité, Utilisateurs, Maintenance, Informations */}
+                            <div className="flex flex-wrap gap-2 justify-center">
+                                <NavButton id="stats" label="Statistiques" icon={<ListIcon className="w-5 h-5" />} />
+                                <NavButton id="security" label="Sécurité" icon={<CogIcon className="w-5 h-5" />} />
+                                <NavButton id="users" label="Utilisateurs" icon={<UserGroupIcon className="w-5 h-5" />} />
+                                <NavButton id="maintenance" label="Maintenance" icon={<ShieldCheckIcon className="w-5 h-5" />} />
+                                <NavButton id="information" label="Informations" icon={<InformationCircleIcon className="w-5 h-5" />} />
+                            </div>
+                        </div>
                     </div>
-                    <nav className="flex flex-row lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0">
-                        <NavButton id="design" label="Apparence" icon={<PaintBrushIcon className="w-5 h-5" />} />
-                        <NavButton id="pages" label="Pages d'info" icon={<ViewGridIcon className="w-5 h-5" />} />
-                        <NavButton id="footer" label="Pied de page" icon={<PencilIcon className="w-5 h-5" />} />
-                        <NavButton id="rules" label="Calendrier" icon={<CalendarDaysIcon className="w-5 h-5" />} />
-                        <NavButton id="data" label="Données" icon={<DatabaseIcon className="w-5 h-5" />} />
-                        <NavButton id="stats" label="Statistiques" icon={<ListIcon className="w-5 h-5" />} />
-                        <NavButton id="security" label="Sécurité" icon={<CogIcon className="w-5 h-5" />} />
-                        <NavButton id="users" label="Utilisateurs" icon={<UserGroupIcon className="w-5 h-5" />} />
-                        <NavButton id="emails" label="E-mails" icon={<BellIcon className="w-5 h-5" />} />
-                        <NavButton id="maintenance" label="Maintenance" icon={<ShieldCheckIcon className="w-5 h-5" />} />
-                        <NavButton id="information" label="Informations" icon={<InformationCircleIcon className="w-5 h-5" />} />
-                    </nav>
-                </aside>
+                </div>
 
                 {/* Main Content Pane */}
                 <div className="flex-grow w-full">
@@ -855,7 +881,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     {activeTab === 'footer' && "Pied de page"}
                                     {activeTab === 'security' && "Sécurité"}
                                     {activeTab === 'maintenance' && "Maintenance"}
-                                    {activeTab === 'information' && "Informations Techniques"}
+                                    {activeTab === 'information' && "Informations techniques"}
                                 </h3>
                                 <p className="text-sm text-gray-500 mt-1">
                                     {activeTab === 'design' && "Personnalisez les textes, les couleurs et le style de votre accueil"}
@@ -2192,28 +2218,28 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                                  const mockData = {
                                                                      bookings_count: 2,
                                                                      bookings_rows: `
-                                                                        <tr style="border-bottom: 1px solid #edf2f7;">
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; line-height: 1.4;">
+                                                                        <tr>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; border-bottom: 1px solid #edf2f7; line-height: 1.4;">
                                                                                 <div style="font-weight: bold; color: #0f172a;">Escape Game Numérique</div>
                                                                                 <div style="font-weight: bold; color: #2563eb; font-size: 12px;">Jeudi 15 mai 2024 à 09h</div>
                                                                             </td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">M. Jean</td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">Moulin (GORCY)</td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">CE1</td>
-                                                                            <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4;">
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">M. Jean</td>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">Moulin (GORCY)</td>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">CE1</td>
+                                                                            <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4; border-bottom: 1px solid #edf2f7;">
                                                                                 <div>25 élèves</div>
                                                                                 <div style="color: #64748b; font-size: 12px;">4 adultes</div>
                                                                             </td>
                                                                         </tr>
-                                                                        <tr style="border-bottom: 1px solid #edf2f7;">
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; line-height: 1.4;">
+                                                                        <tr>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; border-bottom: 1px solid #edf2f7; line-height: 1.4;">
                                                                                 <div style="font-weight: bold; color: #0f172a;">Atelier Robotique</div>
                                                                                 <div style="font-weight: bold; color: #2563eb; font-size: 12px;">Vendredi 16 mai 2024 à 14h</div>
                                                                             </td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">Mme. Marie</td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">Hugo (LONGWY)</td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b;">CM2</td>
-                                                                            <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4;">
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">Mme. Marie</td>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">Hugo (LONGWY)</td>
+                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">CM2</td>
+                                                                            <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4; border-bottom: 1px solid #edf2f7;">
                                                                                 <div>22 élèves</div>
                                                                                 <div style="color: #64748b; font-size: 12px;">2 adultes</div>
                                                                             </td>
@@ -2296,13 +2322,19 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                     onClick={async () => {
                                                         try {
                                                             showNotification("Préparation de la sauvegarde...", "success");
+                                                            
+                                                            const now = new Date().toISOString();
+                                                            // 1. Sauvegarder d'abord la nouvelle date d'export pour qu'elle soit incluse dans le fichier téléchargé
+                                                            await updateSettings({ lastExportDate: now });
+                                                            setFormState(prev => ({ ...prev, lastExportDate: now }));
+                                                            
+                                                            // 2. Récupérer l'ensemble des données (maintenant à jour avec la nouvelle date)
                                                             const backup = await backupService.exportData();
                                                             if (backup) {
-                                                                const now = new Date().toISOString();
                                                                 backupService.downloadBackup(backup);
-                                                                await updateSettings({ ...settings, lastExportDate: now });
-                                                                setFormState(prev => ({ ...prev, lastExportDate: now }));
                                                                 showNotification("Sauvegarde téléchargée !");
+                                                            } else {
+                                                                showNotification("Erreur lors de l'export des données", "error");
                                                             }
                                                         } catch (e) {
                                                             showNotification("Erreur lors de l'export.", "error");
@@ -2362,20 +2394,20 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                     <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                                             
-                                            {/* Stack Technique */}
+                                            {/* Stack technique */}
                                             <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-6">
                                                 <div className="flex items-center gap-3">
                                                     <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
                                                         <ViewGridIcon className="w-5 h-5" />
                                                     </div>
-                                                    <h4 className="text-lg font-black text-gray-800 uppercase tracking-tight">Architecture & Technologies</h4>
+                                                    <h4 className="text-lg font-black text-gray-800 uppercase tracking-tight">Architecture et technologies</h4>
                                                 </div>
                                                 
                                                 <div className="space-y-4">
                                                     <div className="flex gap-4 p-4 bg-gray-50 rounded-2xl">
                                                         <div className="bg-white p-2 rounded-xl shadow-sm text-indigo-600 font-black text-xs h-fit">Web</div>
                                                         <div>
-                                                            <div className="text-sm font-bold text-gray-800">Interface Utilisateur (Frontend)</div>
+                                                            <div className="text-sm font-bold text-gray-800">Interface utilisateur (frontend)</div>
                                                             <p className="text-xs text-gray-500 mt-1">Développé avec <strong>React 18</strong> et <strong>TypeScript</strong>. Le design est propulsé par <strong>Tailwind CSS</strong> pour une interface moderne, rapide et responsive sur tous les supports (mobiles, tablettes, ordinateurs).</p>
                                                         </div>
                                                     </div>
@@ -2383,34 +2415,42 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                     <div className="flex gap-4 p-4 bg-gray-50 rounded-2xl">
                                                         <div className="bg-white p-2 rounded-xl shadow-sm text-orange-600 font-black text-xs h-fit">DB</div>
                                                         <div>
-                                                            <div className="text-sm font-bold text-gray-800">Base de Données & Stockage</div>
-                                                            <p className="text-xs text-gray-500 mt-1">Utilise <strong>Google Firebase Firestore</strong> pour une persistence des données en temps réel. Les images et logos sont hébergés de manière sécurisée via <strong>Cloudinary</strong>.</p>
+                                                            <div className="text-sm font-bold text-gray-800">Base de données et stockage</div>
+                                                            <p className="text-xs text-gray-500 mt-1">Utilise <strong>Google Firebase Firestore</strong> pour une persistance des données en temps réel. Les images et logos sont hébergés de manière sécurisée via <strong>Cloudinary</strong>.</p>
                                                         </div>
                                                     </div>
 
                                                     <div className="flex gap-4 p-4 bg-gray-50 rounded-2xl">
                                                         <div className="bg-white p-2 rounded-xl shadow-sm text-green-600 font-black text-xs h-fit">API</div>
                                                         <div>
-                                                            <div className="text-sm font-bold text-gray-800">Services Connectés</div>
+                                                            <div className="text-sm font-bold text-gray-800">Services connectés</div>
                                                             <p className="text-xs text-gray-500 mt-1"><strong>EmailJS</strong> assure l'envoi fiable des confirmations de réservation par e-mail sans serveur mail complexe à maintenir. <strong>SheetJS</strong> permet l'import/export de listes complexes via Excel.</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex gap-4 p-4 bg-gray-50 rounded-2xl">
+                                                        <div className="bg-white p-2 rounded-xl shadow-sm text-blue-600 font-black text-xs h-fit">Héb.</div>
+                                                        <div>
+                                                            <div className="text-sm font-bold text-gray-800">Hébergement et code source</div>
+                                                            <p className="text-xs text-gray-500 mt-1">L'application est déployée et hébergée sur la plateforme cloud <strong>Netlify</strong>, garantissant des temps de chargement ultra-courts et une sécurité maximale. Le code source du site est stocké et versionné de manière sécurisée sur <strong>GitHub</strong>, facilitant les mises à jour et la maintenance.</p>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            {/* Sécurité & Diagnostic */}
+                                            {/* Sécurité et diagnostic */}
                                             <div className="bg-indigo-900 text-white p-6 rounded-3xl shadow-xl space-y-6">
                                                 <div className="flex items-center gap-3">
                                                     <div className="p-2 bg-white/10 rounded-lg text-indigo-200">
                                                         <ShieldCheckIcon className="w-5 h-5" />
                                                     </div>
-                                                    <h4 className="text-lg font-black uppercase tracking-tight">Sécurité & Diagnostic</h4>
+                                                    <h4 className="text-lg font-black uppercase tracking-tight">Sécurité et diagnostic</h4>
                                                 </div>
 
                                                 <div className="space-y-4">
                                                     <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
                                                         <div className="flex items-center justify-between mb-2">
-                                                            <div className="text-sm font-bold text-indigo-200">Protection des Données</div>
+                                                            <div className="text-sm font-bold text-indigo-200">Protection des données</div>
                                                             <div className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-black rounded-full border border-green-500/30 uppercase">Optimal</div>
                                                         </div>
                                                         <p className="text-xs text-white/70 leading-relaxed">
@@ -2431,7 +2471,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                     <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
                                                         <div className="flex items-center justify-between mb-2">
                                                             <div className="text-sm font-bold text-indigo-200">Conformité RGPD</div>
-                                                            <div className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[10px] font-black rounded-full border border-blue-500/30 uppercase">En Place</div>
+                                                            <div className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-[10px] font-black rounded-full border border-blue-500/30 uppercase">En place</div>
                                                         </div>
                                                         <p className="text-xs text-white/70 leading-relaxed">
                                                             Un système de nettoyage automatique peut être activé (onglet Données) pour anonymiser les réservations passées chaque année, garantissant le respect de la vie privée.
@@ -2440,11 +2480,11 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                 </div>
 
                                                 <div className="pt-2 p-4 bg-indigo-800/50 rounded-2xl border border-indigo-700/50">
-                                                    <h5 className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-2 text-center">Diagnostic de Stabilité</h5>
+                                                    <h5 className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-2 text-center">Diagnostic de stabilité</h5>
                                                     <div className="flex justify-between items-center px-4">
                                                         <div className="flex flex-col items-center">
                                                             <div className="text-lg font-black text-white">99.9%</div>
-                                                            <div className="text-[8px] text-indigo-300 font-bold uppercase">Disponibilité Cloud</div>
+                                                            <div className="text-[8px] text-indigo-300 font-bold uppercase">Disponibilité cloud</div>
                                                         </div>
                                                         <div className="h-8 w-px bg-indigo-700/50 line-clamp-1"></div>
                                                         <div className="flex flex-col items-center">
@@ -2454,7 +2494,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                         <div className="h-8 w-px bg-indigo-700/50"></div>
                                                         <div className="flex flex-col items-center">
                                                             <div className="text-lg font-black text-white">OK</div>
-                                                            <div className="text-[8px] text-indigo-300 font-bold uppercase">Intégrité DB</div>
+                                                            <div className="text-[8px] text-indigo-300 font-bold uppercase">Intégrité base de données</div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2466,18 +2506,18 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                             <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
                                                 <CogIcon className="w-10 h-10 text-gray-400" />
                                             </div>
-                                            <h4 className="text-lg font-black text-gray-800 uppercase tracking-tight">Systèmes de Stabilité & Rapidité</h4>
+                                            <h4 className="text-lg font-black text-gray-800 uppercase tracking-tight">Systèmes de stabilité et de rapidité</h4>
                                             <div className="max-w-3xl mt-4 grid grid-cols-1 md:grid-cols-3 gap-6">
                                                 <div className="space-y-2">
                                                     <div className="text-blue-600 font-black text-xs uppercase tracking-widest">Temps de chargement</div>
-                                                    <p className="text-[11px] text-gray-500 leading-relaxed font-medium">L'application est servie via un CDN mondial, garantissant que les fichiers sont livrés par le serveur le plus proche de l'utilisateur.</p>
+                                                    <p className="text-[11px] text-gray-500 leading-relaxed font-medium">L'application est servie via un CDN mondial, garantissant que les fichiers sont livrés par le serveur le plus de proche de l'utilisateur.</p>
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <div className="text-purple-600 font-black text-xs uppercase tracking-widest">Optimisation Assets</div>
+                                                    <div className="text-purple-600 font-black text-xs uppercase tracking-widest">Optimisation des images</div>
                                                     <p className="text-[11px] text-gray-500 leading-relaxed font-medium">Cloudinary redimensionne et optimise automatiquement les images pour réduire leur poids sans sacrifier la qualité visuelle.</p>
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <div className="text-green-600 font-black text-xs uppercase tracking-widest">Infrastructure Edge</div>
+                                                    <div className="text-green-600 font-black text-xs uppercase tracking-widest">Infrastructure de pointe (Edge)</div>
                                                     <p className="text-[11px] text-gray-500 leading-relaxed font-medium">Le code frontend est compilé de manière optimale (Vite), éliminant le code inutile pour une exécution ultra-fluide sur mobile.</p>
                                                 </div>
                                             </div>

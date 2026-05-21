@@ -106,6 +106,8 @@ export interface AdminUser {
   permissions: UserPermissions;
   passwordLastChanged?: string; // ISO date
   mustChangePassword?: boolean;
+  forcePasswordExpiry?: boolean;
+  passwordExpiryDaysInterval?: number;
 }
 
 export interface AppSettings {

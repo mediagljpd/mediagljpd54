@@ -1,16 +1,20 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useContext } from 'react';
 import { Animation, Animator } from '../../types';
 import { storageService } from '../../services/storageService';
 import { SparklesIcon } from '../Icons';
+import { AppContext } from '../../AppContext';
 
 const AnimationForm: React.FC<{ animation: Animation, animators: Animator[], onSave: (anim: Animation) => void, onCancel: () => void }> = ({ animation, animators, onSave, onCancel }) => {
+    const { animations } = useContext(AppContext);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [formState, setFormState] = useState<Animation>({
         ...animation,
         fontColor: animation.fontColor || '#ffffff'
     });
+
+    const isExisting = animations.some(a => a.id === animation.id);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         setFormState({ ...formState, [e.target.name]: e.target.value });
@@ -39,7 +43,7 @@ const AnimationForm: React.FC<{ animation: Animation, animators: Animator[], onS
 
     return (
         <div className="bg-gray-50 p-6 rounded-lg mb-6 border shadow-sm">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">{animation.id.length > 10 ? 'Nouvelle animation' : 'Modifier l\'animation'}</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{isExisting ? "Modifier l'animation" : "Nouvelle animation"}</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Titre de l'animation</label>

@@ -123,10 +123,6 @@ const ManageStats: React.FC = () => {
                                     <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f0f0f0" />
                                     <XAxis type="number" hide />
                                     <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 10, fontWeight: 'bold' }} axisLine={false} tickLine={false} />
-                                    <Tooltip 
-                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                        cursor={{ fill: '#f8fafc' }}
-                                    />
                                     <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} barSize={20}>
                                         <LabelList dataKey="value" position="right" offset={10} style={{ fontSize: 10, fontWeight: '900', fill: '#3B82F6' }} />
                                     </Bar>
@@ -143,13 +139,13 @@ const ManageStats: React.FC = () => {
                     <div className="h-80 w-full" style={{ minHeight: '320px' }}>
                         {stats.levelData.length > 0 ? (
                             <ResponsiveContainer width="100%" height={320}>
-                                <PieChart>
+                                <PieChart margin={{ top: 20, right: 60, bottom: 20, left: 60 }}>
                                     <Pie
                                         data={stats.levelData}
                                         cx="50%"
                                         cy="50%"
-                                        innerRadius={60}
-                                        outerRadius={100}
+                                        innerRadius={50}
+                                        outerRadius={75}
                                         paddingAngle={5}
                                         dataKey="value"
                                         label={({ name, value }) => `${name} (${value})`}
@@ -158,9 +154,6 @@ const ManageStats: React.FC = () => {
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
                                     </Pie>
-                                    <Tooltip 
-                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                    />
                                 </PieChart>
                             </ResponsiveContainer>
                         ) : (

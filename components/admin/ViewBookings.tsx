@@ -38,6 +38,43 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     type AugmentedBooking = Booking & { animator?: string };
     type SortableKey = 'date' | 'teacherName';
 
+    const [startYear, endYear] = useMemo(() => {
+        const years = settings.activeYear.split('-').map(Number);
+        if (years.length !== 2 || isNaN(years[0]) || isNaN(years[1])) {
+            const currentYear = new Date().getFullYear();
+            return [currentYear, currentYear + 1]; // Fallback
+        }
+        return [years[0], years[1]];
+    }, [settings.activeYear]);
+
+    const activeSchoolYearBookingsCount = useMemo(() => {
+        return bookings.filter(b => {
+            const bDate = new Date(b.date.replace(/-/g, '/'));
+            const bYear = bDate.getFullYear();
+            const bMonth = bDate.getMonth();
+            return (bYear === startYear && bMonth >= 9) || (bYear === endYear && bMonth <= 5);
+        }).length;
+    }, [bookings, startYear, endYear]);
+
+    const monthItemsWithCounts = useMemo(() => {
+        return SCHOOL_YEAR_MONTHS.map(item => {
+            const count = bookings.filter(booking => {
+                const bDate = new Date(booking.date.replace(/-/g, '/'));
+                const bYear = bDate.getFullYear();
+                const bMonth = bDate.getMonth();
+                if (bMonth !== item.value) return false;
+                
+                const expectedYear = item.value >= 9 ? startYear : endYear;
+                return bYear === expectedYear;
+            }).length;
+
+            return {
+                label: `${item.label} (${count})`,
+                value: item.value
+            };
+        });
+    }, [bookings, startYear, endYear]);
+
     const [sortConfig, setSortConfig] = useState<{ key: SortableKey, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
     const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
     const [busManagementBooking, setBusManagementBooking] = useState<Booking | null>(null);
@@ -114,6 +151,49 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         });
         return map;
     }, [animations]);
+
+    const animatorItemsWithCounts = useMemo(() => {
+        return animators.map(a => {
+            const count = bookings.filter(b => {
+                const bDate = new Date(b.date.replace(/-/g, '/'));
+                const bYear = bDate.getFullYear();
+                const bMonth = bDate.getMonth();
+                const inSchoolYear = (bYear === startYear && bMonth >= 9) || (bYear === endYear && bMonth <= 5);
+                if (!inSchoolYear) return false;
+
+                const bAnimator = animatorMapForFiltering.get(b.animationId);
+                return bAnimator?.trim().toLowerCase() === a.name.trim().toLowerCase();
+            }).length;
+
+            return {
+                label: `${a.name} (${count})`,
+                value: a.name
+            };
+        });
+    }, [animators, bookings, startYear, endYear, animatorMapForFiltering]);
+
+    const busStatusItemsWithCounts = useMemo(() => {
+        return BUS_STATUS_OPTIONS.map(opt => {
+            const count = bookings.filter(b => {
+                const bDate = new Date(b.date.replace(/-/g, '/'));
+                const bYear = bDate.getFullYear();
+                const bMonth = bDate.getMonth();
+                const inSchoolYear = (bYear === startYear && bMonth >= 9) || (bYear === endYear && bMonth <= 5);
+                if (!inSchoolYear) return false;
+
+                let currentStatus = 'none';
+                if (!b.noBusRequired) {
+                    currentStatus = b.busStatus || 'pending';
+                }
+                return currentStatus === opt.value;
+            }).length;
+
+            return {
+                label: `${opt.label} (${count})`,
+                value: opt.value
+            };
+        });
+    }, [bookings, startYear, endYear]);
 
     const filteredBookings = useMemo(() => {
         return bookings.filter(booking => {
@@ -302,7 +382,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         onSelectAll: () => void,
         onDeselectAll: () => void
     }> = ({ title, items, selected, onToggle, onSelectAll, onDeselectAll }) => (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 h-full">
             <div className="flex justify-between items-center mb-1">
                 <strong className="text-xs font-black text-gray-400 uppercase tracking-widest">{title}</strong>
                 <div className="flex gap-2 text-[10px] font-bold uppercase">
@@ -311,9 +391,9 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                     <button onClick={onDeselectAll} className="text-gray-400 hover:underline">Tout décocher</button>
                 </div>
             </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-gray-50 p-3 rounded-xl border border-gray-100 flex-grow h-full">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 bg-gray-50 p-3 rounded-xl border border-gray-100 flex-grow h-full">
                 {items.map(item => (
-                    <label key={item.value} className="flex items-center space-x-1.5 cursor-pointer text-xs font-bold text-gray-600 hover:text-gray-900 transition-colors">
+                    <label key={item.value} className="flex items-center space-x-1.5 cursor-pointer text-xs font-bold text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap">
                         <input
                             type="checkbox"
                             checked={selected.has(item.value)}
@@ -330,7 +410,12 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     return (
         <div className="flex flex-col">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                <h2 className="text-2xl font-bold text-gray-800">Liste des réservations</h2>
+                <div className="flex flex-wrap items-center gap-2.5">
+                    <h2 className="text-2xl font-bold text-gray-800">Liste des réservations</h2>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                        {activeSchoolYearBookingsCount} {activeSchoolYearBookingsCount > 1 ? 'réservations' : 'réservation'} en {settings.activeYear}
+                    </span>
+                </div>
                  <div className="flex flex-wrap items-center gap-3">
                     {viewMode === 'list' && (
                         <div className="relative">
@@ -364,31 +449,37 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             
             {/* Zone de filtres harmonisée sur une seule ligne sur desktop */}
             <div className="mb-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <FilterSection 
-                        title="Animateurs"
-                        items={animators.map(a => ({ label: a.name, value: a.name }))}
-                        selected={selectedAnimators}
-                        onToggle={(v) => toggleItem(selectedAnimators, setSelectedAnimators, v)}
-                        onSelectAll={() => selectAll(animators.map(a => a.name), setSelectedAnimators)}
-                        onDeselectAll={() => deselectAll(setSelectedAnimators)}
-                    />
-                    <FilterSection 
-                        title="Gestion du bus"
-                        items={BUS_STATUS_OPTIONS}
-                        selected={selectedBusStatuses}
-                        onToggle={(v) => toggleItem(selectedBusStatuses, setSelectedBusStatuses, v)}
-                        onSelectAll={() => selectAll(BUS_STATUS_OPTIONS.map(o => o.value), setSelectedBusStatuses)}
-                        onDeselectAll={() => deselectAll(setSelectedBusStatuses)}
-                    />
-                    <FilterSection 
-                        title="Mois"
-                        items={SCHOOL_YEAR_MONTHS}
-                        selected={selectedMonths}
-                        onToggle={(v) => toggleItem(selectedMonths, setSelectedMonths, v)}
-                        onSelectAll={() => selectAll(SCHOOL_YEAR_MONTHS.map(m => m.value), setSelectedMonths)}
-                        onDeselectAll={() => deselectAll(setSelectedMonths)}
-                    />
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                    <div className="lg:col-span-4 flex flex-col">
+                        <FilterSection 
+                            title="Animateurs"
+                            items={animatorItemsWithCounts}
+                            selected={selectedAnimators}
+                            onToggle={(v) => toggleItem(selectedAnimators, setSelectedAnimators, v)}
+                            onSelectAll={() => selectAll(animators.map(a => a.name), setSelectedAnimators)}
+                            onDeselectAll={() => deselectAll(setSelectedAnimators)}
+                        />
+                    </div>
+                    <div className="lg:col-span-3 flex flex-col">
+                        <FilterSection 
+                            title="Gestion du bus"
+                            items={busStatusItemsWithCounts}
+                            selected={selectedBusStatuses}
+                            onToggle={(v) => toggleItem(selectedBusStatuses, setSelectedBusStatuses, v)}
+                            onSelectAll={() => selectAll(BUS_STATUS_OPTIONS.map(o => o.value), setSelectedBusStatuses)}
+                            onDeselectAll={() => deselectAll(setSelectedBusStatuses)}
+                        />
+                    </div>
+                    <div className="lg:col-span-5 flex flex-col">
+                        <FilterSection 
+                            title="Mois"
+                            items={monthItemsWithCounts}
+                            selected={selectedMonths}
+                            onToggle={(v) => toggleItem(selectedMonths, setSelectedMonths, v)}
+                            onSelectAll={() => selectAll(SCHOOL_YEAR_MONTHS.map(m => m.value), setSelectedMonths)}
+                            onDeselectAll={() => deselectAll(setSelectedMonths)}
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -444,18 +535,20 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tight mt-1">{b.commune}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 align-top">
-                                                {b.noBusRequired ? (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-gray-100 text-gray-500 border border-gray-200">Pas de bus</span>
-                                                ) : (
-                                                    <div className="flex flex-col items-start gap-1">
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${b.busStatus === 'validated' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
-                                                            {b.busStatus === 'validated' ? 'Validé' : 'En attente'}
-                                                        </span>
-                                                        <span className="text-xs font-bold text-gray-600">{b.busCost || 0} €</span>
-                                                        <button onClick={() => setBusManagementBooking(b)} className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase mt-1 hover:underline">Gestion du bus</button>
-                                                    </div>
-                                                )}
+                                            <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex flex-col items-start gap-1">
+                                                    {b.noBusRequired ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-gray-100 text-gray-500 border border-gray-200">Pas de bus</span>
+                                                    ) : (
+                                                        <>
+                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${b.busStatus === 'validated' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
+                                                                {b.busStatus === 'validated' ? 'Validé' : 'En attente'}
+                                                            </span>
+                                                            <span className="text-xs font-bold text-gray-600">{b.busCost || 0} €</span>
+                                                        </>
+                                                    )}
+                                                    <button onClick={() => setBusManagementBooking(b)} className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase mt-1 hover:underline text-left">Gestion du bus</button>
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 align-top text-right">
                                                 <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
@@ -597,7 +690,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             {/* Modales conservées */}
             {busManagementBooking && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[1000]">
-                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md relative" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-lg relative flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
                         <button 
                             type="button" 
                             onClick={() => setBusManagementBooking(null)} 
@@ -605,58 +698,102 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                         >
                             <XIcon className="w-6 h-6" />
                         </button>
-                        <div className="flex justify-between items-start mb-2">
+                        <div className="flex justify-between items-start mb-2 pr-6">
                             <h2 className="text-2xl font-black text-gray-800">Gestion du transport</h2>
                             {currentUser?.role !== 'admin' && <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-1 rounded-lg uppercase tracking-tight">Lecture seule</span>}
                         </div>
-                        <p className="text-sm text-gray-500 mb-6">Validation de la prise en charge pour <strong>{busManagementBooking.teacherName}</strong>.</p>
-                        <form onSubmit={handleSaveBusManagement} className="space-y-6">
-                            <div className="space-y-3">
-                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">État de la prise en charge</label>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <button 
-                                        type="button" 
-                                        disabled={currentUser?.role !== 'admin'}
-                                        onClick={() => setBusManagementBooking({...busManagementBooking, busStatus: 'pending'})} 
-                                        className={`px-4 py-3 rounded-xl font-bold text-sm border-2 transition-all ${busManagementBooking.busStatus === 'pending' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                                    >
-                                        En attente
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        disabled={currentUser?.role !== 'admin'}
-                                        onClick={() => setBusManagementBooking({...busManagementBooking, busStatus: 'validated'})} 
-                                        className={`px-4 py-3 rounded-xl font-bold text-sm border-2 transition-all ${busManagementBooking.busStatus === 'validated' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 text-gray-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                                    >
-                                        Validé
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label htmlFor="busCost" className="block text-xs font-black text-gray-400 uppercase tracking-widest">Montant (€)</label>
-                                <div className="relative">
+                        <p className="text-sm text-gray-500 mb-6 font-medium">Validation de la prise en charge pour <strong>{busManagementBooking.teacherName}</strong> ({busManagementBooking.schoolName}, {busManagementBooking.commune}).</p>
+                        
+                        <form onSubmit={handleSaveBusManagement} className="space-y-6 overflow-y-auto pr-1.5 custom-scrollbar">
+                            {/* Option Pas de bus nécessaire */}
+                            <div className="p-4 bg-blue-50/50 border border-blue-100/60 rounded-2xl flex items-center gap-3">
+                                <label className={`flex items-center gap-3 ${currentUser?.role === 'admin' ? 'cursor-pointer' : 'cursor-not-allowed'} select-none w-full`}>
                                     <input 
-                                        id="busCost" 
-                                        type="text" 
-                                        inputMode="numeric"
-                                        pattern="[0-9]*"
+                                        type="checkbox" 
+                                        name="noBusRequired" 
+                                        checked={busManagementBooking.noBusRequired || false} 
                                         disabled={currentUser?.role !== 'admin'}
-                                        value={busManagementBooking.busCost || 0} 
-                                        onChange={(e) => {
-                                            const val = e.target.value.replace(/\D/g, '');
-                                            setBusManagementBooking({...busManagementBooking, busCost: parseInt(val) || 0})
-                                        }} 
-                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-gray-800 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                                        onChange={(e) => setBusManagementBooking({...busManagementBooking, noBusRequired: e.target.checked})} 
+                                        className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 transition-all border-gray-200"
                                     />
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">€</div>
-                                </div>
+                                    <div>
+                                        <span className="text-sm font-black text-blue-900 uppercase tracking-wider block">Pas de bus nécessaire</span>
+                                        <span className="text-[11px] text-blue-500 font-medium tracking-wide">Cochez cette case si l'établissement se déplace par ses propres moyens.</span>
+                                    </div>
+                                </label>
                             </div>
-                            <div className="flex gap-3 pt-4">
+
+                            {!busManagementBooking.noBusRequired ? (
+                                <div className="space-y-6 animate-in fade-in duration-200">
+                                    <div className="space-y-3">
+                                        <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">État de la prise en charge</label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button 
+                                                type="button" 
+                                                disabled={currentUser?.role !== 'admin'}
+                                                onClick={() => setBusManagementBooking({...busManagementBooking, busStatus: 'pending'})} 
+                                                className={`px-4 py-3 rounded-xl font-bold text-sm border-2 transition-all ${busManagementBooking.busStatus === 'pending' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                            >
+                                                En attente
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                disabled={currentUser?.role !== 'admin'}
+                                                onClick={() => setBusManagementBooking({...busManagementBooking, busStatus: 'validated'})} 
+                                                className={`px-4 py-3 rounded-xl font-bold text-sm border-2 transition-all ${busManagementBooking.busStatus === 'validated' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 text-gray-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                            >
+                                                Validé
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="space-y-2">
+                                        <label htmlFor="busCost" className="block text-xs font-black text-gray-400 uppercase tracking-widest">Montant de la prise en charge (€)</label>
+                                        <div className="relative">
+                                            <input 
+                                                id="busCost" 
+                                                type="text" 
+                                                inputMode="numeric"
+                                                pattern="[0-9]*"
+                                                disabled={currentUser?.role !== 'admin'}
+                                                value={busManagementBooking.busCost || 0} 
+                                                onChange={(e) => {
+                                                    const val = e.target.value.replace(/\D/g, '');
+                                                    setBusManagementBooking({...busManagementBooking, busCost: parseInt(val) || 0})
+                                                }} 
+                                                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-gray-800 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                                            />
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">€</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label htmlFor="busInfo" className="block text-xs font-black text-gray-400 uppercase tracking-widest font-sans">Infos / Consigne de passage</label>
+                                        <textarea 
+                                            id="busInfo"
+                                            name="busInfo"
+                                            disabled={currentUser?.role !== 'admin'}
+                                            value={busManagementBooking.busInfo || ''}
+                                            onChange={(e) => setBusManagementBooking({...busManagementBooking, busInfo: e.target.value})}
+                                            placeholder="Ex: Horaires de bus, point de ralliement, correspondances, consignes particulières de transport..."
+                                            className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-medium text-gray-800 focus:border-blue-500 outline-none min-h-[100px] disabled:bg-gray-100 disabled:cursor-not-allowed placeholder:text-gray-300 placeholder:text-sm text-sm"
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 text-center py-6 animate-in fade-in duration-200">
+                                    <span className="text-2xl mb-1 block">📌</span>
+                                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Aucun bus nécessaire</p>
+                                    <p className="text-xs text-gray-500 font-medium font-sans">Les détails logistiques et coûts sont désactivés pour cette réservation.</p>
+                                </div>
+                            )}
+
+                            <div className="flex gap-3 pt-4 border-t border-gray-100 sticky bottom-0 bg-white">
                                 <button type="button" onClick={() => setBusManagementBooking(null)} className="flex-grow py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-100 transition-colors">
                                     {currentUser?.role === 'admin' ? 'Annuler' : 'Fermer'}
                                 </button>
                                 {currentUser?.role === 'admin' && (
-                                    <button type="submit" className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg">Confirmer</button>
+                                    <button type="submit" className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg shadow-blue-100">Confirmer</button>
                                 )}
                             </div>
                         </form>

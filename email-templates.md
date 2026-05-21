@@ -174,7 +174,7 @@ Exemple de sujet : `✅ Confirmation : {{animation_title}} le {{booking_date_cle
                         </td>
                     </tr>
                     <tr>
-                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 14px; color: #94a3b8; text-align: center; line-height: 1.5;">
+                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;">
                             Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
                             <br/><br/>
                             Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 

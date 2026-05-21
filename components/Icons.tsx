@@ -239,3 +239,16 @@ export const InformationCircleIcon: React.FC<{ className?: string }> = ({ classN
         <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 1 1 1.05 1.05 1.125 1.125 0 0 1-1.091-.03l-1.051-.6a.75.75 0 1 1 .75-1.3l1.051.6Zm.75-9a9.75 9.75 0 1 1 0 19.5 9.75 9.75 0 0 1 0-19.5ZM12 12.75v3.75m0-11.25V6" />
     </svg>
 );
+
+export const BookOpenIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+    </svg>
+);
+
+export const PaletteIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.475 2.118 3.375 3.375 0 00-.573 1.086 3.375 3.375 0 001.087.573 2.25 2.25 0 012.118 2.475 3 3 0 001.128 5.78 3 3 0 005.78-1.128 2.25 2.25 0 012.475-2.118 3.375 3.375 0 00.573-1.086 3.375 3.375 0 00-1.087-.573 2.25 2.25 0 01-2.118-2.475 3 3 0 00-1.128-5.78Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925-3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 002.25 12c0 2.25 1.5 4.5 3.75 4.5h6Z" />
+    </svg>
+);
