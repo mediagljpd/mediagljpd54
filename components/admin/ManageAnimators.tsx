@@ -1,6 +1,6 @@
 
 import { storageService } from '../../services/storageService';
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { AppContext } from '../../AppContext';
 import { Animator } from '../../types';
 import { AdminSubComponentProps } from './types';
@@ -8,12 +8,38 @@ import { PencilIcon, CheckIcon, XIcon, TrashIcon } from '../Icons';
 
 import ConfirmationModal from '../shared/ConfirmationModal';
 
-const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
+const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification, setHasUnsavedChanges }) => {
     const { animations, updateAnimationsOrder, settings, updateSettings, currentUser } = useContext(AppContext);
     const [newAnimatorName, setNewAnimatorName] = useState('');
     const [editingAnimator, setEditingAnimator] = useState<{ original: Animator; current: Animator } | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [animatorToDelete, setAnimatorToDelete] = useState<Animator | null>(null);
+
+    const handleCancelEdit = () => {
+        if (!editingAnimator) return;
+        const hasChanges = JSON.stringify(editingAnimator.current) !== JSON.stringify(editingAnimator.original);
+        if (hasChanges) {
+            if (window.confirm("Vous avez des modifications non enregistrées sur ce profil. Voulez-vous vraiment abandonner vos modifications ?")) {
+                setEditingAnimator(null);
+            }
+        } else {
+            setEditingAnimator(null);
+        }
+    };
+
+    useEffect(() => {
+        if (setHasUnsavedChanges) {
+            const hasChanges = editingAnimator 
+                ? JSON.stringify(editingAnimator.current) !== JSON.stringify(editingAnimator.original) 
+                : false;
+            setHasUnsavedChanges(hasChanges);
+        }
+        return () => {
+            if (setHasUnsavedChanges) {
+                setHasUnsavedChanges(false);
+            }
+        };
+    }, [editingAnimator, setHasUnsavedChanges]);
     
     const canManage = currentUser?.role === 'admin' || currentUser?.permissions.canManageAnimations;
     const animators = useMemo(() => settings.animators || [], [settings.animators]);
@@ -60,7 +86,18 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification })
                 newAnimatorSettings[newName] = newAnimatorSettings[original.name];
                 delete newAnimatorSettings[original.name];
             }
-            updateSettings({ ...settings, animators: newAnimators, animatorSettings: newAnimatorSettings });
+
+            let newUsers = settings.users || [];
+            if (currentUser && currentUser.animatorName === original.name) {
+                newUsers = newUsers.map(u => u.username === currentUser.username ? { ...u, animatorName: newName } : u);
+            }
+
+            updateSettings({ 
+                ...settings, 
+                animators: newAnimators, 
+                animatorSettings: newAnimatorSettings,
+                users: newUsers
+            });
         } else {
             updateSettings({ ...settings, animators: newAnimators });
         }
@@ -194,11 +231,11 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification })
                                             type="text"
                                             value={editingAnimator.current.name}
                                             onChange={(e) => setEditingAnimator(prev => prev ? ({ ...prev, current: { ...prev.current, name: e.target.value }}) : null)}
-                                            className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none ${!canManage ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                                            className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none ${(!canManage && currentUser?.animatorName !== editingAnimator.original.name) ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
                                             placeholder="Nom complet"
-                                            autoFocus={canManage}
-                                            disabled={!canManage}
-                                            title={!canManage ? "Seul un administrateur peut modifier le nom d'un animateur" : ""}
+                                            autoFocus={canManage || currentUser?.animatorName === editingAnimator.original.name}
+                                            disabled={!canManage && currentUser?.animatorName !== editingAnimator.original.name}
+                                            title={(!canManage && currentUser?.animatorName !== editingAnimator.original.name) ? "Seul un administrateur peut modifier le nom d'un animateur" : ""}
                                         />
                                         <input
                                             type="email"
@@ -210,7 +247,7 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification })
                                     </div>
                                 </div>
                                 <div className="flex justify-end gap-3 mt-4 pt-3 border-t border-indigo-100">
-                                    <button onClick={() => setEditingAnimator(null)} className="flex items-center gap-1 px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded" aria-label="Annuler" disabled={isUploading}>
+                                    <button onClick={handleCancelEdit} className="flex items-center gap-1 px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded" aria-label="Annuler" disabled={isUploading}>
                                         <XIcon className="w-4 h-4" /> Annuler
                                     </button>
                                     <button onClick={handleUpdateAnimator} className="flex items-center gap-1 px-3 py-1 text-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded shadow-sm" aria-label="Sauvegarder" disabled={isUploading}>

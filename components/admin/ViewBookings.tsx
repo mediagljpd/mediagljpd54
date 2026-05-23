@@ -23,7 +23,7 @@ const SCHOOL_YEAR_MONTHS = [
     { label: 'MAR', value: 2 },
     { label: 'AVR', value: 3 },
     { label: 'MAI', value: 4 },
-    { label: 'JUN', value: 5 },
+    { label: 'JUIN', value: 5 },
 ];
 
 const BUS_STATUS_OPTIONS = [
@@ -380,8 +380,9 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         selected: Set<any>, 
         onToggle: (val: any) => void,
         onSelectAll: () => void,
-        onDeselectAll: () => void
-    }> = ({ title, items, selected, onToggle, onSelectAll, onDeselectAll }) => (
+        onDeselectAll: () => void,
+        isMonthSection?: boolean
+    }> = ({ title, items, selected, onToggle, onSelectAll, onDeselectAll, isMonthSection }) => (
         <div className="flex flex-col gap-2 h-full">
             <div className="flex justify-between items-center mb-1">
                 <strong className="text-xs font-black text-gray-400 uppercase tracking-widest">{title}</strong>
@@ -391,19 +392,50 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                     <button onClick={onDeselectAll} className="text-gray-400 hover:underline">Tout décocher</button>
                 </div>
             </div>
-            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 bg-gray-50 p-3 rounded-xl border border-gray-100 flex-grow h-full">
-                {items.map(item => (
-                    <label key={item.value} className="flex items-center space-x-1.5 cursor-pointer text-xs font-bold text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap">
-                        <input
-                            type="checkbox"
-                            checked={selected.has(item.value)}
-                            onChange={() => onToggle(item.value)}
-                            className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span>{item.label}</span>
-                    </label>
-                ))}
-            </div>
+            {isMonthSection ? (
+                <div className="flex flex-col gap-y-2 bg-gray-50 p-3 rounded-xl border border-gray-100 flex-grow h-full justify-center">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                        {items.slice(0, 5).map(item => (
+                            <label key={item.value} className="flex items-center space-x-1.5 cursor-pointer text-xs font-bold text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap">
+                                <input
+                                    type="checkbox"
+                                    checked={selected.has(item.value)}
+                                    onChange={() => onToggle(item.value)}
+                                    className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span>{item.label}</span>
+                            </label>
+                        ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                        {items.slice(5).map(item => (
+                            <label key={item.value} className="flex items-center space-x-1.5 cursor-pointer text-xs font-bold text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap">
+                                <input
+                                    type="checkbox"
+                                    checked={selected.has(item.value)}
+                                    onChange={() => onToggle(item.value)}
+                                    className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span>{item.label}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 bg-gray-50 p-3 rounded-xl border border-gray-100 flex-grow h-full">
+                    {items.map(item => (
+                        <label key={item.value} className="flex items-center space-x-1.5 cursor-pointer text-xs font-bold text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap">
+                            <input
+                                type="checkbox"
+                                checked={selected.has(item.value)}
+                                onChange={() => onToggle(item.value)}
+                                className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span>{item.label}</span>
+                        </label>
+                    ))}
+                </div>
+            )}
         </div>
     );
 
@@ -478,6 +510,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                             onToggle={(v) => toggleItem(selectedMonths, setSelectedMonths, v)}
                             onSelectAll={() => selectAll(SCHOOL_YEAR_MONTHS.map(m => m.value), setSelectedMonths)}
                             onDeselectAll={() => deselectAll(setSelectedMonths)}
+                            isMonthSection={true}
                         />
                     </div>
                 </div>

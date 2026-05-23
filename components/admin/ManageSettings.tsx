@@ -1,5 +1,5 @@
 
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { AppContext } from '../../AppContext';
 import { AppSettings } from '../../types';
 import { LEGAL_TEMPLATES } from '../../constants';
@@ -287,8 +287,12 @@ const DEFAULT_EMAIL_LIST_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.
 </body>
 </html>`;
 
-const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
-    const { settings, updateSettings } = useContext(AppContext);
+const ManageSettings: React.FC<AdminSubComponentProps> = ({ 
+    showNotification,
+    setHasUnsavedChanges,
+    registerSave
+}) => {
+    const { settings, updateSettings, currentUser } = useContext(AppContext);
 
     const [formState, setFormState] = useState<AppSettings>(() => ({ ...settings }));
     const [activeTab, setActiveTab] = useState<SettingsTab>('design');
@@ -314,6 +318,8 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
     // Temp state for new time slot input
     const [newSlotTime, setNewSlotTime] = useState<string>('');
 
+    const isInitializedRef = useRef(false);
+
     useEffect(() => {
         // Migration/Defaults for new fields
         const migSettings = { ...settings };
@@ -335,8 +341,53 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         if (migSettings.cleanupMonth === undefined) migSettings.cleanupMonth = 7; // August (0-indexed)
         if (!migSettings.infoPages) migSettings.infoPages = [];
         
-        setFormState(migSettings);
+        if (!isInitializedRef.current) {
+            setFormState(migSettings);
+            isInitializedRef.current = true;
+        } else {
+            // Update specific collections/keys if they changed externally
+            // like users being reset, animator edits, or backup/last export timestamps
+            setFormState(prev => ({
+                ...prev,
+                users: settings.users || prev.users || [],
+                animators: settings.animators || prev.animators || [],
+                holidays: settings.holidays || prev.holidays || [],
+                animatorSettings: settings.animatorSettings || prev.animatorSettings || {},
+                lastExportDate: settings.lastExportDate || prev.lastExportDate || '',
+            }));
+        }
     }, [settings]);
+
+    const isDirty = useMemo(() => {
+        // Simple and robust JSON equality to see if anything changed
+        return JSON.stringify(formState) !== JSON.stringify(settings);
+    }, [formState, settings]);
+
+    useEffect(() => {
+        if (setHasUnsavedChanges) {
+            setHasUnsavedChanges(currentUser?.role === 'admin' && isDirty);
+        }
+        return () => {
+            if (setHasUnsavedChanges) {
+                setHasUnsavedChanges(false);
+            }
+        };
+    }, [isDirty, setHasUnsavedChanges, currentUser]);
+
+    const handleSaveRef = useRef<((e?: React.FormEvent) => void) | null>(null);
+    handleSaveRef.current = (e) => {
+        handleSave(e || { preventDefault: () => {} } as React.FormEvent);
+    };
+
+    useEffect(() => {
+        if (registerSave) {
+            registerSave(() => {
+                if (handleSaveRef.current) {
+                    handleSaveRef.current();
+                }
+            });
+        }
+    }, [registerSave]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -834,14 +885,14 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                 
                 {/* Sticky Horizontal Navigation */}
                 <div className="sticky top-[-16px] sm:top-[-24px] lg:top-[-32px] z-30 bg-gray-100 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 -mt-4 sm:-mt-6 lg:-mt-8 pt-4 sm:pt-6 lg:pt-8 pb-3 border-b border-gray-200/80">
-                    <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-center gap-3 md:gap-6">
+                    <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-center gap-4">
                         {/* Left Block: Configuration Label */}
-                        <div className="flex items-center justify-center md:pr-6 md:border-r md:border-gray-200/60 h-full py-1">
+                        <div className="flex items-center justify-center md:pr-4 md:border-r md:border-gray-200/60 h-full py-1">
                             <span className="text-sm font-black text-gray-500 uppercase tracking-widest whitespace-nowrap">Configuration</span>
                         </div>
                         
                         {/* Right Block: Two rows of buttons */}
-                        <div className="flex-grow flex flex-col gap-2 w-full items-center">
+                        <div className="flex flex-col gap-2 items-center justify-center">
                             {/* Row 1: Apparence, Pages d'info, Pied de page, Calendrier, Données, E-mails */}
                             <div className="flex flex-wrap gap-2 justify-center">
                                 <NavButton id="design" label="Apparence" icon={<PaintBrushIcon className="w-5 h-5" />} />
@@ -866,36 +917,46 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                 {/* Main Content Pane */}
                 <div className="flex-grow w-full">
                     <form onSubmit={handleSave} className="space-y-6">
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[500px] flex flex-col">
+                        <fieldset disabled={currentUser?.role === 'user' && activeTab !== 'stats'} className="contents">
+                            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[500px] flex flex-col">
                             
                             {/* Header Panel */}
-                            <div className="px-8 py-6 border-b border-gray-50 bg-gray-50/30">
-                                <h3 className="text-xl font-bold text-gray-800">
-                                    {activeTab === 'design' && "Apparence"}
-                                    {activeTab === 'rules' && "Calendrier"}
-                                    {activeTab === 'data' && "Données"}
-                                    {activeTab === 'stats' && "Statistiques"}
-                                    {activeTab === 'pages' && "Pages d'information"}
-                                    {activeTab === 'users' && "Gestion des Utilisateurs"}
-                                    {activeTab === 'emails' && "Modèles d'e-mails"}
-                                    {activeTab === 'footer' && "Pied de page"}
-                                    {activeTab === 'security' && "Sécurité"}
-                                    {activeTab === 'maintenance' && "Maintenance"}
-                                    {activeTab === 'information' && "Informations techniques"}
-                                </h3>
-                                <p className="text-sm text-gray-500 mt-1">
-                                    {activeTab === 'design' && "Personnalisez les textes, les couleurs et le style de votre accueil"}
-                                    {activeTab === 'rules' && "Définissez les contraintes de réservation : délais, jours et créneaux"}
-                                    {activeTab === 'data' && "Gérez les niveaux de classe, les communes et les écoles"}
-                                    {activeTab === 'stats' && "Visualisez l'activité et l'impact de vos animations pédagogiques"}
-                                    {activeTab === 'pages' && "Créez et modifiez des pages de contenu personnalisées pour vos utilisateurs"}
-                                    {activeTab === 'users' && "Gérez les comptes d'accès à l'administration et leurs permissions"}
-                                    {activeTab === 'emails' && "Personnalisez le contenu et le sujet des e-mails envoyés aux enseignants et animateurs"}
-                                    {activeTab === 'footer' && "Gérez les liens du pied de page, les mentions légales et les infos de l'établissement"}
-                                    {activeTab === 'security' && "Gérez vos identifiants de connexion et l'e-mail de secours"}
-                                    {activeTab === 'maintenance' && "Gérez la sauvegarde et la restauration de vos données"}
-                                    {activeTab === 'information' && "Consultez les détails techniques, les services utilisés et le diagnostic de sécurité"}
-                                </p>
+                            <div className="px-8 py-6 border-b border-gray-50 bg-gray-50/30 flex items-center justify-between flex-wrap gap-4">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                        <h3 className="text-xl font-bold text-gray-800">
+                                            {activeTab === 'design' && "Apparence"}
+                                            {activeTab === 'rules' && "Calendrier"}
+                                            {activeTab === 'data' && "Données"}
+                                            {activeTab === 'stats' && "Statistiques"}
+                                            {activeTab === 'pages' && "Pages d'information"}
+                                            {activeTab === 'users' && "Gestion des Utilisateurs"}
+                                            {activeTab === 'emails' && "Modèles d'e-mails"}
+                                            {activeTab === 'footer' && "Pied de page"}
+                                            {activeTab === 'security' && "Sécurité"}
+                                            {activeTab === 'maintenance' && "Maintenance"}
+                                            {activeTab === 'information' && "Informations techniques"}
+                                        </h3>
+                                        {currentUser?.role === 'user' && activeTab !== 'stats' && (
+                                            <span className="shrink-0 bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                                                ⚠️ Lecture seule
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        {activeTab === 'design' && "Personnalisez les textes, les couleurs et le style de votre accueil"}
+                                        {activeTab === 'rules' && "Définissez les contraintes de réservation : délais, jours et créneaux"}
+                                        {activeTab === 'data' && "Gérez les niveaux de classe, les communes et les écoles"}
+                                        {activeTab === 'stats' && "Visualisez l'activité et l'impact de vos animations pédagogiques"}
+                                        {activeTab === 'pages' && "Créez et modifiez des pages de contenu personnalisées pour vos utilisateurs"}
+                                        {activeTab === 'users' && "Gérez les comptes d'accès à l'administration et leurs permissions"}
+                                        {activeTab === 'emails' && "Personnalisez le contenu et le sujet des e-mails envoyés aux enseignants et animateurs"}
+                                        {activeTab === 'footer' && "Gérez les liens du pied de page, les mentions légales et les infos de l'établissement"}
+                                        {activeTab === 'security' && "Gérez vos identifiants de connexion et l'e-mail de secours"}
+                                        {activeTab === 'maintenance' && "Gérez la sauvegarde et la restauration de vos données"}
+                                        {activeTab === 'information' && "Consultez les détails techniques, les services utilisés et le diagnostic de sécurité"}
+                                    </p>
+                                </div>
                             </div>
 
                             {/* Content Body */}
@@ -1397,7 +1458,13 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                 )}
 
                                 {activeTab === 'users' && (
-                                    <ManageUsers showNotification={showNotification} />
+                                    <ManageUsers 
+                                        showNotification={showNotification} 
+                                        users={formState.users || []}
+                                        setUsers={(newUsers) => {
+                                            setFormState(prev => ({ ...prev, users: newUsers }));
+                                        }}
+                                    />
                                 )}
 
                                 {activeTab === 'footer' && (
@@ -1830,11 +1897,12 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                                                     </div>
                                                                 )}
                                                                 <ReactQuill 
-                                                                    theme="snow"
+                                                                    theme={currentUser?.role === 'user' ? 'bubble' : 'snow'}
                                                                     value={(formState.infoPages || []).find(p => p.id === editingInfoPageId)?.content || ''}
                                                                     onChange={(content) => handleUpdateInfoPage(editingInfoPageId, 'content', content)}
-                                                                    modules={quillModules}
+                                                                    modules={currentUser?.role === 'user' ? { toolbar: false } : quillModules}
                                                                     formats={quillFormats}
+                                                                    readOnly={currentUser?.role === 'user'}
                                                                     className={isEditorMaximized ? '' : 'min-h-[400px]'}
                                                                 />
                                                             </div>
@@ -1865,46 +1933,64 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
 
                                 {activeTab === 'security' && (
                                     <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <div className="max-w-2xl space-y-6">
-                                            <div className="p-6 bg-blue-50 rounded-2xl border border-blue-100 flex items-start gap-4">
-                                                <div className="bg-white p-3 rounded-xl shadow-sm">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            {/* Column 1: Security Google OAuth */}
+                                            <div className="p-8 bg-blue-50 rounded-2xl border border-blue-100 flex flex-col justify-between gap-4">
+                                                <div className="bg-white p-3 rounded-xl shadow-sm w-fit">
                                                     <ShieldCheckIcon className="w-8 h-8 text-blue-600" />
                                                 </div>
                                                 <div>
-                                                    <h4 className="text-lg font-black text-blue-900 uppercase tracking-tight">Sécurité Google OAuth</h4>
-                                                    <p className="text-sm text-blue-700 mt-2">
+                                                    <h4 className="text-xl font-black text-blue-900 uppercase tracking-tight">Sécurité Google OAuth</h4>
+                                                    <p className="text-sm text-blue-700 mt-2 leading-relaxed">
                                                         L'administration est désormais sécurisée par <strong>Google Authentication</strong>. 
                                                         Les anciens mots de passe ont été supprimés pour garantir une sécurité maximale.
-                                                    </p>
+                                                     </p>
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                <div className="p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
-                                                    <h5 className="font-bold text-gray-800 flex items-center gap-2">
-                                                        <UserGroupIcon className="w-4 h-4 text-indigo-500" />
-                                                        Gestion des accès
-                                                    </h5>
-                                                    <p className="text-xs text-gray-500 leading-relaxed">
-                                                        Pour autoriser un nouvel administrateur, vous devez ajouter son <strong>E-mail Google</strong> et son <strong>UID unique</strong> dans l'onglet "Utilisateurs".
-                                                    </p>
-                                                    <button 
-                                                        type="button"
-                                                        onClick={() => setActiveTab('users')}
-                                                        className="text-xs font-bold text-indigo-600 hover:underline"
-                                                    >
-                                                        Aller à la gestion des utilisateurs →
-                                                    </button>
+                                            {/* Column 2: Gestion des accès */}
+                                            <div className="p-8 bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between gap-4">
+                                                <div className="space-y-4">
+                                                    <div className="bg-indigo-50/50 p-3 rounded-xl shadow-sm w-fit">
+                                                        <UserGroupIcon className="w-8 h-8 text-indigo-500" />
+                                                    </div>
+                                                    <div>
+                                                        <h5 className="font-bold text-gray-800 text-lg">
+                                                            Gestion des accès
+                                                        </h5>
+                                                        <p className="text-xs text-gray-500 leading-relaxed mt-2">
+                                                            Pour autoriser un nouvel administrateur, vous devez ajouter son <strong>E-mail Google</strong> et son <strong>UID unique</strong> dans l'onglet "Utilisateurs".
+                                                        </p>
+                                                    </div>
                                                 </div>
+                                                <div 
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={() => setActiveTab('users')}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setActiveTab('users'); } }}
+                                                    className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer text-left self-start mt-4 outline-none"
+                                                >
+                                                    Aller à la gestion des utilisateurs →
+                                                </div>
+                                            </div>
 
-                                                <div className="p-6 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
-                                                    <h5 className="font-bold text-gray-800 flex items-center gap-2">
-                                                        <CogIcon className="w-4 h-4 text-indigo-500" />
-                                                        Plus de mots de passe
-                                                    </h5>
-                                                    <p className="text-xs text-gray-500 leading-relaxed">
-                                                        Il n'est plus nécessaire de changer de mot de passe régulièrement. Google gère la sécurité de votre compte et la double authentification si activée.
-                                                    </p>
+                                            {/* Column 3: Plus de mots de passe */}
+                                            <div className="p-8 bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between gap-4">
+                                                <div className="space-y-4">
+                                                    <div className="bg-indigo-50/50 p-3 rounded-xl shadow-sm w-fit">
+                                                        <CogIcon className="w-8 h-8 text-indigo-500" />
+                                                    </div>
+                                                    <div>
+                                                        <h5 className="font-bold text-gray-800 text-lg">
+                                                            Plus de mots de passe
+                                                        </h5>
+                                                        <p className="text-xs text-gray-500 leading-relaxed mt-2">
+                                                            Il n'est plus nécessaire de changer de mot de passe régulièrement. Google gère la sécurité de votre compte et la double authentification si activée.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-xs text-gray-400 italic font-medium mt-4">
+                                                    Sécurisé par Google Auth
                                                 </div>
                                             </div>
                                         </div>
@@ -2526,45 +2612,10 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                                 )}
                             </div>
 
-                            {/* Footer Panel with Save Button */}
-                            <div className="px-8 py-6 bg-white border-t border-gray-50 flex flex-col sm:flex-row justify-between items-center gap-4">
-                                <p className="text-xs text-gray-400 font-medium italic">
-                                    N'oubliez pas d'enregistrer vos modifications avant de quitter cet onglet.
-                                </p>
-                                <div className="flex gap-3">
-                                    <button 
-                                        type="button" 
-                                        onClick={() => {
-                                            if (window.confirm("Voulez-vous vraiment annuler toutes vos modifications non enregistrées ?")) {
-                                                const baseSettings = { ...settings };
-                                                // Ensure defaults are populated if missing in Firestore to avoid empty templates on reset
-                                                if (!baseSettings.emailTeacherTemplate) baseSettings.emailTeacherTemplate = DEFAULT_EMAIL_TEACHER_TEMPLATE;
-                                                if (!baseSettings.emailTeacherSubject) baseSettings.emailTeacherSubject = DEFAULT_EMAIL_TEACHER_SUBJECT;
-                                                if (!baseSettings.emailAnimatorTemplate) baseSettings.emailAnimatorTemplate = DEFAULT_EMAIL_ANIMATOR_TEMPLATE;
-                                                if (!baseSettings.emailAnimatorSubject) baseSettings.emailAnimatorSubject = DEFAULT_EMAIL_ANIMATOR_SUBJECT;
-                                                if (!baseSettings.emailListTemplate) baseSettings.emailListTemplate = DEFAULT_EMAIL_LIST_TEMPLATE;
-                                                if (!baseSettings.emailListSubject) baseSettings.emailListSubject = DEFAULT_EMAIL_LIST_SUBJECT;
-                                                
-                                                setFormState(baseSettings);
-                                                setIsChangingPassword(false);
-                                                setSecurityError(null);
-                                                setNewPassword('');
-                                                setConfirmPassword('');
-                                            }
-                                        }} 
-                                        className="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
-                                    >
-                                        Réinitialiser
-                                    </button>
-                                    <button 
-                                        type="submit" 
-                                        className="px-10 py-2.5 bg-blue-600 text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
-                                    >
-                                        Enregistrer
-                                    </button>
-                                </div>
-                            </div>
+                            {/* Footer Panel spacer */}
+                            <div className="h-4 bg-gray-50/10 border-t border-gray-50"></div>
                         </div>
+                        </fieldset>
                     </form>
                 </div>
             </div>

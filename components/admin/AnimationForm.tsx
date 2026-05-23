@@ -41,6 +41,20 @@ const AnimationForm: React.FC<{ animation: Animation, animators: Animator[], onS
         onSave(formState);
     };
 
+    const handleCancel = () => {
+        const hasChanges = JSON.stringify(formState) !== JSON.stringify({
+            ...animation,
+            fontColor: animation.fontColor || '#ffffff'
+        });
+        if (hasChanges) {
+            if (window.confirm("Vous avez des modifications non enregistrées sur cette fiche d'animation. Voulez-vous vraiment annuler ?")) {
+                onCancel();
+            }
+        } else {
+            onCancel();
+        }
+    };
+
     return (
         <div className="bg-gray-50 p-6 rounded-lg mb-6 border shadow-sm">
             <h3 className="text-lg font-bold text-gray-800 mb-4">{isExisting ? "Modifier l'animation" : "Nouvelle animation"}</h3>
@@ -162,7 +176,7 @@ const AnimationForm: React.FC<{ animation: Animation, animators: Animator[], onS
                 </div>
 
                 <div className="flex justify-end gap-3 pt-2">
-                    <button type="button" onClick={onCancel} className="bg-gray-100 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-200 transition-colors">Annuler</button>
+                    <button type="button" onClick={handleCancel} className="bg-gray-100 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-200 transition-colors">Annuler</button>
                     <button type="submit" className="bg-green-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-green-700 shadow-md transition-all">Sauvegarder</button>
                 </div>
             </form>

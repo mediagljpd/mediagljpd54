@@ -2,4 +2,6 @@ export type AdminView = 'animations' | 'calendar' | 'bookings' | 'settings' | 'u
 
 export type AdminSubComponentProps = {
     showNotification: (message: string, type?: 'success' | 'error') => void;
+    setHasUnsavedChanges?: (hasChanges: boolean) => void;
+    registerSave?: (saveFn: () => void) => void;
 };

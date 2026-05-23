@@ -1,14 +1,14 @@
 
-import React, { useState, useContext, useMemo, useEffect } from 'react';
+import React, { useState, useContext, useMemo, useEffect, useRef } from 'react';
 import { AppContext } from '../../AppContext';
 import { AnimatorSettings, Holiday } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { toYYYYMMDD } from '../../utils/date';
-import { PencilIcon, TrashIcon } from '../Icons';
+import { PencilIcon, TrashIcon, CalendarDaysIcon } from '../Icons';
 import ConfirmationModal from '../shared/ConfirmationModal';
 import HolidayEditModal from './HolidayEditModal';
 
-const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
+const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, setHasUnsavedChanges: setParentUnsavedChanges, registerSave }) => {
     const { settings, updateSettings, currentUser } = useContext(AppContext);
     const animators = useMemo(() => settings.animators || [], [settings.animators]);
     const [holidayToDelete, setHolidayToDelete] = useState<string | null>(null);
@@ -230,6 +230,24 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         showNotification("Paramètres de l'animateur (dates et créneaux) enregistrés !");
     };
 
+    useEffect(() => {
+        if (setParentUnsavedChanges) {
+            setParentUnsavedChanges(hasUnsavedChanges);
+        }
+    }, [hasUnsavedChanges, setParentUnsavedChanges]);
+
+    // Keep save handle reference stable
+    const saveHandleRef = useRef(handleSaveAnimatorSettings);
+    saveHandleRef.current = handleSaveAnimatorSettings;
+
+    useEffect(() => {
+        if (registerSave) {
+            registerSave(() => {
+                saveHandleRef.current();
+            });
+        }
+    }, [registerSave]);
+
     const handleAddHoliday = (e: React.FormEvent) => {
         e.preventDefault();
         if(newHoliday.name && newHoliday.startDate && newHoliday.endDate) {
@@ -295,23 +313,34 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
         <div>
             <h2 className="text-2xl font-bold text-gray-800 mb-6">Gérer le calendrier</h2>
 
-            <div className="bg-white p-6 rounded-lg shadow mb-8">
-                <h3 className="text-xl font-semibold mb-4">Paramètres du calendrier</h3>
-                <div className="flex items-center gap-2">
-                    <label htmlFor="activeYear" className="font-medium text-gray-700">Année scolaire active :</label>
-                    <select
-                        id="activeYear"
-                        value={settings.activeYear}
-                        onChange={handleYearChange}
-                        disabled={!canManageVacations}
-                        className="p-2 border rounded w-48 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    >
-                        {schoolYears.map(year => (
-                            <option key={year} value={year}>
-                                {year}
-                            </option>
-                        ))}
-                    </select>
+            <div className="mx-auto max-w-2xl bg-gradient-to-r from-indigo-600/10 via-indigo-600/5 to-transparent p-3 rounded-2xl border border-indigo-200/60 shadow-sm mb-8 flex flex-row items-center justify-between gap-4 px-5">
+                <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-indigo-100 shrink-0">
+                        <CalendarDaysIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <h3 className="text-xs font-black text-indigo-950 uppercase tracking-tight">Paramètres du calendrier</h3>
+                        <p className="hidden sm:block text-[10px] text-indigo-900/60 font-medium">Déterminez l'année active pour les créneaux.</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-xl border border-indigo-200 shadow-sm shrink-0">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest whitespace-nowrap">Année active :</span>
+                    {!canManageVacations ? (
+                        <span className="text-indigo-950 font-black text-xs px-2 py-1">{settings.activeYear}</span>
+                    ) : (
+                        <select
+                            id="activeYear"
+                            value={settings.activeYear}
+                            onChange={handleYearChange}
+                            className="text-center py-1 px-2 border-0 text-indigo-950 font-black rounded bg-white text-xs outline-none transition-all cursor-pointer focus:ring-0"
+                        >
+                            {schoolYears.map(year => (
+                                <option key={year} value={year}>
+                                    {year}
+                                </option>
+                            ))}
+                        </select>
+                    )}
                 </div>
             </div>
             
@@ -505,7 +534,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                 </div>
                 
                 {/* Section Vacances */}
-                <div className={`bg-white p-6 rounded-lg shadow ${!canManageVacations ? 'opacity-60 grayscale' : ''}`}>
+                <div className="bg-white p-6 rounded-lg shadow">
                     <h3 className="text-xl font-semibold mb-4">Gérer les périodes de vacances</h3>
                     {canManageVacations ? (
                         <>
@@ -538,9 +567,25 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification }) 
                             </div>
                         </>
                     ) : (
-                        <div className="p-8 text-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                            <p className="text-gray-400 font-bold italic">Accès restreint : Seul l'administrateur peut gérer les vacances.</p>
-                        </div>
+                        <>
+                            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs font-semibold">
+                                ℹ️ Mode lecture seule: Vous pouvez consulter les périodes de vacances scolaires ci-dessous, mais vous n'avez pas l'autorisation de les modifier.
+                            </div>
+                            <div className="space-y-2">
+                                {settings.holidays.length === 0 ? (
+                                    <p className="text-xs text-gray-400 italic text-center p-4">Aucune période de vacances configurée.</p>
+                                ) : (
+                                    settings.holidays.map(h => (
+                                        <div key={h.name} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 shadow-sm">
+                                            <div>
+                                                <p className="font-semibold text-gray-800 text-sm">{h.name}</p>
+                                                <p className="text-xs text-gray-500 mt-1">{new Date(h.startDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')} - {new Date(h.endDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')}</p>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </>
                     )}
                 </div>
             </div>
