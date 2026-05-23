@@ -116,19 +116,19 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
         const isLimitedUser = !!(currentUser && currentUser.animatorName);
         
-        // Uniquement les mois en cours et à venir du cycle scolaire par défaut
+        // Uniquement les mois en cours et à venir du cycle scolaire par défaut, calculés par rapport à l'année scolaire active
         const now = new Date();
-        const curMonth = now.getMonth();
-        const monthIdx = SCHOOL_YEAR_MONTHS.findIndex(m => m.value === curMonth);
+        const currentComp = now.getFullYear() * 12 + now.getMonth();
         
-        let initialMonths: number[] = [];
-        if (monthIdx !== -1) {
-            // Mois actuel et suivants (dans l'ordre SCHOOL_YEAR_MONTHS)
-            initialMonths = SCHOOL_YEAR_MONTHS.slice(monthIdx).map(m => m.value);
-        } else {
-            // Si hors cycle scolaire (ex: Juillet/Août), on coche tout par défaut pour la rentrée
-            initialMonths = SCHOOL_YEAR_MONTHS.map(m => m.value);
-        }
+        const initialMonthsList = SCHOOL_YEAR_MONTHS.filter(m => {
+            const targetYear = (m.value >= 9 && m.value <= 11) ? startYear : endYear;
+            const targetComp = targetYear * 12 + m.value;
+            return targetComp >= currentComp;
+        }).map(m => m.value);
+
+        const initialMonths = initialMonthsList.length > 0 
+            ? initialMonthsList 
+            : SCHOOL_YEAR_MONTHS.map(m => m.value);
 
         let initialAnims: string[] = [];
         if (isLimitedUser && currentUser?.animatorName) {
@@ -142,7 +142,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         setSelectedAnimators(new Set(initialAnims));
         setSelectedMonths(new Set(initialMonths));
         filterInitialized.current = true;
-    }, [animators, currentUser]);
+    }, [animators, currentUser, startYear, endYear]);
 
     const animatorMapForFiltering = useMemo(() => {
         const map = new Map<string, string>();
