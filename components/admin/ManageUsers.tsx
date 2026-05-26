@@ -136,7 +136,7 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
             if (setUsers) {
                 setUsers(newUsers);
             } else {
-                await updateSettings({ ...settings, users: newUsers });
+                await updateSettings({ users: newUsers });
             }
             setIsAdding(false);
             setEditingUser(null);
@@ -184,7 +184,7 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
             if (setUsers) {
                 setUsers(newUsers);
             } else {
-                await updateSettings({ ...settings, users: newUsers });
+                await updateSettings({ users: newUsers });
             }
             showNotification('Utilisateur supprimé avec succès.');
         } catch (err) {

@@ -48,7 +48,7 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification, s
         const trimmedName = newAnimatorName.trim();
         if (trimmedName && !animators.some(a => a.name === trimmedName)) {
             const newAnimators = [...animators, { name: trimmedName, email: '', avatarUrl: '' }].sort((a, b) => a.name.localeCompare(b.name));
-            updateSettings({ ...settings, animators: newAnimators });
+            updateSettings({ animators: newAnimators });
             setNewAnimatorName('');
             showNotification(`Animateur "${trimmedName}" ajouté.`);
         } else if (animators.some(a => a.name === trimmedName)) {
@@ -93,13 +93,12 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification, s
             }
 
             updateSettings({ 
-                ...settings, 
                 animators: newAnimators, 
                 animatorSettings: newAnimatorSettings,
                 users: newUsers
             });
         } else {
-            updateSettings({ ...settings, animators: newAnimators });
+            updateSettings({ animators: newAnimators });
         }
 
         setEditingAnimator(null);
@@ -123,7 +122,7 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification, s
             if(newAnimatorSettings[animatorToDelete.name]) {
                 delete newAnimatorSettings[animatorToDelete.name];
             }
-            await updateSettings({ ...settings, animators: newAnimators, animatorSettings: newAnimatorSettings });
+            await updateSettings({ animators: newAnimators, animatorSettings: newAnimatorSettings });
             showNotification(`Animateur "${animatorToDelete.name}" supprimé.`);
         } catch (error) {
             console.error("Delete animator error:", error);

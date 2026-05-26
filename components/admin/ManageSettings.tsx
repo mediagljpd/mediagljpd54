@@ -319,6 +319,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
     const [newSlotTime, setNewSlotTime] = useState<string>('');
 
     const isInitializedRef = useRef(false);
+    const prevSettingsRef = useRef<AppSettings>(settings);
 
     useEffect(() => {
         // Migration/Defaults for new fields
@@ -345,17 +346,24 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
             setFormState(migSettings);
             isInitializedRef.current = true;
         } else {
-            // Update specific collections/keys if they changed externally
-            // like users being reset, animator edits, or backup/last export timestamps
-            setFormState(prev => ({
-                ...prev,
-                users: settings.users || prev.users || [],
-                animators: settings.animators || prev.animators || [],
-                holidays: settings.holidays || prev.holidays || [],
-                animatorSettings: settings.animatorSettings || prev.animatorSettings || {},
-                lastExportDate: settings.lastExportDate || prev.lastExportDate || '',
-            }));
+            // Update fields in formState only if they were NOT modified by the user
+            setFormState(prev => {
+                const updated = { ...prev };
+                const prevSettings = prevSettingsRef.current;
+                
+                Object.keys(migSettings).forEach(k => {
+                    const key = k as keyof AppSettings;
+                    // Strict comparison to see if user has modified the field locally since the last settings update.
+                    // If unchanged, we pull the freshest external value.
+                    const isLocalUnchanged = JSON.stringify(prev[key]) === JSON.stringify(prevSettings[key]);
+                    if (isLocalUnchanged || prev[key] === undefined) {
+                        (updated as any)[key] = migSettings[key];
+                    }
+                });
+                return updated;
+            });
         }
+        prevSettingsRef.current = settings;
     }, [settings]);
 
     const isDirty = useMemo(() => {

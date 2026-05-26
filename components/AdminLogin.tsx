@@ -141,7 +141,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
             u.id === pendingUser.id ? updatedUser : u
         );
 
-        await updateSettings({ ...settings, users: updatedUsers });
+        await updateSettings({ users: updatedUsers });
         setCurrentUser(updatedUser);
         onLoginSuccess();
     } catch (err) {
