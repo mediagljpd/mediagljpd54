@@ -580,7 +580,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                                             <span className="text-xs font-bold text-gray-600">{b.busCost || 0} €</span>
                                                         </>
                                                     )}
-                                                    <button onClick={() => setBusManagementBooking(b)} className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase mt-1 hover:underline text-left">Gestion du bus</button>
+                                                    <button onClick={() => setBusManagementBooking({ ...b, busStatus: b.busStatus || 'pending' })} className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase mt-1 hover:underline text-left">Gestion du bus</button>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 align-top text-right">

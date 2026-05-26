@@ -37,59 +37,80 @@ const BookingSlotPicker: React.FC<BookingSlotPickerProps> = ({
         return years.length === 2 ? [years[0], years[1]] : [2025, 2026];
     }, [settings.activeYear]);
 
-    // Initial date should be the currently selected date of the booking being edited
-    // Constrained between the current month and June of the current school year
+    // Initial date should be the currently selected date of the booking being edited, or the dynamic allowed month
     const [viewDate, setViewDate] = useState(() => {
         const today = new Date();
-        const curYear = today.getFullYear();
-        const curMonth = today.getMonth();
-        const minDate = new Date(curYear, curMonth, 1);
-        
-        const juneYear = curMonth >= 8 ? curYear + 1 : curYear;
-        const maxDate = new Date(juneYear, 5, 30);
+        today.setHours(0, 0, 0, 0);
+
+        const academicStart = new Date(startYear, 9, 1); // Oct 1st
+        const academicEnd = new Date(endYear, 5, 30); // June 30th
+        const minAllowed = today > academicStart ? today : academicStart;
 
         if (selectedDate) {
             const selDateObj = new Date(selectedDate.replace(/-/g, '/'));
-            if (selDateObj < minDate) {
-                return minDate;
+            selDateObj.setHours(0, 0, 0, 0);
+            if (selDateObj >= minAllowed && selDateObj <= academicEnd) {
+                return selDateObj;
             }
-            if (selDateObj > maxDate) {
-                return minDate;
-            }
-            return selDateObj;
         }
-        return today;
+        return minAllowed;
     });
 
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
     const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 
-    const todayObj = new Date();
-    const currentYear = todayObj.getFullYear();
-    const currentMonthIdx = todayObj.getMonth();
-    const juneYearVal = currentMonthIdx >= 8 ? currentYear + 1 : currentYear;
+    const todayObj = useMemo(() => {
+        const t = new Date();
+        t.setHours(0, 0, 0, 0);
+        return t;
+    }, []);
 
-    const isMinMonthReached = year < currentYear || (year === currentYear && month <= currentMonthIdx);
-    const isMaxMonthReached = year > juneYearVal || (year === juneYearVal && month >= 5);
+    const academicStart = useMemo(() => new Date(startYear, 9, 1), [startYear]);
+    const academicEnd = useMemo(() => new Date(endYear, 5, 30), [endYear]);
+    const minAllowedDate = useMemo(() => todayObj > academicStart ? todayObj : academicStart, [todayObj, academicStart]);
+
+    const minViewMonth = useMemo(() => new Date(minAllowedDate.getFullYear(), minAllowedDate.getMonth(), 1), [minAllowedDate]);
+    const maxViewMonth = useMemo(() => new Date(academicEnd.getFullYear(), academicEnd.getMonth(), 1), [academicEnd]);
+
+    const isMinMonthReached = useMemo(() => new Date(year, month, 1) <= minViewMonth, [year, month, minViewMonth]);
+    const isMaxMonthReached = useMemo(() => new Date(year, month, 1) >= maxViewMonth, [year, month, maxViewMonth]);
 
     const changeMonth = (offset: number) => {
         const nextDate = new Date(viewDate);
         nextDate.setDate(1);
         nextDate.setMonth(viewDate.getMonth() + offset);
         
-        const nextYear = nextDate.getFullYear();
-        const nextMonth = nextDate.getMonth();
+        const nextTargetMonth = new Date(nextDate.getFullYear(), nextDate.getMonth(), 1);
         
-        if (nextYear < currentYear || (nextYear === currentYear && nextMonth < currentMonthIdx)) {
+        if (nextTargetMonth < minViewMonth) {
             return;
         }
-        if (nextYear > juneYearVal || (nextYear === juneYearVal && nextMonth > 5)) {
+        if (nextTargetMonth > maxViewMonth) {
             return;
         }
         
         setViewDate(nextDate);
     };
+
+    useEffect(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const aStart = new Date(startYear, 9, 1);
+        const aEnd = new Date(endYear, 5, 30);
+        const minAllowed = today > aStart ? today : aStart;
+
+        if (selectedDate) {
+            const selDateObj = new Date(selectedDate.replace(/-/g, '/'));
+            selDateObj.setHours(0, 0, 0, 0);
+            if (selDateObj >= minAllowed && selDateObj <= aEnd) {
+                setViewDate(selDateObj);
+                return;
+            }
+        }
+        setViewDate(minAllowed);
+    }, [selectedDate, startYear, endYear]);
 
     const isDateInHoliday = (date: Date, holidays: Holiday[]): boolean => {
         const checkDate = new Date(date);
@@ -148,10 +169,8 @@ const BookingSlotPicker: React.FC<BookingSlotPickerProps> = ({
         // on l'affiche comme sélectionné, pas comme indisponible de base.
         if (dateString === selectedDate && time === selectedTime) return true;
 
-        // Ne pas proposer de créneaux pour des dates déjà dépassées
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (date < today) return false;
+        // Ne pas proposer de créneaux avant la date minimale autorisée par le cycle ou aujourd'hui
+        if (date < minAllowedDate) return false;
 
         if (isLimitReached) return false;
         
@@ -197,12 +216,13 @@ const BookingSlotPicker: React.FC<BookingSlotPickerProps> = ({
             const isAllowedDay = allowedWeekDays.includes(date.getDay());
             const isHoliday = isDateInHoliday(date, settings.holidays);
             const isPast = date < today;
+            const isBeforeMinAllowed = date < minAllowedDate;
             const isTooSoon = date < minLeadDate;
             const isAnimatorUnavailable = animatorSettings.unavailableDates.includes(dateString);
 
             // On permet la date si elle est sélectionnée (pour voir où elle est) 
-            // OU si elle n'est pas dépassée
-            const isSelectable = isAllowedDay && !isHoliday && !isAnimatorUnavailable && (!isPast || dateString === selectedDate);
+            // OU si elle n'est pas antérieure à la date minimum autorisée
+            const isSelectable = isAllowedDay && !isHoliday && !isAnimatorUnavailable && (!isBeforeMinAllowed || dateString === selectedDate);
 
             days.push({
                 date,
@@ -216,7 +236,7 @@ const BookingSlotPicker: React.FC<BookingSlotPickerProps> = ({
             });
         }
         return days;
-    }, [year, month, settings.allowedDays, settings.bookingLeadTime, settings.holidays, animatorSettings.unavailableDates]);
+    }, [year, month, settings.allowedDays, settings.bookingLeadTime, settings.holidays, animatorSettings.unavailableDates, minAllowedDate]);
 
     const timeSlots = settings.availableTimeSlots || [9, 10, 14, 15];
 
