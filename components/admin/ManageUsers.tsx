@@ -453,6 +453,7 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
                                             onChange={(e) => setFormData({...formData, username: e.target.value})}
                                             className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none transition-all"
                                             placeholder="Nom d'utilisateur"
+                                            autoComplete="new-username"
                                         />
                                     </div>
                                 </div>
@@ -467,6 +468,7 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
                                             onChange={(e) => setFormData({...formData, password: e.target.value})}
                                             className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none transition-all"
                                             placeholder="Mot de passe"
+                                            autoComplete="new-password"
                                         />
                                     </div>
                                 </div>
