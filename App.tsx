@@ -412,7 +412,7 @@ export function App() {
           }
         }
 
-        if (needsMigration) {
+        if (needsMigration && !snapshot.metadata.fromCache) {
           console.log("Migrating email templates to match new style requirements...", mergedData);
           dataService.saveSettings(mergedData).catch(e => console.error("Auto-migration of settings failed:", e));
         }

@@ -16,8 +16,8 @@ export const storageService = {
      */
     uploadFile: async (file: File, path: string): Promise<string> => {
         // Validation simple du type
-        if (!file.type.startsWith('image/')) {
-            throw new Error("Le fichier doit être une image.");
+        if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+            throw new Error("Le fichier doit être une image ou un document PDF.");
         }
 
         const formData = new FormData();
@@ -25,9 +25,11 @@ export const storageService = {
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
         formData.append('folder', path.split('/')[0]); // Organise dans des dossiers (ex: avatars)
 
+        const resourceType = file.type === 'application/pdf' ? 'raw' : 'image';
+
         try {
             const response = await fetch(
-                `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+                `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`,
                 {
                     method: 'POST',
                     body: formData,

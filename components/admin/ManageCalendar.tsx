@@ -29,6 +29,16 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
     const [noLimit, setNoLimit] = useState<boolean>(true);
     const [monthlyBookingLimit, setMonthlyBookingLimit] = useState<number | undefined>(undefined);
     
+    const canEditCurrentAnimatorSettings = useMemo(() => {
+        if (currentUser?.role === 'admin') return true;
+        if (currentUser?.role === 'user') {
+            const linked = currentUser.animatorName;
+            if (!linked) return false; // Non-linked users can only view, not edit
+            return selectedAnimatorName === linked; // Linked users can modify only their own
+        }
+        return false;
+    }, [currentUser, selectedAnimatorName]);
+
     const [startYear, endYear] = useMemo(() => {
         const years = settings.activeYear.split('-').map(Number);
         if (years.length !== 2 || isNaN(years[0]) || isNaN(years[1])) {
@@ -37,6 +47,33 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
         }
         return [years[0], years[1]];
     }, [settings.activeYear]);
+
+    const isHolidayInActiveYear = (h: Holiday, activeYear: string) => {
+        if (!activeYear) return false;
+        if (h.name.includes(activeYear)) return true;
+        if (!h.startDate || !h.endDate) return false;
+        
+        try {
+            const years = activeYear.split('-').map(Number);
+            if (years.length !== 2) return false;
+            const [sY, eY] = years;
+            
+            const startLimit = new Date(sY, 9, 1); // 1er Octobre startYear
+            const endLimit = new Date(eY, 5, 30); // 30 Juin endYear
+            
+            const hStart = new Date(h.startDate.replace(/-/g, '/'));
+            const hEnd = new Date(h.endDate.replace(/-/g, '/'));
+            
+            return (hStart >= startLimit && hStart <= endLimit) || 
+                   (hEnd >= startLimit && hEnd <= endLimit);
+        } catch (e) {
+            return false;
+        }
+    };
+
+    const activeHolidays = useMemo(() => {
+        return (settings.holidays || []).filter(h => isHolidayInActiveYear(h, settings.activeYear));
+    }, [settings.holidays, settings.activeYear]);
 
     const [currentDate, setCurrentDate] = useState(() => {
         const now = new Date();
@@ -83,6 +120,33 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
             setCurrentDate(new Date(startYear, 9, 1));
         }
     }, [startYear, endYear]);
+
+    useEffect(() => {
+        const activeYear = settings.activeYear;
+        if (!activeYear) return;
+
+        const defaultNames = [
+            `Vacances de la Toussaint (${activeYear})`,
+            `Vacances de Noël (${activeYear})`,
+            `Vacances d'hiver (${activeYear})`,
+            `Vacances de Printemps (${activeYear})`
+        ];
+
+        const currentHolidays = settings.holidays || [];
+        const missingNames = defaultNames.filter(name => !currentHolidays.some(h => h.name === name));
+
+        if (missingNames.length > 0) {
+            const newHolidays = [
+                ...currentHolidays,
+                ...missingNames.map(name => ({
+                    name,
+                    startDate: '',
+                    endDate: ''
+                }))
+            ];
+            updateSettings({ holidays: newHolidays });
+        }
+    }, [settings.activeYear, settings.holidays, updateSettings]);
     
     useEffect(() => {
         if (selectedAnimatorName) {
@@ -351,8 +415,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                     <select 
                         value={selectedAnimatorName} 
                         onChange={e => setSelectedAnimatorName(e.target.value)} 
-                        disabled={isRestrictedUser && !!linkedAnimator}
-                        className="w-full p-2 border rounded mb-4 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        className="w-full p-2 border rounded mb-4 bg-white"
                     >
                         {animators.length > 0 ? (
                            animators.map(animator => <option key={animator.name} value={animator.name}>{animator.name}</option>)
@@ -366,18 +429,20 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                             <div className="mb-6 p-4 border rounded-lg bg-gray-50">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                                     <div>
-                                        <h4 className="font-semibold mb-2 text-gray-700">Désactiver des créneaux pour "{selectedAnimatorName}" :</h4>
+                                        <h4 className="font-semibold mb-2 text-gray-700">Créneaux désactivés pour "{selectedAnimatorName}" :</h4>
                                         <div className="flex gap-4 mb-3">
                                             {timeSlots.map(slot => (
-                                                <label key={slot} className="flex items-center space-x-2 cursor-pointer">
+                                                <label key={slot} className={`flex items-center space-x-2 ${canEditCurrentAnimatorSettings ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'}`}>
                                                     <input
                                                         type="checkbox"
+                                                        disabled={!canEditCurrentAnimatorSettings}
                                                         checked={inactiveSlots.map(Number).includes(Number(slot))}
                                                         onChange={() => {
+                                                            if (!canEditCurrentAnimatorSettings) return;
                                                             handleSlotToggle(Number(slot));
                                                             setHasUnsavedChanges(true);
                                                         }}
-                                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        className={`h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 ${!canEditCurrentAnimatorSettings ? 'cursor-not-allowed opacity-60' : ''}`}
                                                     />
                                                     <span>{slot}h</span>
                                                 </label>
@@ -387,18 +452,20 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                                     <div>
                                         <h4 className="font-semibold mb-2 text-gray-700">Limite mensuelle de réservations :</h4>
                                         <div className="space-y-3">
-                                            <label className="flex items-center gap-2 cursor-pointer group">
+                                            <label className={`flex items-center gap-2 group ${canEditCurrentAnimatorSettings ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                                                 <input 
                                                     type="checkbox"
+                                                    disabled={!canEditCurrentAnimatorSettings}
                                                     checked={noLimit}
                                                     onChange={(e) => {
+                                                        if (!canEditCurrentAnimatorSettings) return;
                                                         const checked = e.target.checked;
                                                         setNoLimit(checked);
                                                         if (checked) setMonthlyBookingLimit(undefined);
                                                         else if (monthlyBookingLimit === undefined) setMonthlyBookingLimit(0);
                                                         setHasUnsavedChanges(true);
                                                     }}
-                                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                    className={`h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 ${!canEditCurrentAnimatorSettings ? 'cursor-not-allowed' : ''}`}
                                                 />
                                                 <span className="text-sm font-medium text-gray-600 group-hover:text-gray-900 transition-colors">Pas de limite</span>
                                             </label>
@@ -408,12 +475,14 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                                                     <input 
                                                         type="number" 
                                                         min="0"
+                                                        disabled={!canEditCurrentAnimatorSettings}
                                                         value={monthlyBookingLimit ?? 0}
                                                         onChange={(e) => {
+                                                            if (!canEditCurrentAnimatorSettings) return;
                                                             setMonthlyBookingLimit(parseInt(e.target.value) || 0);
                                                             setHasUnsavedChanges(true);
                                                         }}
-                                                        className="w-20 p-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm"
+                                                        className="w-20 p-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm disabled:opacity-60 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                     />
                                                     <span className="text-xs font-semibold text-gray-400 uppercase tracking-tight">réservations / mois</span>
                                                 </div>
@@ -423,8 +492,12 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                                 </div>
                             </div>
                         
-                            <h4 className="font-semibold mb-2 text-gray-700">Gérer les jours d'indisponibilité :</h4>
-                            <p className="text-xs text-gray-500 mb-4 italic">Cliquez sur une date dans le calendrier pour l'ajouter ou la supprimer.</p>
+                            <h4 className="font-semibold mb-2 text-gray-700">Jours d'indisponibilité de l'animateur :</h4>
+                            {canEditCurrentAnimatorSettings ? (
+                                <p className="text-xs text-gray-500 mb-4 italic">Cliquez sur une date dans le calendrier pour l'ajouter ou la supprimer.</p>
+                            ) : (
+                                <p className="text-xs text-amber-600 mb-4 font-semibold italic">👁️ Mode lecture seule : Vous visualisez les indisponibilités de cet animateur.</p>
+                            )}
                             {/* Mini Calendar for selection */}
                             <div className="flex justify-between items-center mb-2">
                                 <button 
@@ -451,15 +524,29 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                                     const date = new Date(year, month, day);
                                     const dateStr = toYYYYMMDD(date);
                                     const isUnavailable = selectedDates.includes(dateStr);
-                                    let classes = "p-1 rounded cursor-pointer transition-colors ";
+                                    let classes = "p-1 rounded transition-colors ";
+                                    if (canEditCurrentAnimatorSettings) {
+                                        classes += "cursor-pointer hover:bg-gray-200 ";
+                                    } else {
+                                        classes += "cursor-not-allowed ";
+                                    }
                                     if (isUnavailable) classes += "bg-red-500 text-white font-bold shadow-sm";
-                                    else classes += "hover:bg-gray-200 text-gray-700";
+                                    else classes += "text-gray-700";
 
-                                    return <div key={day} className={classes} onClick={() => handleDateClick(dateStr)}>{day}</div>;
+                                    return (
+                                        <div 
+                                            key={day} 
+                                            className={classes} 
+                                            onClick={() => canEditCurrentAnimatorSettings && handleDateClick(dateStr)}
+                                        >
+                                            {day}
+                                        </div>
+                                    );
                                 })}
                             </div>
 
-                            <div className="mb-8">
+                            {canEditCurrentAnimatorSettings && (
+                                <div className="mb-8">
                                 <button 
                                     onClick={handleSaveAnimatorSettings} 
                                     className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-3 ${
@@ -480,6 +567,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                                     </p>
                                 )}
                             </div>
+                            )}
                             
                             {selectedAnimatorSettings.unavailableDates.length > 0 && (
                                 <div className="mt-8 pt-6 border-t border-gray-100">
@@ -548,11 +636,17 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                             </form>
                             
                             <div className="space-y-2">
-                                {settings.holidays.map(h => (
+                                {activeHolidays.map(h => (
                                     <div key={h.name} className="flex justify-between items-center p-2 bg-yellow-100 rounded">
                                         <div>
                                             <p className="font-semibold">{h.name}</p>
-                                            <p className="text-sm text-gray-600">{new Date(h.startDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')} - {new Date(h.endDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')}</p>
+                                            <p className="text-sm text-gray-600">
+                                                {h.startDate && h.endDate ? (
+                                                    `${new Date(h.startDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')} - ${new Date(h.endDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')}`
+                                                ) : (
+                                                    <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>
+                                                )}
+                                            </p>
                                         </div>
                                         <div className="flex items-center">
                                             <button onClick={() => setEditingHoliday(h)} className="text-gray-500 hover:text-indigo-600 p-1" aria-label={`Modifier ${h.name}`}>
@@ -572,14 +666,20 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                                 ℹ️ Mode lecture seule: Vous pouvez consulter les périodes de vacances scolaires ci-dessous, mais vous n'avez pas l'autorisation de les modifier.
                             </div>
                             <div className="space-y-2">
-                                {settings.holidays.length === 0 ? (
-                                    <p className="text-xs text-gray-400 italic text-center p-4">Aucune période de vacances configurée.</p>
+                                {activeHolidays.length === 0 ? (
+                                    <p className="text-xs text-gray-400 italic text-center p-4">Aucune période de vacances configurée pour cette année scolaire.</p>
                                 ) : (
-                                    settings.holidays.map(h => (
+                                    activeHolidays.map(h => (
                                         <div key={h.name} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 shadow-sm">
                                             <div>
                                                 <p className="font-semibold text-gray-800 text-sm">{h.name}</p>
-                                                <p className="text-xs text-gray-500 mt-1">{new Date(h.startDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')} - {new Date(h.endDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')}</p>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    {h.startDate && h.endDate ? (
+                                                        `${new Date(h.startDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')} - ${new Date(h.endDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')}`
+                                                    ) : (
+                                                        <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>
+                                                    )}
+                                                </p>
                                             </div>
                                         </div>
                                     ))

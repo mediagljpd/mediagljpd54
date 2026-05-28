@@ -166,9 +166,9 @@ const AnimationSelection: React.FC<{
               </div>
 
               {/* Liens de pages d'info centrés en bas de l'en-tête */}
-              {settings.infoPages && settings.infoPages.length > 0 && (
+              {((settings.infoPages && settings.infoPages.length > 0) || settings.registrationFormUrl) && (
                   <div className="flex flex-wrap justify-center items-center gap-x-8 gap-y-2 pb-4 pt-2 border-t border-gray-100/50 mt-1">
-                      {settings.infoPages.map(page => (
+                      {settings.infoPages && settings.infoPages.map(page => (
                           <button
                               key={page.id}
                               onClick={() => onNavigateToInfoPage(page.id)}
@@ -178,6 +178,20 @@ const AnimationSelection: React.FC<{
                               <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-blue-600 transition-all group-hover:w-full"></span>
                           </button>
                       ))}
+
+                      {settings.registrationFormUrl && (
+                          <a
+                              href={settings.registrationFormUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 hover:scale-105 active:scale-95 transition-all bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-200/50 px-3 py-1.5 rounded-full shadow-xs"
+                          >
+                              <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                              Fiche d'inscription
+                          </a>
+                      )}
                   </div>
               )}
           </div>

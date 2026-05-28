@@ -34,9 +34,25 @@ const BUS_STATUS_OPTIONS = [
 
 const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
     const { bookings, animations, removeBooking, updateBookings, settings, saveBooking, currentUser } = useContext(AppContext);
+    const isBusManager = currentUser?.role === 'admin' || !!currentUser?.permissions?.canManageBus;
     
     type AugmentedBooking = Booking & { animator?: string };
     type SortableKey = 'date' | 'teacherName';
+
+    // Filtres
+    const animators = useMemo(() => settings.animators || [], [settings.animators]);
+    const [selectedAnimators, setSelectedAnimators] = useState<Set<string>>(new Set());
+    const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set());
+    const [selectedBusStatuses, setSelectedBusStatuses] = useState<Set<string>>(new Set(['pending', 'validated', 'none']));
+    const filterInitialized = useRef(false);
+
+    const animatorMapForFiltering = useMemo(() => {
+        const map = new Map<string, string>();
+        animations.forEach(anim => {
+            if (anim.animator) map.set(anim.id, anim.animator);
+        });
+        return map;
+    }, [animations]);
 
     const [startYear, endYear] = useMemo(() => {
         const years = settings.activeYear.split('-').map(Number);
@@ -58,7 +74,8 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
     const monthItemsWithCounts = useMemo(() => {
         return SCHOOL_YEAR_MONTHS.map(item => {
-            const count = bookings.filter(booking => {
+            // totalCount: counts bookings in this month for the active school year
+            const totalCount = bookings.filter(booking => {
                 const bDate = new Date(booking.date.replace(/-/g, '/'));
                 const bYear = bDate.getFullYear();
                 const bMonth = bDate.getMonth();
@@ -68,12 +85,36 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 return bYear === expectedYear;
             }).length;
 
+            // filteredCount: counts bookings in this month for the active school year matching selectedAnimators and selectedBusStatuses
+            const filteredCount = bookings.filter(booking => {
+                const bDate = new Date(booking.date.replace(/-/g, '/'));
+                const bYear = bDate.getFullYear();
+                const bMonth = bDate.getMonth();
+                if (bMonth !== item.value) return false;
+                
+                const expectedYear = item.value >= 9 ? startYear : endYear;
+                if (bYear !== expectedYear) return false;
+
+                const bAnimator = animatorMapForFiltering.get(booking.animationId);
+                const passesAnimator = !bAnimator || selectedAnimators.has(bAnimator);
+
+                let currentStatus = 'none';
+                if (!booking.noBusRequired) {
+                    currentStatus = booking.busStatus || 'pending';
+                }
+                const passesBus = selectedBusStatuses.has(currentStatus);
+
+                return passesAnimator && passesBus;
+            }).length;
+
             return {
-                label: `${item.label} (${count})`,
-                value: item.value
+                name: item.label,
+                value: item.value,
+                filteredCount,
+                totalCount
             };
         });
-    }, [bookings, startYear, endYear]);
+    }, [bookings, startYear, endYear, selectedAnimators, selectedBusStatuses, animatorMapForFiltering]);
 
     const [sortConfig, setSortConfig] = useState<{ key: SortableKey, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
     const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -102,13 +143,6 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         window.addEventListener('keydown', handleEsc);
         return () => window.removeEventListener('keydown', handleEsc);
     }, [viewingBookingId, busManagementBooking]);
-
-    // Filtres
-    const animators = useMemo(() => settings.animators || [], [settings.animators]);
-    const [selectedAnimators, setSelectedAnimators] = useState<Set<string>>(new Set());
-    const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set());
-    const [selectedBusStatuses, setSelectedBusStatuses] = useState<Set<string>>(new Set(['pending', 'validated', 'none']));
-    const filterInitialized = useRef(false);
 
     // Initialisation intelligente des filtres
     useEffect(() => {
@@ -144,17 +178,10 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         filterInitialized.current = true;
     }, [animators, currentUser, startYear, endYear]);
 
-    const animatorMapForFiltering = useMemo(() => {
-        const map = new Map<string, string>();
-        animations.forEach(anim => {
-            if (anim.animator) map.set(anim.id, anim.animator);
-        });
-        return map;
-    }, [animations]);
-
     const animatorItemsWithCounts = useMemo(() => {
         return animators.map(a => {
-            const count = bookings.filter(b => {
+            // totalCount: bookings for this animator in the active school year
+            const totalCount = bookings.filter(b => {
                 const bDate = new Date(b.date.replace(/-/g, '/'));
                 const bYear = bDate.getFullYear();
                 const bMonth = bDate.getMonth();
@@ -165,16 +192,41 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 return bAnimator?.trim().toLowerCase() === a.name.trim().toLowerCase();
             }).length;
 
+            // filteredCount: bookings for this animator in the active school year matching selectedMonths and selectedBusStatuses
+            const filteredCount = bookings.filter(b => {
+                const bDate = new Date(b.date.replace(/-/g, '/'));
+                const bYear = bDate.getFullYear();
+                const bMonth = bDate.getMonth();
+                const inSchoolYear = (bYear === startYear && bMonth >= 9) || (bYear === endYear && bMonth <= 5);
+                if (!inSchoolYear) return false;
+
+                const bAnimator = animatorMapForFiltering.get(b.animationId);
+                if (bAnimator?.trim().toLowerCase() !== a.name.trim().toLowerCase()) return false;
+
+                const passesMonth = selectedMonths.has(bMonth);
+                
+                let currentStatus = 'none';
+                if (!b.noBusRequired) {
+                    currentStatus = b.busStatus || 'pending';
+                }
+                const passesBus = selectedBusStatuses.has(currentStatus);
+
+                return passesMonth && passesBus;
+            }).length;
+
             return {
-                label: `${a.name} (${count})`,
-                value: a.name
+                name: a.name,
+                value: a.name,
+                filteredCount,
+                totalCount
             };
         });
-    }, [animators, bookings, startYear, endYear, animatorMapForFiltering]);
+    }, [animators, bookings, startYear, endYear, animatorMapForFiltering, selectedMonths, selectedBusStatuses]);
 
     const busStatusItemsWithCounts = useMemo(() => {
         return BUS_STATUS_OPTIONS.map(opt => {
-            const count = bookings.filter(b => {
+            // totalCount: bookings for this bus status in the active school year
+            const totalCount = bookings.filter(b => {
                 const bDate = new Date(b.date.replace(/-/g, '/'));
                 const bYear = bDate.getFullYear();
                 const bMonth = bDate.getMonth();
@@ -188,12 +240,36 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 return currentStatus === opt.value;
             }).length;
 
+            // filteredCount: bookings for this bus status in the active school year matching selectedAnimators and selectedMonths
+            const filteredCount = bookings.filter(b => {
+                const bDate = new Date(b.date.replace(/-/g, '/'));
+                const bYear = bDate.getFullYear();
+                const bMonth = bDate.getMonth();
+                const inSchoolYear = (bYear === startYear && bMonth >= 9) || (bYear === endYear && bMonth <= 5);
+                if (!inSchoolYear) return false;
+
+                let currentStatus = 'none';
+                if (!b.noBusRequired) {
+                    currentStatus = b.busStatus || 'pending';
+                }
+                if (currentStatus !== opt.value) return false;
+
+                const bAnimator = animatorMapForFiltering.get(b.animationId);
+                const passesAnimator = !bAnimator || selectedAnimators.has(bAnimator);
+
+                const passesMonth = selectedMonths.has(bMonth);
+
+                return passesAnimator && passesMonth;
+            }).length;
+
             return {
-                label: `${opt.label} (${count})`,
-                value: opt.value
+                name: opt.label,
+                value: opt.value,
+                filteredCount,
+                totalCount
             };
         });
-    }, [bookings, startYear, endYear]);
+    }, [bookings, startYear, endYear, selectedAnimators, selectedMonths, animatorMapForFiltering]);
 
     const filteredBookings = useMemo(() => {
         return bookings.filter(booking => {
@@ -345,7 +421,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
     const handleSaveBusManagement = (e: React.FormEvent) => {
         e.preventDefault();
-        if (currentUser?.role !== 'admin') {
+        if (!isBusManager) {
             showNotification("Vous n'avez pas les droits pour modifier le transport.", "error");
             setBusManagementBooking(null);
             return;
@@ -376,7 +452,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     // Sous-composant pour les sections de filtre uniformisées
     const FilterSection: React.FC<{ 
         title: string, 
-        items: { label: string, value: any }[], 
+        items: { name: string, value: any, filteredCount: number, totalCount: number }[], 
         selected: Set<any>, 
         onToggle: (val: any) => void,
         onSelectAll: () => void,
@@ -387,9 +463,9 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             <div className="flex justify-between items-center mb-1">
                 <strong className="text-xs font-black text-gray-400 uppercase tracking-widest">{title}</strong>
                 <div className="flex gap-2 text-[10px] font-bold uppercase">
-                    <button onClick={onSelectAll} className="text-blue-600 hover:underline">Tout cocher</button>
+                    <button onClick={onSelectAll} className="text-blue-600 hover:underline cursor-pointer">Tout cocher</button>
                     <span className="text-gray-300">|</span>
-                    <button onClick={onDeselectAll} className="text-gray-400 hover:underline">Tout décocher</button>
+                    <button onClick={onDeselectAll} className="text-gray-400 hover:underline cursor-pointer">Tout décocher</button>
                 </div>
             </div>
             {isMonthSection ? (
@@ -401,9 +477,20 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                     type="checkbox"
                                     checked={selected.has(item.value)}
                                     onChange={() => onToggle(item.value)}
-                                    className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                 />
-                                <span>{item.label}</span>
+                                <span className="flex items-center gap-1">
+                                    <span>{item.name}</span>
+                                    <span className="text-[10px] font-semibold text-gray-400">
+                                        {item.filteredCount === item.totalCount ? (
+                                            `(${item.totalCount})`
+                                        ) : (
+                                            <span className="text-blue-600">
+                                                ({item.filteredCount}<span className="text-gray-400 font-normal"> / {item.totalCount}</span>)
+                                            </span>
+                                        )}
+                                    </span>
+                                </span>
                             </label>
                         ))}
                     </div>
@@ -414,9 +501,20 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                     type="checkbox"
                                     checked={selected.has(item.value)}
                                     onChange={() => onToggle(item.value)}
-                                    className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                 />
-                                <span>{item.label}</span>
+                                <span className="flex items-center gap-1">
+                                    <span>{item.name}</span>
+                                    <span className="text-[10px] font-semibold text-gray-400">
+                                        {item.filteredCount === item.totalCount ? (
+                                            `(${item.totalCount})`
+                                        ) : (
+                                            <span className="text-blue-600">
+                                                ({item.filteredCount}<span className="text-gray-400 font-normal"> / {item.totalCount}</span>)
+                                            </span>
+                                        )}
+                                    </span>
+                                </span>
                             </label>
                         ))}
                     </div>
@@ -429,9 +527,20 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                 type="checkbox"
                                 checked={selected.has(item.value)}
                                 onChange={() => onToggle(item.value)}
-                                className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                             />
-                            <span>{item.label}</span>
+                            <span className="flex items-center gap-1">
+                                <span>{item.name}</span>
+                                <span className="text-[10px] font-semibold text-gray-400">
+                                    {item.filteredCount === item.totalCount ? (
+                                        `(${item.totalCount})`
+                                    ) : (
+                                        <span className="text-blue-600">
+                                            ({item.filteredCount}<span className="text-gray-400 font-normal"> / {item.totalCount}</span>)
+                                        </span>
+                                    )}
+                                </span>
+                            </span>
                         </label>
                     ))}
                 </div>
@@ -733,19 +842,19 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                         </button>
                         <div className="flex justify-between items-start mb-2 pr-6">
                             <h2 className="text-2xl font-black text-gray-800">Gestion du transport</h2>
-                            {currentUser?.role !== 'admin' && <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-1 rounded-lg uppercase tracking-tight">Lecture seule</span>}
+                            {!isBusManager && <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-1 rounded-lg uppercase tracking-tight">Lecture seule</span>}
                         </div>
                         <p className="text-sm text-gray-500 mb-6 font-medium">Validation de la prise en charge pour <strong>{busManagementBooking.teacherName}</strong> ({busManagementBooking.schoolName}, {busManagementBooking.commune}).</p>
                         
                         <form onSubmit={handleSaveBusManagement} className="space-y-6 overflow-y-auto pr-1.5 custom-scrollbar">
                             {/* Option Pas de bus nécessaire */}
                             <div className="p-4 bg-blue-50/50 border border-blue-100/60 rounded-2xl flex items-center gap-3">
-                                <label className={`flex items-center gap-3 ${currentUser?.role === 'admin' ? 'cursor-pointer' : 'cursor-not-allowed'} select-none w-full`}>
+                                <label className={`flex items-center gap-3 ${isBusManager ? 'cursor-pointer' : 'cursor-not-allowed'} select-none w-full`}>
                                     <input 
                                         type="checkbox" 
                                         name="noBusRequired" 
                                         checked={busManagementBooking.noBusRequired || false} 
-                                        disabled={currentUser?.role !== 'admin'}
+                                        disabled={!isBusManager}
                                         onChange={(e) => setBusManagementBooking({...busManagementBooking, noBusRequired: e.target.checked})} 
                                         className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 transition-all border-gray-200"
                                     />
@@ -763,7 +872,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                         <div className="grid grid-cols-2 gap-3">
                                             <button 
                                                 type="button" 
-                                                disabled={currentUser?.role !== 'admin'}
+                                                disabled={!isBusManager}
                                                 onClick={() => setBusManagementBooking({...busManagementBooking, busStatus: 'pending'})} 
                                                 className={`px-4 py-3 rounded-xl font-bold text-sm border-2 transition-all ${busManagementBooking.busStatus === 'pending' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
                                             >
@@ -771,7 +880,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                             </button>
                                             <button 
                                                 type="button" 
-                                                disabled={currentUser?.role !== 'admin'}
+                                                disabled={!isBusManager}
                                                 onClick={() => setBusManagementBooking({...busManagementBooking, busStatus: 'validated'})} 
                                                 className={`px-4 py-3 rounded-xl font-bold text-sm border-2 transition-all ${busManagementBooking.busStatus === 'validated' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 text-gray-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
                                             >
@@ -788,7 +897,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                                 type="text" 
                                                 inputMode="numeric"
                                                 pattern="[0-9]*"
-                                                disabled={currentUser?.role !== 'admin'}
+                                                disabled={!isBusManager}
                                                 value={busManagementBooking.busCost || 0} 
                                                 onChange={(e) => {
                                                     const val = e.target.value.replace(/\D/g, '');
@@ -805,7 +914,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                         <textarea 
                                             id="busInfo"
                                             name="busInfo"
-                                            disabled={currentUser?.role !== 'admin'}
+                                            disabled={!isBusManager}
                                             value={busManagementBooking.busInfo || ''}
                                             onChange={(e) => setBusManagementBooking({...busManagementBooking, busInfo: e.target.value})}
                                             placeholder="Ex: Horaires de bus, point de ralliement, correspondances, consignes particulières de transport..."
@@ -823,9 +932,9 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
                             <div className="flex gap-3 pt-4 border-t border-gray-100 sticky bottom-0 bg-white">
                                 <button type="button" onClick={() => setBusManagementBooking(null)} className="flex-grow py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-100 transition-colors">
-                                    {currentUser?.role === 'admin' ? 'Annuler' : 'Fermer'}
+                                    {isBusManager ? 'Annuler' : 'Fermer'}
                                 </button>
-                                {currentUser?.role === 'admin' && (
+                                {isBusManager && (
                                     <button type="submit" className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg shadow-blue-100">Confirmer</button>
                                 )}
                             </div>

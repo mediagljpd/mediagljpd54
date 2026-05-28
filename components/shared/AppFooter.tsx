@@ -59,14 +59,26 @@ const AppFooter: React.FC<AppFooterProps> = ({ onNavigate }) => {
 
         {/* Right Side: Establishment Info & Logo */}
         <div className="flex items-center gap-8">
-          {establishmentInfo?.logoUrl && (
-            <img 
-              src={establishmentInfo.logoUrl} 
-              alt="Logo" 
-              className="h-24 w-auto object-contain"
-              referrerPolicy="no-referrer"
-            />
-          )}
+          <div className="flex flex-col items-center gap-4">
+            {establishmentInfo?.logoLeftUrl && (
+              <img 
+                src={establishmentInfo.logoLeftUrl} 
+                alt="Logo Grand Longwy" 
+                className={establishmentInfo.logoLeftWidth ? "object-contain" : "h-24 w-auto object-contain"}
+                style={establishmentInfo.logoLeftWidth ? { width: `${establishmentInfo.logoLeftWidth}px`, height: 'auto', maxHeight: '160px' } : undefined}
+                referrerPolicy="no-referrer"
+              />
+            )}
+            {establishmentInfo?.logoUrl && (
+              <img 
+                src={establishmentInfo.logoUrl} 
+                alt="Logo Médiathèque" 
+                className={establishmentInfo.logoWidth ? "object-contain" : "h-24 w-auto object-contain"}
+                style={establishmentInfo.logoWidth ? { width: `${establishmentInfo.logoWidth}px`, height: 'auto', maxHeight: '160px' } : undefined}
+                referrerPolicy="no-referrer"
+              />
+            )}
+          </div>
           
           <div className="flex flex-col text-base text-gray-600">
             {establishmentInfo?.name && (

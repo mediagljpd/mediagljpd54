@@ -9,7 +9,7 @@ import { PencilIcon, CheckIcon, XIcon, TrashIcon } from '../Icons';
 import ConfirmationModal from '../shared/ConfirmationModal';
 
 const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification, setHasUnsavedChanges }) => {
-    const { animations, updateAnimationsOrder, settings, updateSettings, currentUser } = useContext(AppContext);
+    const { animations, updateAnimationsOrder, settings, updateSettings, currentUser, setCurrentUser } = useContext(AppContext);
     const [newAnimatorName, setNewAnimatorName] = useState('');
     const [editingAnimator, setEditingAnimator] = useState<{ original: Animator; current: Animator } | null>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -88,8 +88,10 @@ const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification, s
             }
 
             let newUsers = settings.users || [];
-            if (currentUser && currentUser.animatorName === original.name) {
-                newUsers = newUsers.map(u => u.username === currentUser.username ? { ...u, animatorName: newName } : u);
+            newUsers = newUsers.map(u => u.animatorName === original.name ? { ...u, animatorName: newName } : u);
+
+            if (currentUser && currentUser.animatorName === original.name && setCurrentUser) {
+                setCurrentUser({ ...currentUser, animatorName: newName });
             }
 
             updateSettings({ 

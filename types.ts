@@ -63,6 +63,9 @@ export interface EstablishmentInfo {
   phone: string;
   email: string;
   logoUrl?: string;
+  logoLeftUrl?: string;
+  logoWidth?: number;
+  logoLeftWidth?: number;
 }
 
 export interface CustomLegalPage {
@@ -95,6 +98,7 @@ export interface UserPermissions {
   canModifySettings: boolean;
   canManageVacations: boolean;
   canManageAnimations: boolean;
+  canManageBus?: boolean;
 }
 
 export interface AdminUser {
@@ -166,6 +170,8 @@ export interface AppSettings {
   cleanupMonth?: number;
   lastCleanupYear?: number;
   infoPages?: CustomLegalPage[];
+  registrationFormUrl?: string;
+  registrationFormName?: string;
   adminPasswordLastChanged?: string; // ISO date
   passwordExpiryDays?: number; // 0 for disabled
   lastExportDate?: string; // ISO date

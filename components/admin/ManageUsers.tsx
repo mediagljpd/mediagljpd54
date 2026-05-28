@@ -16,6 +16,17 @@ interface ManageUsersProps extends AdminSubComponentProps {
     setUsers?: (newUsers: AdminUser[]) => void;
 }
 
+const getMaskedPassword = (pwd: string | undefined): string => {
+    if (!pwd) return '';
+    if (pwd === 'GrandLongwy@2026') return 'GrandLongwy@2026';
+    const len = pwd.length;
+    if (len <= 2) {
+        return '*'.repeat(len);
+    }
+    const lastTwo = pwd.slice(-2);
+    return '*'.repeat(len - 2) + lastTwo;
+};
+
 const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setUsers }) => {
     const { settings, updateSettings, currentUser } = useContext(AppContext);
     
@@ -80,7 +91,8 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
     const initialPermissions: UserPermissions = {
         canModifySettings: false,
         canManageVacations: false,
-        canManageAnimations: false
+        canManageAnimations: false,
+        canManageBus: false
     };
 
     const [formData, setFormData] = useState<Omit<AdminUser, 'id'>>({
@@ -104,10 +116,28 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
     };
 
     const handleSave = async () => {
-        const complexityError = validatePassword(formData.password);
-        if (complexityError) {
-            showNotification(complexityError, 'error');
-            return;
+        let finalPassword = formData.password;
+        let isPasswordChanged = false;
+
+        if (editingUser) {
+            const masked = getMaskedPassword(editingUser.password);
+            if (formData.password === masked) {
+                // Password was NOT saved/modified by the admin (left in its masked display state)
+                finalPassword = editingUser.password || '';
+                isPasswordChanged = false;
+            } else {
+                isPasswordChanged = true;
+            }
+        } else {
+            isPasswordChanged = true;
+        }
+
+        if (isPasswordChanged) {
+            const complexityError = validatePassword(finalPassword);
+            if (complexityError) {
+                showNotification(complexityError, 'error');
+                return;
+            }
         }
 
         try {
@@ -115,10 +145,10 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
             let newUsers;
 
             if (editingUser) {
-                const isPasswordChanged = formData.password !== editingUser.password;
                 const finalMustChange = isPasswordChanged || formData.mustChangePassword || false;
                 newUsers = currentUsers.map(u => u.id === editingUser.id ? { 
                     ...formData, 
+                    password: finalPassword,
                     id: u.id,
                     passwordLastChanged: isPasswordChanged ? new Date().toISOString() : u.passwordLastChanged,
                     mustChangePassword: finalMustChange
@@ -126,6 +156,7 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
             } else {
                 const newUser: AdminUser = {
                     ...formData,
+                    password: finalPassword,
                     id: Date.now().toString(),
                     passwordLastChanged: new Date().toISOString(),
                     mustChangePassword: true
@@ -319,6 +350,14 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
                                             {user.animatorName && (
                                                 <span className="text-xs text-gray-500 font-medium">Lié à : {user.animatorName}</span>
                                             )}
+                                            {user.password && (
+                                                <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium my-0.5">
+                                                    <span>Mot de passe :</span>
+                                                    <code className="text-[11px] bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200 font-semibold font-mono text-gray-700">
+                                                        {getMaskedPassword(user.password)}
+                                                    </code>
+                                                </div>
+                                            )}
                                             {user.forcePasswordExpiry && (
                                                 <span className="text-[9px] text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded font-bold w-fit uppercase tracking-wide">
                                                     🔄 Expire tous les {user.passwordExpiryDaysInterval || 30} jours
@@ -342,10 +381,10 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
                                                     setEditingUser(user);
                                                     setFormData({ 
                                                         username: user.username,
-                                                        password: user.password || '',
+                                                        password: getMaskedPassword(user.password || ''),
                                                         role: user.role,
                                                         animatorName: user.animatorName || '',
-                                                        permissions: { ...user.permissions },
+                                                        permissions: { canManageBus: false, ...user.permissions },
                                                         mustChangePassword: user.mustChangePassword !== undefined ? user.mustChangePassword : true,
                                                         forcePasswordExpiry: user.forcePasswordExpiry || false,
                                                         passwordExpiryDaysInterval: user.passwordExpiryDaysInterval || 30
@@ -513,11 +552,13 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
                                                     permissions: newRole === UserRole.ADMIN ? {
                                                         canModifySettings: true,
                                                         canManageVacations: true,
-                                                        canManageAnimations: true
+                                                        canManageAnimations: true,
+                                                        canManageBus: true
                                                     } : {
                                                         canModifySettings: false,
                                                         canManageVacations: false,
-                                                        canManageAnimations: false
+                                                        canManageAnimations: false,
+                                                        canManageBus: false
                                                     }
                                                 }));
                                             }}
@@ -547,6 +588,36 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
                                     </div>
                                 </div>
                             </div>
+
+                            {formData.role === UserRole.USER && (
+                                <div className="space-y-4 p-6 bg-gray-50 rounded-2xl border border-gray-100 text-left">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <ShieldCheckIcon className="w-5 h-5 text-blue-600" />
+                                        <h4 className="text-sm font-black text-gray-800 uppercase tracking-widest">Droits d'accès spécifiques</h4>
+                                    </div>
+                                    <p className="text-xs text-gray-500 italic mb-4">Gérez les accès spécifiques pour ce compte utilisateur.</p>
+                                    <div className="flex flex-col gap-4">
+                                        <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 transition-all">
+                                            <div className="flex flex-col pr-4">
+                                                <span className="text-xs font-bold text-gray-700">Gestion du bus (Modification)</span>
+                                                <span className="text-[10px] text-gray-400">Permet à ce compte d'apporter des modifications dans la gestion du bus au lieu d'un accès en lecture seule.</span>
+                                            </div>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={formData.permissions?.canManageBus || false}
+                                                onChange={(e) => setFormData(prev => ({
+                                                    ...prev,
+                                                    permissions: {
+                                                        ...prev.permissions,
+                                                        canManageBus: e.target.checked
+                                                    }
+                                                }))}
+                                                className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="space-y-4 p-6 bg-gray-50 rounded-2xl border border-gray-100 text-left">
                                 <div className="flex items-center gap-2 mb-2">

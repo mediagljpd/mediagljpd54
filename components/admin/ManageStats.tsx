@@ -1,23 +1,57 @@
-
-import React, { useContext, useMemo } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../../AppContext';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell, LabelList } from 'recharts';
 import * as XLSX from 'xlsx';
 import { DownloadIcon } from '../Icons';
 
 const ManageStats: React.FC = () => {
-    const { bookings } = useContext(AppContext);
+    const { bookings, animations, settings } = useContext(AppContext);
+    const [selectedAnimator, setSelectedAnimator] = useState<string>('all');
+
+    const [startYear, endYear] = useMemo(() => {
+        const years = (settings?.activeYear || "").split('-').map(Number);
+        if (years.length !== 2 || isNaN(years[0]) || isNaN(years[1])) {
+            const currentYear = new Date().getFullYear();
+            return [currentYear, currentYear + 1]; // Fallback
+        }
+        return [years[0], years[1]];
+    }, [settings?.activeYear]);
+
+    const activeBookings = useMemo(() => {
+        return (bookings || []).filter(b => {
+            const bDate = new Date(b.date.replace(/-/g, '/'));
+            const bYear = bDate.getFullYear();
+            const bMonth = bDate.getMonth();
+            return (bYear === startYear && bMonth >= 9) || (bYear === endYear && bMonth <= 5);
+        });
+    }, [bookings, startYear, endYear]);
+
+    const animatorMap = useMemo(() => {
+        const map = new Map<string, string>();
+        (animations || []).forEach(anim => {
+            if (anim.animator) map.set(anim.id, anim.animator);
+        });
+        return map;
+    }, [animations]);
+
+    const filteredBookings = useMemo(() => {
+        return activeBookings.filter(b => {
+            if (selectedAnimator === 'all') return true;
+            const bAnimator = animatorMap.get(b.animationId);
+            return bAnimator?.trim().toLowerCase() === selectedAnimator.trim().toLowerCase();
+        });
+    }, [activeBookings, selectedAnimator, animatorMap]);
 
     const stats = useMemo(() => {
-        const totalClasses = bookings.length;
-        const totalStudents = bookings.reduce((sum, b) => sum + (b.studentCount || 0), 0);
+        const totalClasses = filteredBookings.length;
+        const totalStudents = filteredBookings.reduce((sum, b) => sum + (b.studentCount || 0), 0);
         
         const byCommune: Record<string, number> = {};
         const communeLabels: Record<string, string> = {}; // To keep the most complete version (with postal code)
         const bySchool: Record<string, number> = {};
         const byLevel: Record<string, number> = {};
 
-        bookings.forEach(b => {
+        filteredBookings.forEach(b => {
             if (b.commune) {
                 // Normalize commune name by removing the postal code part for grouping
                 const cleanCommune = b.commune.replace(/\s*\(\d{5}\)$/, '').trim().toUpperCase();
@@ -57,10 +91,10 @@ const ManageStats: React.FC = () => {
             levelData,
             schoolCount: Object.keys(bySchool).length
         };
-    }, [bookings]);
+    }, [filteredBookings]);
 
     const handleExportExcel = () => {
-        const exportData = bookings.map(b => ({
+        const exportData = filteredBookings.map(b => ({
             'Date': b.date,
             'Heure': `${b.time}h`,
             'Animation': b.animationTitle,
@@ -98,6 +132,38 @@ const ManageStats: React.FC = () => {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
+            {/* Filter Row */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex flex-col">
+                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Filtres des Statistiques</h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                        Sélectionnez un animateur pour filtrer les interventions de l'année <strong>{settings?.activeYear || ""}</strong>
+                    </p>
+                </div>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <label htmlFor="animator-filter" className="text-xs font-black text-gray-400 uppercase tracking-widest shrink-0">Animateur :</label>
+                    <select
+                        id="animator-filter"
+                        value={selectedAnimator}
+                        onChange={(e) => setSelectedAnimator(e.target.value)}
+                        className="w-full md:w-64 px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-sm text-gray-700 transition-all cursor-pointer"
+                    >
+                        <option value="all">Tous les animateurs ({activeBookings.length})</option>
+                        {(settings?.animators || []).map(anim => {
+                            const countForAnim = activeBookings.filter(b => {
+                                const bAnim = animatorMap.get(b.animationId);
+                                return bAnim?.trim().toLowerCase() === anim.name.trim().toLowerCase();
+                            }).length;
+                            return (
+                                <option key={anim.name} value={anim.name}>
+                                    {anim.name} ({countForAnim})
+                                </option>
+                            );
+                        })}
+                    </select>
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center">
                     <span className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Classes accueillies</span>
@@ -199,8 +265,8 @@ const ManageStats: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {bookings.length > 0 ? (
-                                [...bookings].sort((a, b) => b.date.localeCompare(a.date)).map((b) => (
+                            {filteredBookings.length > 0 ? (
+                                [...filteredBookings].sort((a, b) => b.date.localeCompare(a.date)).map((b) => (
                                     <tr key={b.id} className="hover:bg-gray-50/50 transition-colors">
                                         <td className="px-6 py-4 text-xs font-bold text-gray-700">{b.date}</td>
                                         <td className="px-6 py-4 text-xs text-gray-600">{b.commune}</td>

@@ -76,7 +76,8 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
     const isDateInHoliday = (date: Date, holidays: Holiday[]): boolean => {
         const checkDate = new Date(date);
         checkDate.setHours(0, 0, 0, 0);
-        return holidays.some(h => {
+        return (holidays || []).some(h => {
+            if (!h.startDate || !h.endDate) return false;
             const startDate = new Date(h.startDate.replace(/-/g, '/'));
             startDate.setHours(0, 0, 0, 0);
             const endDate = new Date(h.endDate.replace(/-/g, '/'));

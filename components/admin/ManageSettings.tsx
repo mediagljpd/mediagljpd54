@@ -457,7 +457,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
         });
     };
 
-    const handleUpdateEstablishmentInfo = (field: string, value: string) => {
+    const handleUpdateEstablishmentInfo = (field: string, value: any) => {
         setFormState({
             ...formState,
             establishmentInfo: {
@@ -765,6 +765,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
             'legalNoticeTitle', 'privacyPolicyTitle', 'cookiesPolicyTitle',
             'contactPhone', 'contactEmail', 'users', 'autoCleanupEnabled',
             'cleanupDay', 'cleanupMonth', 'infoPages', 'adminPasswordLastChanged',
+            'registrationFormUrl', 'registrationFormName',
             'passwordExpiryDays', 'headerInfoText', 'headerInfoFontSize', 
             'headerInfoFontWeight', 'headerInfoFontStyle', 'headerInfoColor', 'headerInfoWidth',
             'emailTeacherTemplate', 'emailTeacherSubject', 'emailAnimatorTemplate', 'emailAnimatorSubject',
@@ -812,6 +813,37 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                 setUploadingField(null);
             }
         }
+    };
+
+    const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setUploadingField('registrationForm');
+            
+            try {
+                const url = await storageService.uploadFile(file, 'app_assets');
+                setFormState(prev => ({ 
+                    ...prev, 
+                    registrationFormUrl: url, 
+                    registrationFormName: file.name 
+                }));
+                showNotification("Fiche d'inscription téléversée ! N'oubliez pas d'enregistrer.");
+            } catch (error) {
+                console.error(error);
+                alert("Erreur lors de l'upload. Assurez-vous d'utiliser un document valide (ex: PDF).");
+            } finally {
+                setUploadingField(null);
+            }
+        }
+    };
+
+    const handleRemovePdf = () => {
+        setFormState(prev => ({
+            ...prev,
+            registrationFormUrl: undefined,
+            registrationFormName: undefined
+        }));
+        showNotification("Fiche d'inscription supprimée ! N'oubliez pas d'enregistrer.");
     };
 
     const fontSizes = [
@@ -1725,45 +1757,154 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <div className="flex flex-col items-center justify-center p-6 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
-                                                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Logo de l'établissement</span>
-                                                            <div className="relative w-40 h-40 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex items-center justify-center mb-4">
-                                                                {formState.establishmentInfo?.logoUrl ? (
-                                                                    <img src={formState.establishmentInfo.logoUrl} alt="Logo" className="max-w-full max-h-full object-contain p-2" />
-                                                                ) : (
-                                                                    <div className="text-gray-300 text-xs italic text-center px-4">Aucun logo importé</div>
-                                                                )}
-                                                                {uploadingField === 'establishmentLogo' && (
-                                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                                                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            <label className={`cursor-pointer px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm text-sm font-bold text-blue-600 hover:bg-blue-50 transition-all ${uploadingField ? 'opacity-50 pointer-events-none' : ''}`}>
-                                                                Importer un logo
-                                                                <input 
-                                                                    type="file" 
-                                                                    accept="image/*" 
-                                                                    className="hidden" 
-                                                                    onChange={async (e) => {
-                                                                        if (e.target.files && e.target.files[0]) {
-                                                                            const file = e.target.files[0];
-                                                                            setUploadingField('establishmentLogo');
-                                                                            try {
-                                                                                const url = await storageService.uploadFile(file, 'logos');
-                                                                                handleUpdateEstablishmentInfo('logoUrl', url);
-                                                                                showNotification("Logo mis à jour !");
-                                                                            } catch (error) {
-                                                                                console.error(error);
-                                                                                alert("Erreur lors de l'upload.");
-                                                                            } finally {
-                                                                                setUploadingField(null);
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 w-full">
+                                                            {/* Logo gauche */}
+                                                            <div className="flex flex-col items-center justify-center p-6 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+                                                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Logo Grand Longwy</span>
+                                                                <div className="relative w-40 h-40 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex items-center justify-center mb-4">
+                                                                    {formState.establishmentInfo?.logoLeftUrl ? (
+                                                                        <>
+                                                                            <img src={formState.establishmentInfo.logoLeftUrl} alt="Logo Grand Longwy" className="max-w-full max-h-full object-contain p-2" />
+                                                                            <button 
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    handleUpdateEstablishmentInfo('logoLeftUrl', '');
+                                                                                    showNotification("Logo Grand Longwy supprimé.");
+                                                                                }}
+                                                                                className="absolute top-2 right-2 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
+                                                                                title="Supprimer le logo"
+                                                                            >
+                                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                                                </svg>
+                                                                            </button>
+                                                                        </>
+                                                                    ) : (
+                                                                        <div className="text-gray-300 text-xs italic text-center px-4">Aucun logo Grand Longwy importé</div>
+                                                                    )}
+                                                                    {uploadingField === 'establishmentLogoLeft' && (
+                                                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <label className={`cursor-pointer px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm text-sm font-bold text-blue-600 hover:bg-blue-50 transition-all ${uploadingField ? 'opacity-50 pointer-events-none' : ''}`}>
+                                                                    Importer le logo Grand Longwy
+                                                                    <input 
+                                                                        type="file" 
+                                                                        accept="image/*" 
+                                                                        className="hidden" 
+                                                                        onChange={async (e) => {
+                                                                            if (e.target.files && e.target.files[0]) {
+                                                                                const file = e.target.files[0];
+                                                                                setUploadingField('establishmentLogoLeft');
+                                                                                try {
+                                                                                    const url = await storageService.uploadFile(file, 'logos');
+                                                                                    handleUpdateEstablishmentInfo('logoLeftUrl', url);
+                                                                                    showNotification("Logo Grand Longwy mis à jour !");
+                                                                                } catch (error) {
+                                                                                    console.error(error);
+                                                                                    alert("Erreur lors de l'upload.");
+                                                                                } finally {
+                                                                                    setUploadingField(null);
+                                                                                }
                                                                             }
-                                                                        }
-                                                                    }} 
-                                                                    disabled={uploadingField !== null}
-                                                                />
-                                                            </label>
+                                                                        }} 
+                                                                        disabled={uploadingField !== null}
+                                                                    />
+                                                                </label>
+                                                                <div className="mt-4 w-full px-4">
+                                                                    <label className="block text-xs font-semibold text-gray-500 mb-1 text-center">
+                                                                        Largeur du logo Grand Longwy (px) :
+                                                                    </label>
+                                                                    <input 
+                                                                        type="number"
+                                                                        min="10"
+                                                                        max="1000"
+                                                                        placeholder="Par défaut (auto / max-h)"
+                                                                        value={formState.establishmentInfo?.logoLeftWidth || ''}
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value ? parseInt(e.target.value) : '';
+                                                                            handleUpdateEstablishmentInfo('logoLeftWidth', val);
+                                                                        }}
+                                                                        className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-center outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                                    />
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Logo principal */}
+                                                            <div className="flex flex-col items-center justify-center p-6 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+                                                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Logo Médiathèque</span>
+                                                                <div className="relative w-40 h-40 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex items-center justify-center mb-4">
+                                                                    {formState.establishmentInfo?.logoUrl ? (
+                                                                        <>
+                                                                            <img src={formState.establishmentInfo.logoUrl} alt="Logo Médiathèque" className="max-w-full max-h-full object-contain p-2" />
+                                                                            <button 
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    handleUpdateEstablishmentInfo('logoUrl', '');
+                                                                                    showNotification("Logo Médiathèque supprimé.");
+                                                                                }}
+                                                                                className="absolute top-2 right-2 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
+                                                                                title="Supprimer le logo"
+                                                                            >
+                                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                                                </svg>
+                                                                            </button>
+                                                                        </>
+                                                                    ) : (
+                                                                        <div className="text-gray-300 text-xs italic text-center px-4">Aucun logo Médiathèque importé</div>
+                                                                    )}
+                                                                    {uploadingField === 'establishmentLogo' && (
+                                                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <label className={`cursor-pointer px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm text-sm font-bold text-blue-600 hover:bg-blue-50 transition-all ${uploadingField ? 'opacity-50 pointer-events-none' : ''}`}>
+                                                                    Importer le logo Médiathèque
+                                                                    <input 
+                                                                        type="file" 
+                                                                        accept="image/*" 
+                                                                        className="hidden" 
+                                                                        onChange={async (e) => {
+                                                                            if (e.target.files && e.target.files[0]) {
+                                                                                const file = e.target.files[0];
+                                                                                setUploadingField('establishmentLogo');
+                                                                                try {
+                                                                                    const url = await storageService.uploadFile(file, 'logos');
+                                                                                    handleUpdateEstablishmentInfo('logoUrl', url);
+                                                                                    showNotification("Logo Médiathèque mis à jour !");
+                                                                                } catch (error) {
+                                                                                    console.error(error);
+                                                                                    alert("Erreur lors de l'upload.");
+                                                                                } finally {
+                                                                                    setUploadingField(null);
+                                                                                }
+                                                                            }
+                                                                        }} 
+                                                                        disabled={uploadingField !== null}
+                                                                    />
+                                                                </label>
+                                                                <div className="mt-4 w-full px-4">
+                                                                    <label className="block text-xs font-semibold text-gray-500 mb-1 text-center">
+                                                                        Largeur du logo Médiathèque (px) :
+                                                                    </label>
+                                                                    <input 
+                                                                        type="number"
+                                                                        min="10"
+                                                                        max="1000"
+                                                                        placeholder="Par défaut (auto / max-h)"
+                                                                        value={formState.establishmentInfo?.logoWidth || ''}
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value ? parseInt(e.target.value) : '';
+                                                                            handleUpdateEstablishmentInfo('logoWidth', val);
+                                                                        }}
+                                                                        className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-center outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                                    />
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1934,6 +2075,118 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                                         <p className="text-xs text-gray-400 mt-2">Sélectionnez une page pour commencer à modifier son contenu ou créez-en une nouvelle.</p>
                                                     </div>
                                                 )}
+                                            </div>
+                                        </div>
+
+                                        {/* Section Fiche d'inscription */}
+                                        <hr className="border-gray-100 my-8" />
+                                        
+                                        <div className="bg-gradient-to-r from-blue-50/50 to-indigo-50/30 p-8 rounded-3xl border border-blue-100/70 shadow-sm space-y-6">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2.5 bg-blue-600 rounded-2xl text-white shadow-md shadow-blue-100">
+                                                    <svg className="w-6 h-6 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                    </svg>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Fiche d'inscription téléchargeable</h3>
+                                                    <p className="text-xs text-slate-500 font-medium">Téléversez un document de type PDF qui sera accessible en téléchargement direct par les enseignants depuis le bandeau supérieur de la plateforme.</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+                                                {/* État actuel du document */}
+                                                <div className="bg-white p-6 rounded-2xl border border-gray-100 flex flex-col justify-between shadow-xs">
+                                                    <div>
+                                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Document actif</h4>
+                                                        {formState.registrationFormUrl ? (
+                                                            <div className="space-y-4">
+                                                                <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                                                    <div className="p-2 bg-red-100 text-red-600 rounded-lg">
+                                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                                                        </svg>
+                                                                    </div>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <p className="text-xs font-bold text-slate-700 truncate">{formState.registrationFormName || "fiche_inscription.pdf"}</p>
+                                                                        <a 
+                                                                            href={formState.registrationFormUrl} 
+                                                                            target="_blank" 
+                                                                            rel="noopener noreferrer"
+                                                                            className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-tight mt-1"
+                                                                        >
+                                                                            ouvrir dans un nouvel onglet
+                                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                                                            </svg>
+                                                                        </a>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                                <svg className="w-8 h-8 text-slate-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V4a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                                                                </svg>
+                                                                <p className="text-xs text-slate-400 italic">Aucune fiche d'inscription téléversée pour l'instant</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {formState.registrationFormUrl && (
+                                                        <div className="pt-4 mt-4 border-t border-slate-50 flex justify-end">
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleRemovePdf}
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all"
+                                                            >
+                                                                <TrashIcon className="w-3.5 h-3.5" />
+                                                                Supprimer
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Téléversement d'un nouveau document */}
+                                                <div className="bg-white p-6 rounded-2xl border border-gray-100 flex flex-col justify-between shadow-xs">
+                                                    <div>
+                                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Téléverser ou remplacer</h4>
+                                                        
+                                                        <label 
+                                                            className={`relative group border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${
+                                                                uploadingField === 'registrationForm' 
+                                                                    ? 'border-indigo-400 bg-indigo-50/20 pointer-events-none' 
+                                                                    : 'border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/10'
+                                                            }`}
+                                                        >
+                                                            <input 
+                                                                type="file" 
+                                                                accept="application/pdf" 
+                                                                className="hidden" 
+                                                                onChange={handlePdfUpload}
+                                                                disabled={uploadingField !== null}
+                                                            />
+                                                            {uploadingField === 'registrationForm' ? (
+                                                                <>
+                                                                    <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                                                    <p className="text-[11px] font-bold text-indigo-600 animate-pulse">Téléchargement en cours...</p>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform">
+                                                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                                                        </svg>
+                                                                    </div>
+                                                                    <div className="text-center">
+                                                                        <p className="text-xs font-bold text-slate-700">Cliquez pour choisir un fichier</p>
+                                                                        <p className="text-[10px] text-slate-400 mt-1 font-medium">Format PDF uniquement (Max 10 Mo)</p>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </label>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
