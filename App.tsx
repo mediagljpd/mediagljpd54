@@ -6,7 +6,8 @@ import { AppContext } from './AppContext';
 import { dataService } from './services/dataService';
 import { db, auth } from './services/firebase';
 import { signOut } from 'firebase/auth';
-import { collection, onSnapshot, query, orderBy, writeBatch, doc, getDocs, where, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, writeBatch, doc, getDocs, where, limit, updateDoc } from 'firebase/firestore';
+import { emailService } from './services/emailService';
 import BookingSystem from './components/BookingSystem';
 import AdminPanel from './components/AdminPanel';
 
@@ -39,94 +40,73 @@ export function App() {
     headerInfoWidth: 200,
     animators: [],
     emailTeacherSubject: "✅ Confirmation : {{animation_title}} le {{booking_date_clean}}",
-    emailTeacherTemplate: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-    <title>Confirmation Réservation</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-</head>
-<body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
-    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-        <tr>
-            <td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                    <tr>
-                        <td align="center" bgcolor="{{header_bg_color}}" style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                            MÉDIATHÈQUE DU GRAND LONGWY
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 40px 30px 20px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                <tr>
-                                    <td style="color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase;">
-                                        {{animation_title}}
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 15px 0 25px 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px;">
-                                        Bonjour {{to_name}}, votre réservation a bien été enregistrée.
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td bgcolor="#f8fafc" style="padding: 30px; color: #ffffff; text-align: center; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                            <tr>
-                                                <td width="50%" style="padding: 10px; border-right: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                                    <div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Date</div>
-                                                    <div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_date}}</div>
-                                                </td>
-                                                <td width="50%" style="padding: 10px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                                    <div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Horaire</div>
-                                                    <div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_time}}</div>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 40px 0 10px 0; font-size: 20px; font-weight: bold; color: #4338ca; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                        Votre classe
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 15px 0 0 0; font-size: 20px; border-top: 1px solid #eef2ff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 1.5;">
-                                        <b>École :</b> {{school_name}} ({{commune}})<br/>
-                                        <b>Niveau :</b> {{class_level}}<br/>
-                                        <b>Effectif :</b> {{student_count}} élèves / {{adult_count}} adultes<br/>
-                                        <b>Transport :</b> {{bus_info}}
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#fffbeb" style="border: 1px solid #fef3c7; border-radius: 8px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                <tr>
-                                    <td style="padding: 20px; font-size: 18px; color: #92400e; line-height: 24px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                        <b>Note :</b> pour toute demande de renseignement, modification ou annulation de rendez-vous, merci de nous contacter directement par téléphone au 03.82.23.15.76 ou par mail à l'adresse mediatheque@grandlongwy.fr
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;">
-                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
-                            <br/><br/>
-                            Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
-                            Ces informations sont utilisées exclusivement pour la gestion de votre réservation.
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>`,
+    emailTeacherTemplate: `<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="600" cellspacing="0" cellpadding="0" align="center">
+<tbody>
+<tr>
+<td style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" align="center" bgcolor="{{header_bg_color}}">M&Eacute;DIATH&Egrave;QUE DU GRAND LONGWY</td>
+</tr>
+<tr>
+<td style="padding: 40px 30px 20px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase;">{{animation_title}}</td>
+</tr>
+<tr>
+<td style="padding: 15px 0 25px 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px;">Bonjour {{to_name}}, votre r&eacute;servation a bien &eacute;t&eacute; enregistr&eacute;e.</td>
+</tr>
+<tr>
+<td style="padding: 30px; color: #ffffff; text-align: center; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" bgcolor="#f8fafc">
+<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="padding: 10px; border-right: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" width="50%">
+<div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Date</div>
+<div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_date}}</div>
+</td>
+<td style="padding: 10px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" width="50%">
+<div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Horaire</div>
+<div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_time}}</div>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 40px 0 10px 0; font-size: 20px; font-weight: bold; color: #4338ca; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Votre classe</td>
+</tr>
+<tr>
+<td style="padding: 15px 0 0 0; font-size: 20px; border-top: 1px solid #eef2ff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 1.5;"><strong>&Eacute;cole :</strong> {{school_name}} ({{commune}})<br><strong>Niveau :</strong> {{class_level}}<br><strong>Effectif :</strong> {{student_count}} &eacute;l&egrave;ves / {{adult_count}} adultes<br><strong>Transport :</strong> {{bus_info}}</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="border: 1px solid #fef3c7; border-radius: 8px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0" bgcolor="#fffbeb">
+<tbody>
+<tr>
+<td style="padding: 20px; font-size: 18px; color: #92400e; line-height: 24px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;"><strong>Note :</strong> pour toute demande de renseignement, modification ou annulation de rendez-vous, merci de nous contacter directement par t&eacute;l&eacute;phone au 03.82.23.15.76 ou par mail &agrave; l'adresse mediatheque@grandlongwy.fr</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;" align="center">Conform&eacute;ment au RGPD, vous disposez d'un droit d'acc&egrave;s et de rectification de vos donn&eacute;es. Ces informations sont utilis&eacute;es exclusivement pour la gestion de votre r&eacute;servation.</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>`,
     emailAnimatorSubject: "🗓️ {{animation_title}} le {{booking_date_clean}} @ {{booking_time}}",
     emailAnimatorTemplate: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -209,7 +189,7 @@ export function App() {
     </table>
 </body>
 </html>`,
-    emailListSubject: "📋 Liste des réservations ({{bookings_count}} animations)",
+    emailListSubject: "📋 Récapitulatif : {{bookings_count}} réservations sélectionnées",
     emailListTemplate: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -246,21 +226,21 @@ export function App() {
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding: 40px 30px 10px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                        <td style="padding: 40px 30px 10px 30px;">
                             <h1 style="margin: 0; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase; line-height: 1.2;">
                                 Liste des réservations
                             </h1>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding: 0 30px 30px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                        <td style="padding: 0 30px 30px 30px;">
                             <p style="margin: 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px; line-height: 1.5;">
-                                Voici le récapitulatif des {{bookings_count}} réservations sélectionnées.
+                                Voici le récapitulatif de vos accueils de classes.
                             </p>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                        <td style="padding: 0 30px 20px 30px;">
                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; border: 1px solid #e2e8f0; font-family: sans-serif;">
                                 <thead>
                                     <tr style="background-color: #f8fafc; text-align: left;">
@@ -278,11 +258,20 @@ export function App() {
                         </td>
                     </tr>
                     <tr>
+                        <td style="padding: 0 30px 40px 30px;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#fffbeb" style="border: 1px solid #fef3c7; border-radius: 8px;">
+                                <tr>
+                                    <td style="padding: 20px; font-size: 18px; color: #92400e; line-height: 24px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+                                        <b>Note :</b> pour toute demande de renseignement, modification ou annulation de rendez-vous, merci de nous contacter directement par téléphone au 03.82.23.15.76 ou par mail à l'adresse mediatheque@grandlongwy.fr
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
                         <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;">
-                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
-                            <br/><br/>
-                            Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
-                            Ces informations sont utilisées exclusivement pour la gestion de vos réservations.
+                                                                                    Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
+                             Ces informations sont utilisées exclusivement pour la gestion de vos réservations.
                         </td>
                     </tr>
                 </table>
@@ -291,6 +280,78 @@ export function App() {
     </table>
 </body>
 </html>`,
+    emailReminderEnabled: true,
+    emailReminderDays: 2,
+    emailReminderSubject: "⏰ Rappel : {{animation_title}} le {{booking_date_clean}}",
+    emailReminderTargetTeachers: true,
+    emailReminderTargetAnimators: false,
+    emailReminderTemplate: `<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="600" cellspacing="0" cellpadding="0" align="center">
+<tbody>
+<tr>
+<td style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" align="center" bgcolor="{{header_bg_color}}">M&Eacute;DIATH&Egrave;QUE DU GRAND LONGWY</td>
+</tr>
+<tr>
+<td style="padding: 40px 30px 20px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase;">⏰ RAPPEL : {{animation_title}}</td>
+</tr>
+<tr>
+<td style="padding: 15px 0 25px 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px;">Bonjour {{to_name}}, ceci est un rappel pour votre accueil de classe programmé très prochainement.</td>
+</tr>
+<tr>
+<td style="padding: 30px; color: #ffffff; text-align: center; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" bgcolor="#f8fafc">
+<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="padding: 10px; border-right: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" width="50%">
+<div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Date</div>
+<div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_date}}</div>
+</td>
+<td style="padding: 10px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" width="50%">
+<div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Horaire</div>
+<div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_time}}</div>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 40px 0 10px 0; font-size: 20px; font-weight: bold; color: #4338ca; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Votre classe</td>
+</tr>
+<tr>
+<td style="padding: 15px 0 0 0; font-size: 20px; border-top: 1px solid #eef2ff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 1.5;"><strong>&Eacute;cole :</strong> {{school_name}} ({{commune}})<br><strong>Niveau :</strong> {{class_level}}<br><strong>Effectif :</strong> {{student_count}} &eacute;l&egrave;ves / {{adult_count}} adultes<br><strong>Transport :</strong> {{bus_info}}</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="border: 1px solid #fef3c7; border-radius: 8px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0" bgcolor="#fffbeb">
+<tbody>
+<tr>
+<td style="padding: 20px; font-size: 18px; color: #92400e; line-height: 24px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;"><strong>Note :</strong> pour toute demande de renseignement, modification ou annulation de rendez-vous, merci de nous contacter directement par t&eacute;l&eacute;phone au 03.82.23.15.76 ou par mail &agrave; l'adresse mediatheque@grandlongwy.fr</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;" align="center">Conform&eacute;ment au RGPD, vous disposez d'un droit d'acc&egrave;s et de rectification de vos donn&eacute;es. Ces informations sont utilis&eacute;es exclusivement pour la gestion de votre r&eacute;servation.</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>`,
     ...LEGAL_TEMPLATES
   } as AppSettings);
 
@@ -315,6 +376,12 @@ export function App() {
         if (!mergedData.cookiesPolicy) mergedData.cookiesPolicy = settings.cookiesPolicy;
         if (!mergedData.emailListSubject) mergedData.emailListSubject = settings.emailListSubject;
         if (!mergedData.emailListTemplate) mergedData.emailListTemplate = settings.emailListTemplate;
+        if (mergedData.emailReminderEnabled === undefined) mergedData.emailReminderEnabled = true;
+        if (mergedData.emailReminderDays === undefined) mergedData.emailReminderDays = 2;
+        if (mergedData.emailReminderTargetTeachers === undefined) mergedData.emailReminderTargetTeachers = true;
+        if (mergedData.emailReminderTargetAnimators === undefined) mergedData.emailReminderTargetAnimators = false;
+        if (!mergedData.emailReminderSubject) mergedData.emailReminderSubject = settings.emailReminderSubject;
+        if (!mergedData.emailReminderTemplate) mergedData.emailReminderTemplate = settings.emailReminderTemplate;
 
         // Auto-migration to align existing DB templates with the new styling requirements
         let needsMigration = false;
@@ -423,6 +490,9 @@ export function App() {
         setSettings(prev => ({
             ...prev,
             ...mergedData,
+            // Explicitly clear optional fields if they are omitted/deleted in Firestore
+            registrationFormUrl: mergedData.registrationFormUrl !== undefined ? mergedData.registrationFormUrl : undefined,
+            registrationFormName: mergedData.registrationFormName !== undefined ? mergedData.registrationFormName : undefined,
             // Explicitly handle fields that might be empty/deleted in Firestore
             // but we want to ensure stay objects/arrays
             animators: mergedData.animators || prev.animators || [],
@@ -495,6 +565,55 @@ export function App() {
       unsubAnimations(); unsubBookings();
     };
   }, [db, settingsLoaded, settings.activeYear]);
+
+  // Automated email reminders check
+  useEffect(() => {
+    if (!db || bookings.length === 0 || !settings.emailReminderEnabled) return;
+
+    // Trigger reminders only if a user is logged in (admin/animator) to avoid visitors' sessions initiating parallel triggers
+    if (!currentUser) return;
+
+    const runRemindersCheck = async () => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const reminderDays = settings.emailReminderDays || 2;
+
+      for (const booking of bookings) {
+        if (booking.reminderSent) continue;
+
+        const bookingDate = new Date(booking.date);
+        bookingDate.setHours(0, 0, 0, 0);
+
+        // Diff in days
+        const diffTime = bookingDate.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        // If booking is within the reminder threshold (between 1 and reminderDays)
+        if (diffDays > 0 && diffDays <= reminderDays) {
+          console.log(`Envoi du rappel pour la réservation ${booking.id} (${booking.teacherName}) - Prévue dans ${diffDays} jours`);
+          
+          try {
+            // First, update the flag in Firestore to prevent duplicate triggers
+            const bookingRef = doc(db, "bookings", booking.id);
+            await updateDoc(bookingRef, { reminderSent: true });
+            
+            // Then send the email
+            await emailService.sendBookingReminder(booking, settings, animations);
+            console.log(`Rappel envoyé avec succès pour ${booking.id}`);
+          } catch (e) {
+            console.error(`Erreur lors de l'envoi du rappel pour ${booking.id}:`, e);
+          }
+        }
+      }
+    };
+
+    const timer = setTimeout(() => {
+      runRemindersCheck();
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [db, bookings, settings, currentUser]);
 
   // Auto-cleanup logic
   useEffect(() => {

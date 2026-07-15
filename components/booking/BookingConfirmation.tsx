@@ -1,9 +1,9 @@
 
 import React, { useEffect } from 'react';
-import { Booking } from '../../types';
+import { Booking, AppSettings } from '../../types';
 import { CheckIcon, XIcon } from '../Icons';
 
-const BookingConfirmation: React.FC<{ booking: Booking, onOk: () => void }> = ({ booking, onOk }) => {
+const BookingConfirmation: React.FC<{ booking: Booking, onOk: () => void, settings?: AppSettings }> = ({ booking, onOk, settings }) => {
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onOk();
@@ -42,12 +42,21 @@ const BookingConfirmation: React.FC<{ booking: Booking, onOk: () => void }> = ({
                     </p>
                 </div>
 
-                <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                    <p className="text-blue-800 text-sm leading-relaxed">
-                        Un mail de confirmation a été envoyé à l'adresse ci-dessous, si vous n'avez rien reçu pensez à vérifier votre dossier courrier indésirable : <br/>
-                        <span className="font-bold text-blue-950 text-base mt-1 block">{booking.email}</span>
-                    </p>
-                </div>
+                {settings?.emailTeacherEnabled !== false ? (
+                    <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                        <p className="text-blue-800 text-sm leading-relaxed">
+                            Un mail de confirmation a été envoyé à l'adresse ci-dessous, si vous n'avez rien reçu pensez à vérifier votre dossier courrier indésirable : <br/>
+                            <span className="font-bold text-blue-950 text-base mt-1 block">{booking.email}</span>
+                        </p>
+                    </div>
+                ) : (
+                    <div className="mt-8 p-4 bg-amber-50 rounded-xl border border-amber-200">
+                        <p className="text-amber-800 text-sm leading-relaxed">
+                            ⚠️ <span className="font-semibold">Note :</span> L'envoi automatique d'e-mails de confirmation est actuellement désactivé. Aucun e-mail n'a été envoyé à l'adresse : <br/>
+                            <span className="font-bold text-amber-950 text-base mt-1 block">{booking.email}</span>
+                        </p>
+                    </div>
+                )}
 
                 <button 
                     onClick={onOk} 

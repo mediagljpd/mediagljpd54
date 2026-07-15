@@ -1,16 +1,16 @@
 
-import { Booking, Animator, AppSettings } from '../types';
+import { Booking, Animator, AppSettings, Animation } from '../types';
 
 /**
  * CONFIGURATION EMAILJS
  */
-const MAIN_SERVICE_ID = 'service_o5lbm0b'; 
+const MAIN_SERVICE_ID = 'service_2tqb6yh'; 
 const MAIN_PUBLIC_KEY = 'f3k30dsN4n8aHPNzR'; 
 
-const TEACHER_SERVICE_ID = 'service_pqptrua'; 
+const TEACHER_SERVICE_ID = 'service_4usv5u7'; 
 const TEACHER_PUBLIC_KEY = 'zcDY1OLyk44t-qy2G'; 
 
-const TEMPLATE_ID_RECOVERY = 'template_recovery';
+const TEMPLATE_ID_RAPPEL = 'template_rappel';
 const TEMPLATE_ID_CONFIRMATION_TEACHER = 'template_enseignant';
 const TEMPLATE_ID_NOTIFICATION_ANIMATOR = 'template_animateur';
 const TEMPLATE_ID_BOOKING_LIST = 'template_liste';
@@ -76,33 +76,123 @@ export const emailService = {
         }
     },
 
-    sendRecoveryEmail: async (adminEmail: string, adminUsername: string, adminPassword: string) => {
-        if (!window.emailjs || !adminEmail) {
-            console.error("EmailJS: Email d'administration manquant.");
+    sendBookingReminder: async (booking: Booking, settings: AppSettings, animations?: Animation[]) => {
+        if (!window.emailjs) return;
+        
+        if (settings.emailReminderEnabled === false) {
+            console.log("EmailJS: Envoi de l'e-mail de rappel automatique désactivé dans les paramètres.");
             return;
         }
-        
-        const targetEmail = adminEmail.trim();
-        const templateParams = {
-            to_email: targetEmail,
-            username: adminUsername,
-            password: adminPassword,
-            app_url: window.location.origin,
-            app_name: "Gestion des Réservations",
-            reply_to: targetEmail
-        };
 
-        try {
-            await window.emailjs.send(MAIN_SERVICE_ID, TEMPLATE_ID_RECOVERY, templateParams, MAIN_PUBLIC_KEY);
-            console.log('EmailJS: E-mail de récupération envoyé.');
-        } catch (error) {
-            console.error('EmailJS Error (Récupération):', error);
-            throw error;
+        const info = settings.establishmentInfo || { name: "Médiathèque du Grand Longwy", email: "", phone: "", address: "" };
+
+        // 1. Send to Teacher if enabled (default is true)
+        const sendToTeacher = settings.emailReminderTargetTeachers !== false;
+        if (sendToTeacher && booking.email && booking.email.trim() !== "") {
+            const targetEmail = booking.email.trim();
+            const params = {
+                to_email: targetEmail,
+                to_name: booking.teacherName,
+                teacher_name: booking.teacherName,
+                animation_title: booking.animationTitle,
+                booking_date: formatLongDateOnlyFR(booking.date),
+                booking_date_short: formatDateFR(booking.date),
+                booking_date_clean: formatDateFR(booking.date).replace(/\//g, '.'),
+                booking_time: `${booking.time}h00`,
+                school_name: booking.schoolName,
+                commune: booking.commune,
+                student_count: booking.studentCount,
+                adult_count: booking.adultCount,
+                class_level: booking.classLevel || "",
+                bus_info: booking.noBusRequired ? "Non" : `Oui ${booking.busInfo ? `(${booking.busInfo})` : ""}`,
+                teacher_phone: booking.phoneNumber,
+                teacher_email: booking.email,
+                establishment_name: info.name,
+                logo_url: info.logoUrl || "",
+                header_bg_color: settings.headerBgColor || "#0f172a",
+                reply_to: 'mediatheque@grandlongwy.fr',
+                from_name: info.name,
+                from_email: 'mediatheque@grandlongwy.fr'
+            };
+
+            let dynamicParams: any = { ...params };
+            if (settings.emailReminderTemplate) {
+                dynamicParams.message_html = renderTemplate(settings.emailReminderTemplate, params);
+            }
+            if (settings.emailReminderSubject) {
+                dynamicParams.subject = renderTemplate(settings.emailReminderSubject, params);
+            }
+
+            try {
+                await window.emailjs.send(MAIN_SERVICE_ID, TEMPLATE_ID_RAPPEL, dynamicParams, MAIN_PUBLIC_KEY);
+                console.log('EmailJS: Rappel automatique enseignant envoyé.');
+            } catch (error) {
+                console.error('EmailJS Error (Rappel Enseignant):', error);
+            }
+        }
+
+        // 2. Send to Animator if enabled (default is false)
+        const sendToAnimator = settings.emailReminderTargetAnimators === true;
+        if (sendToAnimator && animations) {
+            const animObj = animations.find(a => a.id === booking.animationId || a.title === booking.animationTitle);
+            const animatorName = animObj?.animator;
+            if (animatorName) {
+                const animator = (settings.animators || []).find(
+                    a => a.name.trim().toLowerCase() === animatorName.trim().toLowerCase()
+                );
+                if (animator && animator.email && animator.email.trim() !== "") {
+                    const animatorEmail = animator.email.trim();
+                    const params = {
+                        to_email: animatorEmail,
+                        to_name: animator.name,
+                        teacher_name: booking.teacherName,
+                        animation_title: booking.animationTitle,
+                        booking_date: formatLongDateOnlyFR(booking.date),
+                        booking_date_short: formatDateFR(booking.date),
+                        booking_date_clean: formatDateFR(booking.date).replace(/\//g, '.'),
+                        booking_time: `${booking.time}h00`,
+                        school_name: booking.schoolName,
+                        commune: booking.commune,
+                        student_count: booking.studentCount,
+                        adult_count: booking.adultCount,
+                        class_level: booking.classLevel || "",
+                        bus_info: booking.noBusRequired ? "Non" : `Oui ${booking.busInfo ? `(${booking.busInfo})` : ""}`,
+                        teacher_phone: booking.phoneNumber,
+                        teacher_email: booking.email,
+                        establishment_name: info.name,
+                        logo_url: info.logoUrl || "",
+                        header_bg_color: settings.headerBgColor || "#0f172a",
+                        reply_to: 'mediatheque@grandlongwy.fr',
+                        from_name: info.name,
+                        from_email: 'mediatheque@grandlongwy.fr'
+                    };
+
+                    let dynamicParams: any = { ...params };
+                    if (settings.emailReminderTemplate) {
+                        dynamicParams.message_html = renderTemplate(settings.emailReminderTemplate, params);
+                    }
+                    if (settings.emailReminderSubject) {
+                        dynamicParams.subject = renderTemplate(settings.emailReminderSubject, params);
+                    }
+
+                    try {
+                        await window.emailjs.send(MAIN_SERVICE_ID, TEMPLATE_ID_RAPPEL, dynamicParams, MAIN_PUBLIC_KEY);
+                        console.log('EmailJS: Rappel automatique animateur envoyé.');
+                    } catch (error) {
+                        console.error('EmailJS Error (Rappel Animateur):', error);
+                    }
+                }
+            }
         }
     },
 
     sendBookingConfirmation: async (booking: Booking, settings: AppSettings) => {
         if (!window.emailjs) return;
+        
+        if (settings.emailTeacherEnabled === false) {
+            console.log("EmailJS: Envoi de l'e-mail de confirmation (Enseignant) désactivé dans les paramètres.");
+            return;
+        }
         
         if (!booking.email || booking.email.trim() === "") {
             return;
@@ -131,7 +221,9 @@ export const emailService = {
             establishment_name: info.name,
             logo_url: info.logoUrl || "",
             header_bg_color: settings.headerBgColor || "#0f172a",
-            reply_to: 'no-reply@grandlongwy.fr' // No-reply strategy
+            reply_to: 'mediatheque@grandlongwy.fr', // No-reply strategy
+            from_name: info.name,
+            from_email: 'mediatheque@grandlongwy.fr'
         };
 
         // Si un template personnalisé existe, on pré-remplit le message
@@ -155,6 +247,11 @@ export const emailService = {
 
     sendAnimatorNotification: async (booking: Booking, animator: Animator, settings: AppSettings) => {
         if (!window.emailjs) return;
+        
+        if (settings.emailAnimatorEnabled === false) {
+            console.log("EmailJS: Envoi de l'e-mail de notification (Animateur) désactivé dans les paramètres.");
+            return;
+        }
         
         if (!animator.email || animator.email.trim() === "") {
             return;
@@ -188,7 +285,9 @@ export const emailService = {
             establishment_name: info.name,
             logo_url: info.logoUrl || "",
             header_bg_color: settings.headerBgColor || "#0f172a",
-            reply_to: 'no-reply@grandlongwy.fr'
+            reply_to: 'mediatheque@grandlongwy.fr',
+            from_name: info.name,
+            from_email: 'mediatheque@grandlongwy.fr'
         };
 
         let dynamicParams: any = { ...params };
@@ -209,6 +308,11 @@ export const emailService = {
 
     sendBookingList: async (recipientEmail: string, bookings: Booking[], settings: AppSettings) => {
         if (!window.emailjs || !recipientEmail) return;
+
+        if (settings.emailListEnabled === false) {
+            console.log("EmailJS: Envoi de l'e-mail récapitulatif (Liste de réservations) désactivé dans les paramètres.");
+            return;
+        }
 
         const info = settings.establishmentInfo || { name: "Médiathèque du Grand Longwy", logoUrl: "" };
         
@@ -236,7 +340,9 @@ export const emailService = {
             establishment_name: info.name,
             logo_url: info.logoUrl || "",
             header_bg_color: settings.headerBgColor || "#059669",
-            reply_to: 'no-reply@grandlongwy.fr'
+            reply_to: 'mediatheque@grandlongwy.fr',
+            from_name: info.name,
+            from_email: 'mediatheque@grandlongwy.fr'
         };
 
         // Prepare the final payload for EmailJS

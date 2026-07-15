@@ -30,6 +30,8 @@ export interface Booking {
   noBusRequired?: boolean;
   busStatus?: 'pending' | 'validated';
   busCost?: number;
+  isOutOfGrandLongwy?: boolean;
+  reminderSent?: boolean;
 }
 
 export interface Holiday {
@@ -185,10 +187,19 @@ export interface AppSettings {
   // Email Templates
   emailTeacherTemplate?: string;
   emailTeacherSubject?: string;
+  emailTeacherEnabled?: boolean;
   emailAnimatorTemplate?: string;
   emailAnimatorSubject?: string;
+  emailAnimatorEnabled?: boolean;
   emailListTemplate?: string;
   emailListSubject?: string;
+  emailListEnabled?: boolean;
+  emailReminderTemplate?: string;
+  emailReminderSubject?: string;
+  emailReminderEnabled?: boolean;
+  emailReminderDays?: number;
+  emailReminderTargetTeachers?: boolean;
+  emailReminderTargetAnimators?: boolean;
 }
 
 export enum View {

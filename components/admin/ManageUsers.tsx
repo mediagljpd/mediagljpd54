@@ -16,8 +16,11 @@ interface ManageUsersProps extends AdminSubComponentProps {
     setUsers?: (newUsers: AdminUser[]) => void;
 }
 
-const getMaskedPassword = (pwd: string | undefined): string => {
+const getMaskedPassword = (pwd: string | undefined, role?: UserRole): string => {
     if (!pwd) return '';
+    if (role === UserRole.USER) {
+        return '********';
+    }
     if (pwd === 'GrandLongwy@2026') return 'GrandLongwy@2026';
     const len = pwd.length;
     if (len <= 2) {
@@ -120,7 +123,7 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
         let isPasswordChanged = false;
 
         if (editingUser) {
-            const masked = getMaskedPassword(editingUser.password);
+            const masked = getMaskedPassword(editingUser.password, editingUser.role);
             if (formData.password === masked) {
                 // Password was NOT saved/modified by the admin (left in its masked display state)
                 finalPassword = editingUser.password || '';
@@ -354,7 +357,7 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
                                                 <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium my-0.5">
                                                     <span>Mot de passe :</span>
                                                     <code className="text-[11px] bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200 font-semibold font-mono text-gray-700">
-                                                        {getMaskedPassword(user.password)}
+                                                        {getMaskedPassword(user.password, user.role)}
                                                     </code>
                                                 </div>
                                             )}
@@ -381,7 +384,7 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
                                                     setEditingUser(user);
                                                     setFormData({ 
                                                         username: user.username,
-                                                        password: getMaskedPassword(user.password || ''),
+                                                        password: getMaskedPassword(user.password || '', user.role),
                                                         role: user.role,
                                                         animatorName: user.animatorName || '',
                                                         permissions: { canManageBus: false, ...user.permissions },
@@ -511,9 +514,16 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
                                         />
                                     </div>
                                 </div>
-                                <div className="md:col-span-2 mt-1">
-                                    <PasswordPolicy password={formData.password} singleLine={true} />
-                                </div>
+                                {editingUser && formData.password === getMaskedPassword(editingUser.password, formData.role) ? (
+                                    <div className="md:col-span-2 mt-1 text-xs text-gray-500 bg-gray-50 px-4 py-3 rounded-xl border border-gray-100 flex items-center gap-2">
+                                        <LockIcon className="w-4 h-4 text-blue-500" />
+                                        <span>Le mot de passe actuel est conservé et masqué de manière sécurisée. Saisissez un nouveau mot de passe pour le modifier.</span>
+                                    </div>
+                                ) : (
+                                    <div className="md:col-span-2 mt-1">
+                                        <PasswordPolicy password={formData.password} singleLine={true} />
+                                    </div>
+                                )}
                             </div>
 
                             {editingUser && (
@@ -543,24 +553,34 @@ const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setU
                                             value={formData.role}
                                             onChange={(e) => {
                                                 const newRole = e.target.value as UserRole;
-                                                setFormData(prev => ({
-                                                    ...prev,
-                                                    role: newRole,
-                                                    // Administrators shouldn't need a specific animator linkage
-                                                    animatorName: newRole === UserRole.ADMIN ? '' : prev.animatorName,
-                                                    // Admins have all permissions preset, restricted users are all false
-                                                    permissions: newRole === UserRole.ADMIN ? {
-                                                        canModifySettings: true,
-                                                        canManageVacations: true,
-                                                        canManageAnimations: true,
-                                                        canManageBus: true
-                                                    } : {
-                                                        canModifySettings: false,
-                                                        canManageVacations: false,
-                                                        canManageAnimations: false,
-                                                        canManageBus: false
+                                                setFormData(prev => {
+                                                    let updatedPassword = prev.password;
+                                                    if (editingUser) {
+                                                        const currentMasked = getMaskedPassword(editingUser.password, prev.role);
+                                                        if (prev.password === currentMasked) {
+                                                            updatedPassword = getMaskedPassword(editingUser.password, newRole);
+                                                        }
                                                     }
-                                                }));
+                                                    return {
+                                                        ...prev,
+                                                        role: newRole,
+                                                        password: updatedPassword,
+                                                        // Administrators shouldn't need a specific animator linkage
+                                                        animatorName: newRole === UserRole.ADMIN ? '' : prev.animatorName,
+                                                        // Admins have all permissions preset, restricted users are all false
+                                                        permissions: newRole === UserRole.ADMIN ? {
+                                                            canModifySettings: true,
+                                                            canManageVacations: true,
+                                                            canManageAnimations: true,
+                                                            canManageBus: true
+                                                        } : {
+                                                            canModifySettings: false,
+                                                            canManageVacations: false,
+                                                            canManageAnimations: false,
+                                                            canManageBus: false
+                                                        }
+                                                    };
+                                                });
                                             }}
                                             className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none appearance-none"
                                         >

@@ -33,14 +33,38 @@ const RandomBookingGenerator: React.FC<{
         
         // Use real settings if available, fallback to fakes if not
         const levels = (settings.classLevels && settings.classLevels.length > 0) ? settings.classLevels : ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
-        const communes = (settings.communes && settings.communes.length > 0) 
-            ? settings.communes.map(c => `${c.name} (${c.postalCode})`) 
-            : ['MEXY (54135)', 'LONGWY (54400)', 'HERSERANGE (54440)'];
-        const schools = (settings.schools && settings.schools.length > 0) ? settings.schools.map(s => s.name) : ['École Pasteur', 'École Victor Hugo'];
+        
+        let commune = '';
+        let schoolName = '';
+
+        if (settings.communes && settings.communes.length > 0) {
+            const randomCommune = settings.communes[Math.floor(Math.random() * settings.communes.length)];
+            commune = `${randomCommune.name} (${randomCommune.postalCode})`;
+            
+            const matchingSchools = (settings.schools && settings.schools.length > 0)
+                ? settings.schools.filter(s => s.communeId === randomCommune.id)
+                : [];
+            
+            if (matchingSchools.length > 0) {
+                schoolName = matchingSchools[Math.floor(Math.random() * matchingSchools.length)].name;
+            } else if (settings.schools && settings.schools.length > 0) {
+                schoolName = settings.schools[Math.floor(Math.random() * settings.schools.length)].name;
+            } else {
+                schoolName = 'École Pasteur';
+            }
+        } else {
+            const defaultCommunes = ['MEXY (54135)', 'LONGWY (54400)', 'HERSERANGE (54440)'];
+            commune = defaultCommunes[Math.floor(Math.random() * defaultCommunes.length)];
+            
+            if (settings.schools && settings.schools.length > 0) {
+                schoolName = settings.schools[Math.floor(Math.random() * settings.schools.length)].name;
+            } else {
+                const defaultSchools = ['École Pasteur', 'École Victor Hugo', 'École Jean de La Fontaine'];
+                schoolName = defaultSchools[Math.floor(Math.random() * defaultSchools.length)];
+            }
+        }
 
         const classLevel = levels[Math.floor(Math.random() * levels.length)];
-        const commune = communes[Math.floor(Math.random() * communes.length)];
-        const schoolName = schools[Math.floor(Math.random() * schools.length)];
         
         return {
             animationId: animation.id,

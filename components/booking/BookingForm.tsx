@@ -29,6 +29,7 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
         adultCount: '' as any,
         busInfo: '',
         noBusRequired: false,
+        isOutOfGrandLongwy: false,
     });
 
     const [communeSearch, setCommuneSearch] = useState('');
@@ -54,6 +55,24 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
 
     const [showErrors, setShowErrors] = useState(false);
 
+    const isCommuneValid = useMemo(() => {
+        if (formData.isOutOfGrandLongwy) {
+            return formData.commune.trim().length > 0;
+        }
+        if (!selectedCommuneId) return false;
+        const comm = (settings.communes || []).find(c => c.id === selectedCommuneId);
+        if (!comm) return false;
+        return formData.commune === `${comm.name} (${comm.postalCode})`;
+    }, [formData.isOutOfGrandLongwy, selectedCommuneId, settings.communes, formData.commune]);
+
+    const isSchoolValid = useMemo(() => {
+        if (formData.isOutOfGrandLongwy) {
+            return formData.schoolName.trim().length > 0;
+        }
+        if (!selectedCommuneId || !formData.schoolName) return false;
+        return (settings.schools || []).some(s => s.communeId === selectedCommuneId && s.name === formData.schoolName);
+    }, [formData.isOutOfGrandLongwy, selectedCommuneId, settings.schools, formData.schoolName]);
+
     const handleClassLevelToggle = (level: string) => {
         const currentLevels = formData.classLevel ? formData.classLevel.split(', ') : [];
         let newLevels;
@@ -71,10 +90,26 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
         setFormData(prev => ({ ...prev, [name]: val }));
     };
 
+    const handleOutOfGrandLongwyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const checked = e.target.checked;
+        setFormData(prev => ({
+            ...prev,
+            isOutOfGrandLongwy: checked,
+            commune: '',
+            schoolName: '',
+            noBusRequired: checked ? true : false,
+            busInfo: checked ? '' : prev.busInfo,
+        }));
+        setCommuneSearch('');
+        setSelectedCommuneId(null);
+        setShowCommuneList(false);
+        if (showErrors) setShowErrors(false);
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!formData.classLevel) {
+        if (!formData.classLevel || !isCommuneValid || !isSchoolValid) {
             setShowErrors(true);
             return;
         }
@@ -139,30 +174,63 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                     </div>
 
                     <div className="col-span-2 md:col-span-1 relative">
-                        <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                            <MapPinIcon className="w-4 h-4 text-red-500" />
-                            Commune
-                        </label>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="block text-sm font-bold text-gray-700 flex items-center gap-2">
+                                <MapPinIcon className="w-4 h-4 text-red-500" />
+                                Commune
+                            </label>
+                            <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-indigo-600 font-bold">
+                                <input 
+                                    type="checkbox" 
+                                    checked={formData.isOutOfGrandLongwy}
+                                    onChange={handleOutOfGrandLongwyChange}
+                                    className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                                />
+                                Je suis situé hors du Grand Longwy
+                            </label>
+                        </div>
                         <div className="relative">
                             <input 
                                 type="text" 
-                                placeholder="Tapez le nom ou le code postal..." 
-                                value={communeSearch || formData.commune}
+                                placeholder={formData.isOutOfGrandLongwy ? "ex: Metz" : "Tapez le nom ou le code postal..."} 
+                                value={formData.isOutOfGrandLongwy ? formData.commune : (communeSearch || formData.commune)}
                                 onChange={(e) => {
-                                    setCommuneSearch(e.target.value);
-                                    setShowCommuneList(true);
-                                    if (formData.commune) {
-                                        setFormData(prev => ({ ...prev, commune: '', schoolName: '' }));
-                                        setSelectedCommuneId(null);
+                                    const val = e.target.value;
+                                    if (formData.isOutOfGrandLongwy) {
+                                        setFormData(prev => ({ ...prev, commune: val }));
+                                    } else {
+                                        setCommuneSearch(val);
+                                        setShowCommuneList(true);
+                                        if (formData.commune) {
+                                            setFormData(prev => ({ ...prev, commune: '', schoolName: '' }));
+                                            setSelectedCommuneId(null);
+                                        }
                                     }
                                 }}
-                                onFocus={() => setShowCommuneList(true)}
-                                className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none pl-10"
+                                onFocus={() => {
+                                    if (!formData.isOutOfGrandLongwy) setShowCommuneList(true);
+                                }}
+                                onBlur={() => {
+                                    setTimeout(() => {
+                                        setShowCommuneList(false);
+                                        // If not out of Grand Longwy and no valid selection has been made yet, clear the temporary search
+                                        if (!formData.isOutOfGrandLongwy && !selectedCommuneId) {
+                                            setCommuneSearch('');
+                                        }
+                                    }, 250);
+                                }}
+                                className={`w-full p-2.5 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none pl-10 ${showErrors && !isCommuneValid ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                             />
                             <SearchIcon className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                         </div>
                         
-                        {showCommuneList && filteredCommunes.length > 0 && (
+                        {showErrors && !isCommuneValid && (
+                            <p className="text-red-500 text-[10px] font-bold mt-1 animate-pulse">
+                                {formData.isOutOfGrandLongwy ? "Veuillez renseigner une commune." : "Veuillez sélectionner une commune valide dans la liste."}
+                            </p>
+                        )}
+                        
+                        {!formData.isOutOfGrandLongwy && showCommuneList && filteredCommunes.length > 0 && (
                             <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
                                 {filteredCommunes.map(c => (
                                     <button
@@ -189,20 +257,37 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                             <BuildingLibraryIcon className="w-4 h-4 text-indigo-500" />
                             Nom de l'école
                         </label>
-                        <select 
-                            name="schoolName" 
-                            value={formData.schoolName}
-                            onChange={(e) => setFormData(prev => ({ ...prev, schoolName: e.target.value }))}
-                            disabled={!selectedCommuneId}
-                            required
-                            className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
-                        >
-                            <option value="">-- Sélectionnez une école --</option>
-                            {filteredSchools.map(s => (
-                                <option key={s.id} value={s.name}>{s.name}</option>
-                            ))}
-                        </select>
-                        {selectedSchool && (
+                        {formData.isOutOfGrandLongwy ? (
+                            <input 
+                                type="text"
+                                name="schoolName"
+                                value={formData.schoolName}
+                                onChange={(e) => setFormData(prev => ({ ...prev, schoolName: e.target.value }))}
+                                required
+                                placeholder="ex: École primaire de Metz"
+                                className={`w-full p-2.5 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none ${showErrors && !isSchoolValid ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                            />
+                        ) : (
+                            <select 
+                                name="schoolName" 
+                                value={formData.schoolName}
+                                onChange={(e) => setFormData(prev => ({ ...prev, schoolName: e.target.value }))}
+                                disabled={!selectedCommuneId}
+                                required
+                                className={`w-full p-2.5 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed ${showErrors && !isSchoolValid ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                            >
+                                <option value="">-- Sélectionnez une école --</option>
+                                {filteredSchools.map(s => (
+                                    <option key={s.id} value={s.name}>{s.name}</option>
+                                ))}
+                            </select>
+                        )}
+                        {showErrors && !isSchoolValid && (
+                            <p className="text-red-500 text-[10px] font-bold mt-1 animate-pulse">
+                                {formData.isOutOfGrandLongwy ? "Veuillez renseigner une école." : "Veuillez sélectionner une école dans la liste."}
+                            </p>
+                        )}
+                        {!formData.isOutOfGrandLongwy && selectedSchool && (
                             <div className="mt-2 p-2 bg-indigo-50 rounded border border-indigo-100 flex items-start gap-2">
                                 <MapPinIcon className="w-3.5 h-3.5 text-indigo-400 mt-0.5" />
                                 <p className="text-[11px] text-indigo-700 leading-tight">
@@ -276,11 +361,12 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                                     id="busInfo" 
                                     name="busInfo" 
                                     value={formData.busInfo}
-                                    placeholder="Où et quelle heure doit passer le bus ? Précisez l'adresse et l'horaire..." 
+                                    placeholder={formData.isOutOfGrandLongwy ? "Non disponible hors Grand Longwy" : "Où et quelle heure doit passer le bus ? Précisez l'adresse et l'horaire..."} 
                                     onChange={handleChange} 
                                     required={!formData.noBusRequired}
+                                    disabled={formData.noBusRequired || formData.isOutOfGrandLongwy}
                                     rows={2}
-                                    className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 h-[58px] resize-none text-xs"
+                                    className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 h-[58px] resize-none text-xs disabled:bg-gray-100 disabled:cursor-not-allowed"
                                 />
                             </div>
 
@@ -292,7 +378,8 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                                         name="noBusRequired" 
                                         checked={formData.noBusRequired} 
                                         onChange={handleChange}
-                                        className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-blue-500 border-blue-300 flex-shrink-0"
+                                        disabled={formData.isOutOfGrandLongwy}
+                                        className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-blue-500 border-blue-300 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                     />
                                     <span className="text-xs sm:text-sm font-bold text-blue-900 leading-snug pt-0.5">
                                         Nous ne souhaitons pas bénéficier de la prise en charge du bus par le Grand Longwy

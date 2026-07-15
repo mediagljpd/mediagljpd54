@@ -7,7 +7,7 @@ import { AdminSubComponentProps } from './types';
 import { storageService } from '../../services/storageService';
 import { backupService } from '../../services/backupService';
 import ConfirmationModal from '../shared/ConfirmationModal';
-import { PaintBrushIcon, PaletteIcon, CogIcon, BellIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, InformationCircleIcon } from '../Icons';
+import { PaintBrushIcon, PaletteIcon, CogIcon, BellIcon, ClockIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, InformationCircleIcon } from '../Icons';
 import * as XLSX from 'xlsx';
 import { validatePassword } from '../../utils/validators';
 import PasswordPolicy from './PasswordPolicy';
@@ -21,94 +21,143 @@ import ManageStats from './ManageStats';
 type SettingsTab = 'design' | 'rules' | 'data' | 'stats' | 'users' | 'footer' | 'security' | 'pages' | 'maintenance' | 'emails' | 'information';
 
 const DEFAULT_EMAIL_TEACHER_SUBJECT = "✅ Confirmation : {{animation_title}} le {{booking_date_clean}}";
-const DEFAULT_EMAIL_TEACHER_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-    <title>Confirmation Réservation</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-</head>
-<body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
-    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-        <tr>
-            <td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                    <tr>
-                        <td align="center" bgcolor="{{header_bg_color}}" style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                            MÉDIATHÈQUE DU GRAND LONGWY
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 40px 30px 20px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                <tr>
-                                    <td style="color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase;">
-                                        {{animation_title}}
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 15px 0 25px 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px;">
-                                        Bonjour {{to_name}}, votre réservation a bien été enregistrée.
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td bgcolor="#f8fafc" style="padding: 30px; color: #ffffff; text-align: center; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                            <tr>
-                                                <td width="50%" style="padding: 10px; border-right: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                                    <div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Date</div>
-                                                    <div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_date}}</div>
-                                                </td>
-                                                <td width="50%" style="padding: 10px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                                    <div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Horaire</div>
-                                                    <div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_time}}</div>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 40px 0 10px 0; font-size: 20px; font-weight: bold; color: #4338ca; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                        Votre classe
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 15px 0 0 0; font-size: 20px; border-top: 1px solid #eef2ff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 1.5;">
-                                        <b>École :</b> {{school_name}} ({{commune}})<br/>
-                                        <b>Niveau :</b> {{class_level}}<br/>
-                                        <b>Effectif :</b> {{student_count}} élèves / {{adult_count}} adultes<br/>
-                                        <b>Transport :</b> {{bus_info}}
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#fffbeb" style="border: 1px solid #fef3c7; border-radius: 8px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                <tr>
-                                    <td style="padding: 20px; font-size: 18px; color: #92400e; line-height: 24px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
-                                        <b>Note :</b> pour toute demande de renseignement, modification ou annulation de rendez-vous, merci de nous contacter directement par téléphone au 03.82.23.15.76 ou par mail à l'adresse mediatheque@grandlongwy.fr
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
+const DEFAULT_EMAIL_TEACHER_TEMPLATE = `<body style="margin: 0; padding: 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; background-color: #f1f5f9;">
+<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="600" cellspacing="0" cellpadding="0" align="center">
+<tbody>
+<tr>
+<td style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" align="center" bgcolor="{{header_bg_color}}">M&Eacute;DIATH&Egrave;QUE DU GRAND LONGWY</td>
+</tr>
+<tr>
+<td style="padding: 40px 30px 20px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase;">{{animation_title}}</td>
+</tr>
+<tr>
+<td style="padding: 15px 0 25px 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px;">Bonjour {{to_name}}, votre r&eacute;servation a bien &eacute;t&eacute; enregistr&eacute;e.</td>
+</tr>
+<tr>
+<td style="padding: 30px; color: #ffffff; text-align: center; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" bgcolor="#f8fafc">
+<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="padding: 10px; border-right: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" width="50%">
+<div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Date</div>
+<div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_date}}</div>
+</td>
+<td style="padding: 10px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" width="50%">
+<div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Horaire</div>
+<div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_time}}</div>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 40px 0 10px 0; font-size: 20px; font-weight: bold; color: #4338ca; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Votre classe</td>
+</tr>
+<tr>
+<td style="padding: 15px 0 0 0; font-size: 20px; border-top: 1px solid #eef2ff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 1.5;"><strong>&Eacute;cole :</strong> {{school_name}} ({{commune}})<br><strong>Niveau :</strong> {{class_level}}<br><strong>Effectif :</strong> {{student_count}} &eacute;l&egrave;ves / {{adult_count}} adultes<br><strong>Transport :</strong> {{bus_info}}</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="border: 1px solid #fef3c7; border-radius: 8px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0" bgcolor="#fffbeb">
+<tbody>
+<tr>
+<td style="padding: 20px; font-size: 18px; color: #92400e; line-height: 24px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;"><strong>Note :</strong> pour toute demande de renseignement, modification ou annulation de rendez-vous, merci de nous contacter directement par t&eacute;l&eacute;phone au 03.82.23.15.76 ou par mail &agrave; l'adresse mediatheque@grandlongwy.fr</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;" align="center">Conform&eacute;ment au RGPD, vous disposez d'un droit d'acc&egrave;s et de rectification de vos donn&eacute;es. Ces informations sont utilis&eacute;es exclusivement pour la gestion de votre r&eacute;servation.</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>`;
 
-                    <tr>
-                        <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;">
-                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
-                            <br/><br/>
-                            Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
-                            Ces informations sont utilisées exclusivement pour la gestion de votre réservation.
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>`;
+const DEFAULT_EMAIL_REMINDER_SUBJECT = "⏰ Rappel : {{animation_title}} le {{booking_date_clean}}";
+const DEFAULT_EMAIL_REMINDER_TEMPLATE = `<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="padding: 20px 0 30px 0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="border: 1px solid #e2e8f0; border-collapse: collapse; background-color: #ffffff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="600" cellspacing="0" cellpadding="0" align="center">
+<tbody>
+<tr>
+<td style="padding: 40px 0 30px 0; color: #000000; font-size: 26px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" align="center" bgcolor="{{header_bg_color}}">M&Eacute;DIATH&Egrave;QUE DU GRAND LONGWY</td>
+</tr>
+<tr>
+<td style="padding: 40px 30px 20px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 28px; font-weight: bold; text-transform: uppercase;">⏰ RAPPEL : {{animation_title}}</td>
+</tr>
+<tr>
+<td style="padding: 15px 0 25px 0; color: #64748b; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 20px;">Bonjour {{to_name}}, ceci est un rappel pour votre accueil de classe programmé très prochainement.</td>
+</tr>
+<tr>
+<td style="padding: 30px; color: #ffffff; text-align: center; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" bgcolor="#f8fafc">
+<table style="font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0">
+<tbody>
+<tr>
+<td style="padding: 10px; border-right: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" width="50%">
+<div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Date</div>
+<div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_date}}</div>
+</td>
+<td style="padding: 10px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" width="50%">
+<div style="font-size: 20px; font-weight: bold; color: #64748b; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Horaire</div>
+<div style="font-size: 20px; font-weight: bold; color: #0f172a; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">{{booking_time}}</div>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 40px 0 10px 0; font-size: 20px; font-weight: bold; color: #4338ca; text-transform: uppercase; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">Votre classe</td>
+</tr>
+<tr>
+<td style="padding: 15px 0 0 0; font-size: 20px; border-top: 1px solid #eef2ff; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; line-height: 1.5;"><strong>&Eacute;cole :</strong> {{school_name}} ({{commune}})<br><strong>Niveau :</strong> {{class_level}}<br><strong>Effectif :</strong> {{student_count}} &eacute;l&egrave;ves / {{adult_count}} adultes<br><strong>Transport :</strong> {{bus_info}}</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 0 30px 40px 30px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;">
+<table style="border: 1px solid #fef3c7; border-radius: 8px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;" border="0" width="100%" cellspacing="0" cellpadding="0" bgcolor="#fffbeb">
+<tbody>
+<tr>
+<td style="padding: 20px; font-size: 18px; color: #92400e; line-height: 24px; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif;"><strong>Note :</strong> pour toute demande de renseignement, modification ou annulation de rendez-vous, merci de nous contacter directement par t&eacute;l&eacute;phone au 03.82.23.15.76 ou par mail &agrave; l'adresse mediatheque@grandlongwy.fr</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;" align="center">Conform&eacute;ment au RGPD, vous disposez d'un droit d'acc&egrave;s et de rectification de vos donn&eacute;es. Ces informations sont utilis&eacute;es exclusivement pour la gestion de votre r&eacute;servation.</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>`;
 
 const DEFAULT_EMAIL_ANIMATOR_SUBJECT = "🗓️ {{animation_title}} le {{booking_date_clean}} @ {{booking_time}}";
 const DEFAULT_EMAIL_ANIMATOR_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -256,7 +305,7 @@ const DEFAULT_EMAIL_LIST_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {{bookings_rows}}
+                                    {{{bookings_rows}}}
                                 </tbody>
                             </table>
                         </td>
@@ -274,8 +323,7 @@ const DEFAULT_EMAIL_LIST_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.
                     </tr>
                     <tr>
                         <td align="center" style="padding: 40px 30px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-family: 'Calibri', 'Trebuchet MS', Arial, sans-serif; font-size: 16px; color: #334155; text-align: center; line-height: 1.5;">
-                            Cet e-mail est envoyé automatiquement, merci de ne pas y répondre directement.
-                            <br/><br/>
+                          
                             Conformément au RGPD, vous disposez d'un droit d'accès et de rectification de vos données. 
                             Ces informations sont utilisées exclusivement pour la gestion de vos réservations.
                         </td>
@@ -285,7 +333,8 @@ const DEFAULT_EMAIL_LIST_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.
         </tr>
     </table>
 </body>
-</html>`;
+</html>
+`;
 
 const ManageSettings: React.FC<AdminSubComponentProps> = ({ 
     showNotification,
@@ -341,6 +390,8 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
         if (migSettings.cleanupDay === undefined) migSettings.cleanupDay = 1;
         if (migSettings.cleanupMonth === undefined) migSettings.cleanupMonth = 7; // August (0-indexed)
         if (!migSettings.infoPages) migSettings.infoPages = [];
+        if (migSettings.emailReminderTargetTeachers === undefined) migSettings.emailReminderTargetTeachers = true;
+        if (migSettings.emailReminderTargetAnimators === undefined) migSettings.emailReminderTargetAnimators = false;
         
         if (!isInitializedRef.current) {
             setFormState(migSettings);
@@ -367,8 +418,25 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
     }, [settings]);
 
     const isDirty = useMemo(() => {
-        // Simple and robust JSON equality to see if anything changed
-        return JSON.stringify(formState) !== JSON.stringify(settings);
+        // Run identical migrations to match formState default keys
+        const migSettings = { ...settings };
+        if (migSettings.bookingLeadTime === undefined) migSettings.bookingLeadTime = 14;
+        if (!migSettings.allowedDays) migSettings.allowedDays = [2, 4];
+        if (!migSettings.availableTimeSlots) migSettings.availableTimeSlots = [9, 10, 14, 15];
+        if (!migSettings.classLevels) migSettings.classLevels = ['PS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
+        if (!migSettings.communes) migSettings.communes = [];
+        if (!migSettings.schools) migSettings.schools = [];
+        if (migSettings.allowedDays.includes(1)) {
+            migSettings.allowedDays = migSettings.allowedDays.filter(d => d !== 1);
+        }
+        if (migSettings.autoCleanupEnabled === undefined) migSettings.autoCleanupEnabled = false;
+        if (migSettings.cleanupDay === undefined) migSettings.cleanupDay = 1;
+        if (migSettings.cleanupMonth === undefined) migSettings.cleanupMonth = 7;
+        if (!migSettings.infoPages) migSettings.infoPages = [];
+        if (migSettings.emailReminderTargetTeachers === undefined) migSettings.emailReminderTargetTeachers = true;
+        if (migSettings.emailReminderTargetAnimators === undefined) migSettings.emailReminderTargetAnimators = false;
+
+        return JSON.stringify(formState) !== JSON.stringify(migSettings);
     }, [formState, settings]);
 
     useEffect(() => {
@@ -768,8 +836,11 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
             'registrationFormUrl', 'registrationFormName',
             'passwordExpiryDays', 'headerInfoText', 'headerInfoFontSize', 
             'headerInfoFontWeight', 'headerInfoFontStyle', 'headerInfoColor', 'headerInfoWidth',
-            'emailTeacherTemplate', 'emailTeacherSubject', 'emailAnimatorTemplate', 'emailAnimatorSubject',
-            'emailListTemplate', 'emailListSubject'
+            'emailTeacherTemplate', 'emailTeacherSubject', 'emailTeacherEnabled',
+            'emailAnimatorTemplate', 'emailAnimatorSubject', 'emailAnimatorEnabled',
+            'emailListTemplate', 'emailListSubject', 'emailListEnabled',
+            'emailReminderTemplate', 'emailReminderSubject', 'emailReminderEnabled', 'emailReminderDays',
+            'emailReminderTargetTeachers', 'emailReminderTargetAnimators'
         ];
 
         const settingsToUpdate: Partial<AppSettings> = {};
@@ -815,33 +886,11 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
         }
     };
 
-    const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setUploadingField('registrationForm');
-            
-            try {
-                const url = await storageService.uploadFile(file, 'app_assets');
-                setFormState(prev => ({ 
-                    ...prev, 
-                    registrationFormUrl: url, 
-                    registrationFormName: file.name 
-                }));
-                showNotification("Fiche d'inscription téléversée ! N'oubliez pas d'enregistrer.");
-            } catch (error) {
-                console.error(error);
-                alert("Erreur lors de l'upload. Assurez-vous d'utiliser un document valide (ex: PDF).");
-            } finally {
-                setUploadingField(null);
-            }
-        }
-    };
-
     const handleRemovePdf = () => {
         setFormState(prev => ({
             ...prev,
-            registrationFormUrl: undefined,
-            registrationFormName: undefined
+            registrationFormUrl: null as any,
+            registrationFormName: null as any
         }));
         showNotification("Fiche d'inscription supprimée ! N'oubliez pas d'enregistrer.");
     };
@@ -2089,8 +2138,8 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                                     </svg>
                                                 </div>
                                                 <div>
-                                                    <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Fiche d'inscription téléchargeable</h3>
-                                                    <p className="text-xs text-slate-500 font-medium">Téléversez un document de type PDF qui sera accessible en téléchargement direct par les enseignants depuis le bandeau supérieur de la plateforme.</p>
+                                                    <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Fiche d'inscription externe</h3>
+                                                    <p className="text-xs text-slate-500 font-medium">Configurez l'adresse URL de votre fiche d'inscription hébergée sur Google Drive, Dropbox ou autre. Elle sera accessible en téléchargement direct par les enseignants depuis le bandeau supérieur de la plateforme.</p>
                                                 </div>
                                             </div>
 
@@ -2128,7 +2177,7 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                                                 <svg className="w-8 h-8 text-slate-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V4a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
                                                                 </svg>
-                                                                <p className="text-xs text-slate-400 italic">Aucune fiche d'inscription téléversée pour l'instant</p>
+                                                                <p className="text-xs text-slate-400 italic">Aucune fiche d'inscription configurée pour l'instant</p>
                                                             </div>
                                                         )}
                                                     </div>
@@ -2147,44 +2196,53 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                                     )}
                                                 </div>
 
-                                                {/* Téléversement d'un nouveau document */}
+                                                {/* Configuration du lien */}
                                                 <div className="bg-white p-6 rounded-2xl border border-gray-100 flex flex-col justify-between shadow-xs">
-                                                    <div>
-                                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Téléverser ou remplacer</h4>
+                                                    <div className="space-y-4">
+                                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest pb-2 border-b border-gray-50">Configuration du document</h4>
                                                         
-                                                        <label 
-                                                            className={`relative group border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${
-                                                                uploadingField === 'registrationForm' 
-                                                                    ? 'border-indigo-400 bg-indigo-50/20 pointer-events-none' 
-                                                                    : 'border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/10'
-                                                            }`}
-                                                        >
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.55">
+                                                                Lien URL du document (Google Drive, Dropbox, OneDrive...)
+                                                            </label>
                                                             <input 
-                                                                type="file" 
-                                                                accept="application/pdf" 
-                                                                className="hidden" 
-                                                                onChange={handlePdfUpload}
-                                                                disabled={uploadingField !== null}
+                                                                type="text"
+                                                                placeholder="https://drive.google.com/file/d/... ou https://dropbox.com/..."
+                                                                value={formState.registrationFormUrl || ''}
+                                                                onChange={(e) => {
+                                                                    const url = e.target.value;
+                                                                    let name = formState.registrationFormName;
+                                                                    if (!name && url) {
+                                                                        name = "Fiche_inscription_2026.pdf";
+                                                                    }
+                                                                    setFormState(prev => ({
+                                                                        ...prev,
+                                                                        registrationFormUrl: url,
+                                                                        registrationFormName: name || "Fiche d'inscription"
+                                                                    }));
+                                                                }}
+                                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs"
                                                             />
-                                                            {uploadingField === 'registrationForm' ? (
-                                                                <>
-                                                                    <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                                                                    <p className="text-[11px] font-bold text-indigo-600 animate-pulse">Téléchargement en cours...</p>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform">
-                                                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                                                                        </svg>
-                                                                    </div>
-                                                                    <div className="text-center">
-                                                                        <p className="text-xs font-bold text-slate-700">Cliquez pour choisir un fichier</p>
-                                                                        <p className="text-[10px] text-slate-400 mt-1 font-medium">Format PDF uniquement (Max 10 Mo)</p>
-                                                                    </div>
-                                                                </>
-                                                            )}
-                                                        </label>
+                                                            <p className="text-[10px] text-slate-400 mt-1 font-medium italic">
+                                                                Important : Sur Google Drive, configurez le partage en mode "Tous les utilisateurs disposant du lien peuvent voir".
+                                                            </p>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                                                Nom d'affichage du document
+                                                            </label>
+                                                            <input 
+                                                                type="text"
+                                                                placeholder="Ex: Fiche d'inscription 2026.pdf"
+                                                                value={formState.registrationFormName || ''}
+                                                                onChange={(e) => setFormState(prev => ({
+                                                                    ...prev,
+                                                                    registrationFormName: e.target.value
+                                                                }))}
+                                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -2260,354 +2318,203 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
 
                                 {activeTab === 'emails' && (
                                     <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-300 pb-20">
-                                        {/* Teacher Email Template */}
-                                        <div className="space-y-6">
-                                            <div className="flex items-center justify-between gap-3 mb-2">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="p-2 bg-blue-600 rounded-lg text-white">
-                                                        <AcademicCapIcon className="w-5 h-5" />
-                                                    </div>
-                                                    <h4 className="text-lg font-bold text-gray-800">E-mail de confirmation (Enseignant)</h4>
+                                        {/* 1. CONFIGURATION ET CRITÈRES D'ENVOI (Options d'activation et paramètres généraux) */}
+                                        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-6">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                                                    <CogIcon className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-lg font-bold text-gray-800">Options d'envoi & Activation</h4>
+                                                    <p className="text-xs text-gray-400">Activez ou désactivez les différents types d'e-mails et configurez leurs critères de déclenchement</p>
                                                 </div>
                                             </div>
-                                            
-                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                                                <div className="space-y-4">
-                                                    <div>
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sujet de l'e-mail</label>
-                                                            <button 
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if(window.confirm("Rétablir le sujet par défaut ?")) {
-                                                                        setFormState({ ...formState, emailTeacherSubject: DEFAULT_EMAIL_TEACHER_SUBJECT });
-                                                                    }
-                                                                }}
-                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
-                                                            >
-                                                                Rétablir
-                                                            </button>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                                {/* Conf Enseignant */}
+                                                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                                                            <AcademicCapIcon className="w-5 h-5" />
                                                         </div>
-                                                        <input 
-                                                            type="text" 
-                                                            name="emailTeacherSubject" 
-                                                            value={formState.emailTeacherSubject || ''} 
-                                                            onChange={handleChange} 
-                                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" 
-                                                            placeholder="Sujet de l'e-mail..."
-                                                        />
+                                                        <div>
+                                                            <h5 className="text-sm font-bold text-gray-800">E-mail de confirmation</h5>
+                                                            <p className="text-[10px] text-gray-400">Envoi automatique à l'enseignant après réservation</p>
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Code HTML (à copier dans EmailJS)</label>
-                                                            <button 
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if(window.confirm("Voulez-vous vraiment restaurer le modèle par défaut pour l'enseignant ? Vos modifications actuelles seront perdues.")) {
-                                                                        setFormState({ ...formState, emailTeacherTemplate: DEFAULT_EMAIL_TEACHER_TEMPLATE });
-                                                                        showNotification("Modèle Enseignant réinitialisé ! N'oubliez pas d'enregistrer.");
+                                                    {/* Switch */}
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`text-[10px] font-bold ${formState.emailTeacherEnabled !== false ? 'text-green-600' : 'text-red-500'}`}>
+                                                            {formState.emailTeacherEnabled !== false ? 'Activé' : 'Désactivé'}
+                                                        </span>
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={formState.emailTeacherEnabled !== false}
+                                                                disabled={currentUser?.role !== 'admin'}
+                                                                onChange={(e) => {
+                                                                    if (currentUser?.role === 'admin') {
+                                                                        setFormState({ ...formState, emailTeacherEnabled: e.target.checked });
                                                                     }
                                                                 }}
-                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
-                                                            >
-                                                                <ArrowsPointingInIcon className="w-3 h-3" />
-                                                                Rétablir le défaut
-                                                            </button>
-                                                        </div>
-                                                        <textarea 
-                                                            value={formState.emailTeacherTemplate || ''}
-                                                            onChange={(e) => setFormState({ ...formState, emailTeacherTemplate: e.target.value })}
-                                                            className="w-full h-[500px] p-4 font-mono text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-gray-900 text-blue-100 resize-none leading-relaxed"
-                                                            spellCheck={false}
-                                                        />
+                                                                className="sr-only peer"
+                                                            />
+                                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                                        </label>
                                                     </div>
                                                 </div>
 
-                                                <div className="flex flex-col">
-                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aperçu du rendu</label>
-                                                    <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
-                                                        <div className="bg-gray-50 border-b border-gray-100 p-3 text-[10px] font-bold text-gray-400 flex items-center justify-between uppercase tracking-widest">
-                                                            <span>Visualisation Temps Réel</span>
-                                                            <div className="flex gap-1">
-                                                                <div className="w-2 h-2 rounded-full bg-red-300"></div>
-                                                                <div className="w-2 h-2 rounded-full bg-yellow-300"></div>
-                                                                <div className="w-2 h-2 rounded-full bg-green-300"></div>
-                                                            </div>
+                                                {/* Notif Animateur */}
+                                                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                                                            <BellIcon className="w-5 h-5" />
                                                         </div>
-                                                        <iframe 
-                                                            title="Teacher Preview"
-                                                            className="w-full flex-1 border-none"
-                                                            srcDoc={((html) => {
-                                                                if (!html) return "<body style='display:flex;align-items:center;justify-center;height:100vh;color:#94a3b8;font-family:sans-serif;'>Aucun code HTML détecté</body>";
-                                                                const mockData = {
-                                                                    animation_title: "Escape Game Numérique",
-                                                                    booking_date: "Mercredi 15 Mai 2024",
-                                                                    booking_date_clean: "15.05.2024",
-                                                                    booking_time: "10:00 - 12:00",
-                                                                    to_name: "Mme Martin",
-                                                                    teacher_name: "Sophie Martin",
-                                                                    school_name: "École Pasteur",
-                                                                    commune: "Longwy",
-                                                                    student_count: 24,
-                                                                    adult_count: 3,
-                                                                    class_level: "CM1/CM2",
-                                                                    bus_info: "Non",
-                                                                    teacher_phone: "06 00 00 00 00",
-                                                                    teacher_email: "martin@ecole.fr",
-                                                                    establishment_name: "MÉDIATHÈQUE DU GRAND LONGWY",
-                                                                    header_bg_color: "#0f172a"
-                                                                };
-                                                                let rendered = html;
-                                                                Object.entries(mockData).forEach(([key, value]) => {
-                                                                    rendered = rendered.replaceAll(`{{${key}}}`, String(value));
-                                                                });
-                                                                return rendered;
-                                                            })(formState.emailTeacherTemplate || '')}
-                                                        />
+                                                        <div>
+                                                            <h5 className="text-sm font-bold text-gray-800">E-mail de notification</h5>
+                                                            <p className="text-[10px] text-gray-400">Envoi automatique à l'animateur concerné</p>
+                                                        </div>
+                                                    </div>
+                                                    {/* Switch */}
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`text-[10px] font-bold ${formState.emailAnimatorEnabled !== false ? 'text-green-600' : 'text-red-500'}`}>
+                                                            {formState.emailAnimatorEnabled !== false ? 'Activé' : 'Désactivé'}
+                                                        </span>
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={formState.emailAnimatorEnabled !== false}
+                                                                disabled={currentUser?.role !== 'admin'}
+                                                                onChange={(e) => {
+                                                                    if (currentUser?.role === 'admin') {
+                                                                        setFormState({ ...formState, emailAnimatorEnabled: e.target.checked });
+                                                                    }
+                                                                }}
+                                                                className="sr-only peer"
+                                                            />
+                                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                {/* Notif Liste */}
+                                                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-green-100 text-green-600 rounded-lg">
+                                                            <ListIcon className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <h5 className="text-sm font-bold text-gray-800">E-mail récapitulatif</h5>
+                                                            <p className="text-[10px] text-gray-400">Envoi manuel lors d'un export de liste</p>
+                                                        </div>
+                                                    </div>
+                                                    {/* Switch */}
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`text-[10px] font-bold ${formState.emailListEnabled !== false ? 'text-green-600' : 'text-red-500'}`}>
+                                                            {formState.emailListEnabled !== false ? 'Activé' : 'Désactivé'}
+                                                        </span>
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={formState.emailListEnabled !== false}
+                                                                disabled={currentUser?.role !== 'admin'}
+                                                                onChange={(e) => {
+                                                                    if (currentUser?.role === 'admin') {
+                                                                        setFormState({ ...formState, emailListEnabled: e.target.checked });
+                                                                    }
+                                                                }}
+                                                                className="sr-only peer"
+                                                            />
+                                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                {/* Rappel Automatique */}
+                                                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+                                                            <ClockIcon className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <h5 className="text-sm font-bold text-gray-800">Rappels de réservation</h5>
+                                                            <p className="text-[10px] text-gray-400">Envoi de rappels automatique / manuel</p>
+                                                        </div>
+                                                    </div>
+                                                    {/* Switch */}
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`text-[10px] font-bold ${formState.emailReminderEnabled !== false ? 'text-green-600' : 'text-red-500'}`}>
+                                                            {formState.emailReminderEnabled !== false ? 'Activé' : 'Désactivé'}
+                                                        </span>
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={formState.emailReminderEnabled !== false}
+                                                                disabled={currentUser?.role !== 'admin'}
+                                                                onChange={(e) => {
+                                                                    if (currentUser?.role === 'admin') {
+                                                                        setFormState({ ...formState, emailReminderEnabled: e.target.checked });
+                                                                    }
+                                                                }}
+                                                                className="sr-only peer"
+                                                            />
+                                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                                                        </label>
                                                     </div>
                                                 </div>
                                             </div>
+
+                                            {/* Options spécifiques pour l'e-mail de rappel automatique */}
+                                            {formState.emailReminderEnabled !== false && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-amber-50/50 border border-amber-100 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-amber-800 uppercase tracking-widest mb-1.5">Délai du rappel automatique</label>
+                                                        <select
+                                                            value={formState.emailReminderDays || 2}
+                                                            onChange={(e) => setFormState({ ...formState, emailReminderDays: parseInt(e.target.value) })}
+                                                            className="w-full px-4 py-2 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white font-semibold text-sm text-gray-700"
+                                                        >
+                                                            <option value={1}>1 jour avant</option>
+                                                            <option value={2}>2 jours avant</option>
+                                                            <option value={3}>3 jours avant</option>
+                                                            <option value={4}>4 jours avant</option>
+                                                            <option value={5}>5 jours avant</option>
+                                                            <option value={7}>7 jours avant</option>
+                                                        </select>
+                                                        <p className="text-[10px] text-amber-700/70 mt-1">Nombre de jours avant l'animation pour le déclenchement automatique</p>
+                                                    </div>
+                                                    
+                                                    <div className="space-y-2">
+                                                        <label className="block text-[10px] font-black text-amber-800 uppercase tracking-widest">Destinataires des rappels :</label>
+                                                        <div className="flex flex-wrap gap-6 pt-1">
+                                                            <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-gray-700">
+                                                                <input 
+                                                                    type="checkbox"
+                                                                    checked={formState.emailReminderTargetTeachers !== false}
+                                                                    onChange={(e) => setFormState({ ...formState, emailReminderTargetTeachers: e.target.checked })}
+                                                                    className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                                                />
+                                                                Enseignants
+                                                            </label>
+                                                            <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-gray-700">
+                                                                <input 
+                                                                    type="checkbox"
+                                                                    checked={!!formState.emailReminderTargetAnimators}
+                                                                    onChange={(e) => setFormState({ ...formState, emailReminderTargetAnimators: e.target.checked })}
+                                                                    className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                                                />
+                                                                Animateurs
+                                                            </label>
+                                                        </div>
+                                                        <p className="text-[10px] text-amber-700/70 mt-1">Détermine qui recevra l'e-mail de rappel (automatique ou manuel)</p>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
 
-                                        <div className="border-t border-dashed border-gray-200"></div>
+                                        <div className="border-t border-dashed border-gray-200 my-6"></div>
 
-                                        {/* Animator Email Template */}
-                                        <div className="space-y-6">
-                                            <div className="flex items-center justify-between gap-3 mb-2">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="p-2 bg-indigo-600 rounded-lg text-white">
-                                                        <BellIcon className="w-5 h-5" />
-                                                    </div>
-                                                    <h4 className="text-lg font-bold text-gray-800">E-mail de notification (Animateur)</h4>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                                                <div className="space-y-4">
-                                                    <div>
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sujet de l'e-mail</label>
-                                                            <button 
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if(window.confirm("Rétablir le sujet par défaut ?")) {
-                                                                        setFormState({ ...formState, emailAnimatorSubject: DEFAULT_EMAIL_ANIMATOR_SUBJECT });
-                                                                    }
-                                                                }}
-                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
-                                                            >
-                                                                Rétablir
-                                                            </button>
-                                                        </div>
-                                                        <input 
-                                                            type="text" 
-                                                            name="emailAnimatorSubject" 
-                                                            value={formState.emailAnimatorSubject || ''} 
-                                                            onChange={handleChange} 
-                                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-semibold" 
-                                                            placeholder="Sujet de l'e-mail..."
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Code HTML (à copier dans EmailJS)</label>
-                                                            <button 
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if(window.confirm("Voulez-vous vraiment restaurer le modèle par défaut pour l'animateur ? Vos modifications actuelles seront perdues.")) {
-                                                                        setFormState({ ...formState, emailAnimatorTemplate: DEFAULT_EMAIL_ANIMATOR_TEMPLATE });
-                                                                        showNotification("Modèle Animateur réinitialisé ! N'oubliez pas d'enregistrer.");
-                                                                    }
-                                                                }}
-                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
-                                                            >
-                                                                <ArrowsPointingInIcon className="w-3 h-3" />
-                                                                Rétablir le défaut
-                                                            </button>
-                                                        </div>
-                                                        <textarea 
-                                                            value={formState.emailAnimatorTemplate || ''}
-                                                            onChange={(e) => setFormState({ ...formState, emailAnimatorTemplate: e.target.value })}
-                                                            className="w-full h-[500px] p-4 font-mono text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-900 text-blue-100 resize-none leading-relaxed"
-                                                            spellCheck={false}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex flex-col">
-                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aperçu du rendu</label>
-                                                    <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
-                                                        <div className="bg-gray-50 border-b border-gray-100 p-3 text-[10px] font-bold text-gray-400 flex items-center justify-between uppercase tracking-widest">
-                                                            <span>Visualisation Temps Réel</span>
-                                                            <div className="flex gap-1">
-                                                                <div className="w-2 h-2 rounded-full bg-red-300"></div>
-                                                                <div className="w-2 h-2 rounded-full bg-yellow-300"></div>
-                                                                <div className="w-2 h-2 rounded-full bg-green-300"></div>
-                                                            </div>
-                                                        </div>
-                                                        <iframe 
-                                                            title="Animator Preview"
-                                                            className="w-full flex-1 border-none"
-                                                            srcDoc={((html) => {
-                                                                if (!html) return "<body style='display:flex;align-items:center;justify-center;height:100vh;color:#94a3b8;font-family:sans-serif;'>Aucun code HTML détecté</body>";
-                                                                const mockData = {
-                                                                    animation_title: "Atelier Robotique",
-                                                                    booking_date: "Samedi 18 Mai 2024",
-                                                                    booking_date_clean: "18.05.2024",
-                                                                    booking_time: "14:00 - 16:00",
-                                                                    to_name: "Jean Dupont",
-                                                                    animator_name: "Jean Dupont",
-                                                                    teacher_name: "Lucie Bernard",
-                                                                    school_name: "Collège Daudet",
-                                                                    commune: "Longlaville",
-                                                                    student_count: 15,
-                                                                    adult_count: 2,
-                                                                    class_level: "3ème A",
-                                                                    bus_info: "Oui (Dépose minute souhaitée)",
-                                                                    teacher_phone: "07 11 22 33 44",
-                                                                    teacher_email: "bernard@college.fr",
-                                                                    establishment_name: "MÉDIATHÈQUE DU GRAND LONGWY",
-                                                                    header_bg_color: "#0f172a"
-                                                                };
-                                                                let rendered = html;
-                                                                Object.entries(mockData).forEach(([key, value]) => {
-                                                                    rendered = rendered.replaceAll(`{{${key}}}`, String(value));
-                                                                });
-                                                                return rendered;
-                                                            })(formState.emailAnimatorTemplate || '')}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="border-t border-dashed border-gray-200"></div>
-
-                                        {/* Booking List Email Template */}
-                                        <div className="space-y-6">
-                                            <div className="flex items-center justify-between gap-3 mb-2">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="p-2 bg-green-600 rounded-lg text-white">
-                                                        <ListIcon className="w-5 h-5" />
-                                                    </div>
-                                                    <h4 className="text-lg font-bold text-gray-800">E-mail récapitulatif (Liste de réservations)</h4>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                                                <div className="space-y-4">
-                                                    <div>
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sujet de l'e-mail</label>
-                                                            <button 
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if(window.confirm("Rétablir le sujet par défaut ?")) {
-                                                                        setFormState({ ...formState, emailListSubject: DEFAULT_EMAIL_LIST_SUBJECT });
-                                                                    }
-                                                                }}
-                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
-                                                            >
-                                                                Rétablir
-                                                            </button>
-                                                        </div>
-                                                        <input 
-                                                            type="text" 
-                                                            name="emailListSubject" 
-                                                            value={formState.emailListSubject || ''} 
-                                                            onChange={handleChange} 
-                                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-white font-semibold" 
-                                                            placeholder="Sujet de l'e-mail..."
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Code HTML (à copier dans EmailJS)</label>
-                                                            <button 
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    if(window.confirm("Voulez-vous vraiment restaurer le modèle par défaut pour la liste des réservations ? Vos modifications actuelles seront perdues.")) {
-                                                                        setFormState({ ...formState, emailListTemplate: DEFAULT_EMAIL_LIST_TEMPLATE });
-                                                                        showNotification("Modèle Liste réinitialisé ! N'oubliez pas d'enregistrer.");
-                                                                    }
-                                                                }}
-                                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
-                                                            >
-                                                                <ArrowsPointingInIcon className="w-3 h-3" />
-                                                                Rétablir le défaut
-                                                            </button>
-                                                        </div>
-                                                        <textarea 
-                                                            value={formState.emailListTemplate || ''}
-                                                            onChange={(e) => setFormState({ ...formState, emailListTemplate: e.target.value })}
-                                                            className="w-full h-[500px] p-4 font-mono text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none bg-gray-900 text-green-100 resize-none leading-relaxed"
-                                                            spellCheck={false}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex flex-col">
-                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aperçu du rendu</label>
-                                                    <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
-                                                         <div className="bg-gray-50 border-b border-gray-100 p-3 text-[10px] font-bold text-gray-400 flex items-center justify-between uppercase tracking-widest">
-                                                             <span>Visualisation Temps Réel</span>
-                                                             <div className="flex gap-1">
-                                                                 <div className="w-2 h-2 rounded-full bg-red-300"></div>
-                                                                 <div className="w-2 h-2 rounded-full bg-yellow-300"></div>
-                                                                 <div className="w-2 h-2 rounded-full bg-green-300"></div>
-                                                             </div>
-                                                         </div>
-                                                         <iframe 
-                                                             title="List Preview"
-                                                             className="w-full flex-1 border-none"
-                                                             srcDoc={((html) => {
-                                                                 if (!html) return "<body style='display:flex;align-items:center;justify-center;height:100vh;color:#94a3b8;font-family:sans-serif;'>Aucun code HTML détecté</body>";
-                                                                 const mockData = {
-                                                                     bookings_count: 2,
-                                                                     bookings_rows: `
-                                                                        <tr>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; border-bottom: 1px solid #edf2f7; line-height: 1.4;">
-                                                                                <div style="font-weight: bold; color: #0f172a;">Escape Game Numérique</div>
-                                                                                <div style="font-weight: bold; color: #2563eb; font-size: 12px;">Jeudi 15 mai 2024 à 09h</div>
-                                                                            </td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">M. Jean</td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">Moulin (GORCY)</td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">CE1</td>
-                                                                            <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4; border-bottom: 1px solid #edf2f7;">
-                                                                                <div>25 élèves</div>
-                                                                                <div style="color: #64748b; font-size: 12px;">4 adultes</div>
-                                                                            </td>
-                                                                        </tr>
-                                                                        <tr>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; border-bottom: 1px solid #edf2f7; line-height: 1.4;">
-                                                                                <div style="font-weight: bold; color: #0f172a;">Atelier Robotique</div>
-                                                                                <div style="font-weight: bold; color: #2563eb; font-size: 12px;">Vendredi 16 mai 2024 à 14h</div>
-                                                                            </td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">Mme. Marie</td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">Hugo (LONGWY)</td>
-                                                                            <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">CM2</td>
-                                                                            <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4; border-bottom: 1px solid #edf2f7;">
-                                                                                <div>22 élèves</div>
-                                                                                <div style="color: #64748b; font-size: 12px;">2 adultes</div>
-                                                                            </td>
-                                                                        </tr>
-                                                                     `,
-                                                                     establishment_name: "MÉDIATHÈQUE DU GRAND LONGWY",
-                                                                     header_bg_color: "#059669"
-                                                                 };
-                                                                 let rendered = html;
-                                                                 Object.entries(mockData).forEach(([key, value]) => {
-                                                                     rendered = rendered.replaceAll(`{{${key}}}`, String(value));
-                                                                 });
-                                                                 return rendered;
-                                                             })(formState.emailListTemplate || '')}
-                                                         />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Variables Guide */}
+                                        {/* 2. GUIDE DES VARIABLES (Second element) */}
                                         <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 flex gap-4 items-start shadow-inner">
                                             <div className="bg-white p-2 rounded-lg shadow-sm">
                                                <CogIcon className="w-6 h-6 text-gray-600" />
@@ -2634,6 +2541,501 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                                     <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-400"></div><code>{`{{teacher_email}}`}</code></div>
                                                     <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div><code>{`{{establishment_name}}`}</code></div>
                                                     <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div><code>{`{{header_bg_color}}`}</code></div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="border-t border-dashed border-gray-200 my-6"></div>
+
+                                        {/* 3. MODÈLES D'E-MAILS (TEMPLATES) (Third element) */}
+                                        <div className="space-y-12">
+                                            {/* Template 1: Confirmation Enseignant */}
+                                            <div className="space-y-6">
+                                                <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-blue-600 rounded-lg text-white">
+                                                            <AcademicCapIcon className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h4 className="text-lg font-bold text-gray-800">E-mail de confirmation (Enseignant)</h4>
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${formState.emailTeacherEnabled !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                    {formState.emailTeacherEnabled !== false ? 'Actif' : 'Inactif'}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-400">Envoyé automatiquement à l'enseignant lors de sa réservation</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sujet de l'e-mail</label>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if(window.confirm("Rétablir le sujet par défaut ?")) {
+                                                                            setFormState({ ...formState, emailTeacherSubject: DEFAULT_EMAIL_TEACHER_SUBJECT });
+                                                                        }
+                                                                    }}
+                                                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                                >
+                                                                    Rétablir
+                                                                </button>
+                                                            </div>
+                                                            <input 
+                                                                type="text" 
+                                                                name="emailTeacherSubject" 
+                                                                value={formState.emailTeacherSubject || ''} 
+                                                                onChange={handleChange} 
+                                                                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold" 
+                                                                placeholder="Sujet de l'e-mail..."
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Code HTML (à copier dans EmailJS)</label>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if(window.confirm("Voulez-vous vraiment restaurer le modèle par défaut pour l'enseignant ? Vos modifications actuelles seront perdues.")) {
+                                                                            setFormState({ ...formState, emailTeacherTemplate: DEFAULT_EMAIL_TEACHER_TEMPLATE });
+                                                                            showNotification("Modèle Enseignant réinitialisé ! N'oubliez pas d'enregistrer.");
+                                                                        }
+                                                                    }}
+                                                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                                >
+                                                                    <ArrowsPointingInIcon className="w-3 h-3" />
+                                                                    Rétablir le défaut
+                                                                </button>
+                                                            </div>
+                                                            <textarea 
+                                                                value={formState.emailTeacherTemplate || ''}
+                                                                onChange={(e) => setFormState({ ...formState, emailTeacherTemplate: e.target.value })}
+                                                                className="w-full h-[500px] p-4 font-mono text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-gray-900 text-blue-100 resize-none leading-relaxed"
+                                                                spellCheck={false}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-col">
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aperçu du rendu</label>
+                                                        <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                                                            <div className="bg-gray-50 border-b border-gray-100 p-3 text-[10px] font-bold text-gray-400 flex items-center justify-between uppercase tracking-widest">
+                                                                <span>Visualisation Temps Réel</span>
+                                                                <div className="flex gap-1">
+                                                                    <div className="w-2 h-2 rounded-full bg-red-300"></div>
+                                                                    <div className="w-2 h-2 rounded-full bg-yellow-300"></div>
+                                                                    <div className="w-2 h-2 rounded-full bg-green-300"></div>
+                                                                </div>
+                                                            </div>
+                                                            <iframe 
+                                                                title="Teacher Preview"
+                                                                className="w-full flex-1 border-none"
+                                                                srcDoc={((html) => {
+                                                                    if (!html) return "<body style='display:flex;align-items:center;justify-center;height:100vh;color:#94a3b8;font-family:sans-serif;'>Aucun code HTML détecté</body>";
+                                                                    const mockData = {
+                                                                        animation_title: "Escape Game Numérique",
+                                                                        booking_date: "Mercredi 15 Mai 2024",
+                                                                        booking_date_clean: "15.05.2024",
+                                                                        booking_time: "10:00 - 12:00",
+                                                                        to_name: "Mme Martin",
+                                                                        teacher_name: "Sophie Martin",
+                                                                        school_name: "École Pasteur",
+                                                                        commune: "Longwy",
+                                                                        student_count: 24,
+                                                                        adult_count: 3,
+                                                                        class_level: "CM1/CM2",
+                                                                        bus_info: "Non",
+                                                                        teacher_phone: "06 00 00 00 00",
+                                                                        teacher_email: "martin@ecole.fr",
+                                                                        establishment_name: "MÉDIATHÈQUE DU GRAND LONGWY",
+                                                                        header_bg_color: "#0f172a"
+                                                                    };
+                                                                    let rendered = html;
+                                                                    Object.entries(mockData).forEach(([key, value]) => {
+                                                                        rendered = rendered.replaceAll(`{{${key}}}`, String(value));
+                                                                    });
+                                                                    return rendered;
+                                                                })(formState.emailTeacherTemplate || '')}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="border-t border-dashed border-gray-200"></div>
+
+                                            {/* Template 2: Notification Animateur */}
+                                            <div className="space-y-6">
+                                                <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-indigo-600 rounded-lg text-white">
+                                                            <BellIcon className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h4 className="text-lg font-bold text-gray-800">E-mail de notification (Animateur)</h4>
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${formState.emailAnimatorEnabled !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                    {formState.emailAnimatorEnabled !== false ? 'Actif' : 'Inactif'}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-400">Envoyé automatiquement à l'animateur concerné lors d'une réservation</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sujet de l'e-mail</label>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if(window.confirm("Rétablir le sujet par défaut ?")) {
+                                                                            setFormState({ ...formState, emailAnimatorSubject: DEFAULT_EMAIL_ANIMATOR_SUBJECT });
+                                                                        }
+                                                                    }}
+                                                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                                >
+                                                                    Rétablir
+                                                                </button>
+                                                            </div>
+                                                            <input 
+                                                                type="text" 
+                                                                name="emailAnimatorSubject" 
+                                                                value={formState.emailAnimatorSubject || ''} 
+                                                                onChange={handleChange} 
+                                                                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-semibold" 
+                                                                placeholder="Sujet de l'e-mail..."
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Code HTML (à copier dans EmailJS)</label>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if(window.confirm("Voulez-vous vraiment restaurer le modèle par défaut pour l'animateur ? Vos modifications actuelles seront perdues.")) {
+                                                                            setFormState({ ...formState, emailAnimatorTemplate: DEFAULT_EMAIL_ANIMATOR_TEMPLATE });
+                                                                            showNotification("Modèle Animateur réinitialisé ! N'oubliez pas d'enregistrer.");
+                                                                        }
+                                                                    }}
+                                                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                                >
+                                                                    <ArrowsPointingInIcon className="w-3 h-3" />
+                                                                    Rétablir le défaut
+                                                                </button>
+                                                            </div>
+                                                            <textarea 
+                                                                value={formState.emailAnimatorTemplate || ''}
+                                                                onChange={(e) => setFormState({ ...formState, emailAnimatorTemplate: e.target.value })}
+                                                                className="w-full h-[500px] p-4 font-mono text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-900 text-blue-100 resize-none leading-relaxed"
+                                                                spellCheck={false}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-col">
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aperçu du rendu</label>
+                                                        <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                                                            <div className="bg-gray-50 border-b border-gray-100 p-3 text-[10px] font-bold text-gray-400 flex items-center justify-between uppercase tracking-widest">
+                                                                <span>Visualisation Temps Réel</span>
+                                                                <div className="flex gap-1">
+                                                                    <div className="w-2 h-2 rounded-full bg-red-300"></div>
+                                                                    <div className="w-2 h-2 rounded-full bg-yellow-300"></div>
+                                                                    <div className="w-2 h-2 rounded-full bg-green-300"></div>
+                                                                </div>
+                                                            </div>
+                                                            <iframe 
+                                                                title="Animator Preview"
+                                                                className="w-full flex-1 border-none"
+                                                                srcDoc={((html) => {
+                                                                    if (!html) return "<body style='display:flex;align-items:center;justify-center;height:100vh;color:#94a3b8;font-family:sans-serif;'>Aucun code HTML détecté</body>";
+                                                                    const mockData = {
+                                                                        animation_title: "Atelier Robotique",
+                                                                        booking_date: "Samedi 18 Mai 2024",
+                                                                        booking_date_clean: "18.05.2024",
+                                                                        booking_time: "14:00 - 16:00",
+                                                                        to_name: "Jean Dupont",
+                                                                        animator_name: "Jean Dupont",
+                                                                        teacher_name: "Lucie Bernard",
+                                                                        school_name: "Collège Daudet",
+                                                                        commune: "Longlaville",
+                                                                        student_count: 15,
+                                                                        adult_count: 2,
+                                                                        class_level: "3ème A",
+                                                                        bus_info: "Oui (Dépose minute souhaitée)",
+                                                                        teacher_phone: "07 11 22 33 44",
+                                                                        teacher_email: "bernard@college.fr",
+                                                                        establishment_name: "MÉDIATHÈQUE DU GRAND LONGWY",
+                                                                        header_bg_color: "#0f172a"
+                                                                    };
+                                                                    let rendered = html;
+                                                                    Object.entries(mockData).forEach(([key, value]) => {
+                                                                        rendered = rendered.replaceAll(`{{${key}}}`, String(value));
+                                                                    });
+                                                                    return rendered;
+                                                                })(formState.emailAnimatorTemplate || '')}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="border-t border-dashed border-gray-200"></div>
+
+                                            {/* Template 3: Recapitualtif Liste */}
+                                            <div className="space-y-6">
+                                                <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-green-600 rounded-lg text-white">
+                                                            <ListIcon className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h4 className="text-lg font-bold text-gray-800">E-mail récapitulatif (Liste de réservations)</h4>
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${formState.emailListEnabled !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                    {formState.emailListEnabled !== false ? 'Actif' : 'Inactif'}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-400">Envoyé lors de l'exportation manuelle d'une liste de réservations</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sujet de l'e-mail</label>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if(window.confirm("Rétablir le sujet par défaut ?")) {
+                                                                            setFormState({ ...formState, emailListSubject: DEFAULT_EMAIL_LIST_SUBJECT });
+                                                                        }
+                                                                    }}
+                                                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                                >
+                                                                    Rétablir
+                                                                </button>
+                                                            </div>
+                                                            <input 
+                                                                type="text" 
+                                                                name="emailListSubject" 
+                                                                value={formState.emailListSubject || ''} 
+                                                                onChange={handleChange} 
+                                                                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-white font-semibold" 
+                                                                placeholder="Sujet de l'e-mail..."
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Code HTML (à copier dans EmailJS)</label>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if(window.confirm("Voulez-vous vraiment restaurer le modèle par défaut pour la liste des réservations ? Vos modifications actuelles seront perdues.")) {
+                                                                            setFormState({ ...formState, emailListTemplate: DEFAULT_EMAIL_LIST_TEMPLATE });
+                                                                            showNotification("Modèle Liste réinitialisé ! N'oubliez pas d'enregistrer.");
+                                                                        }
+                                                                    }}
+                                                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                                >
+                                                                    <ArrowsPointingInIcon className="w-3 h-3" />
+                                                                    Rétablir le défaut
+                                                                </button>
+                                                            </div>
+                                                            <textarea 
+                                                                value={formState.emailListTemplate || ''}
+                                                                onChange={(e) => setFormState({ ...formState, emailListTemplate: e.target.value })}
+                                                                className="w-full h-[500px] p-4 font-mono text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none bg-gray-900 text-green-100 resize-none leading-relaxed"
+                                                                spellCheck={false}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-col">
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aperçu du rendu</label>
+                                                        <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                                                            <div className="bg-gray-50 border-b border-gray-100 p-3 text-[10px] font-bold text-gray-400 flex items-center justify-between uppercase tracking-widest">
+                                                                <span>Visualisation Temps Réel</span>
+                                                                <div className="flex gap-1">
+                                                                    <div className="w-2 h-2 rounded-full bg-red-300"></div>
+                                                                    <div className="w-2 h-2 rounded-full bg-yellow-300"></div>
+                                                                    <div className="w-2 h-2 rounded-full bg-green-300"></div>
+                                                                </div>
+                                                            </div>
+                                                            <iframe 
+                                                                title="List Preview"
+                                                                className="w-full flex-1 border-none"
+                                                                srcDoc={((html) => {
+                                                                    if (!html) return "<body style='display:flex;align-items:center;justify-center;height:100vh;color:#94a3b8;font-family:sans-serif;'>Aucun code HTML détecté</body>";
+                                                                    const mockData = {
+                                                                        bookings_count: 2,
+                                                                        bookings_rows: `
+                                                                            <tr>
+                                                                                <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; border-bottom: 1px solid #edf2f7; line-height: 1.4;">
+                                                                                    <div style="font-weight: bold; color: #0f172a;">Escape Game Numérique</div>
+                                                                                    <div style="font-weight: bold; color: #2563eb; font-size: 12px;">Jeudi 15 mai 2024 à 09h</div>
+                                                                                </td>
+                                                                                <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">M. Jean</td>
+                                                                                <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">Moulin (GORCY)</td>
+                                                                                <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">CE1</td>
+                                                                                <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4; border-bottom: 1px solid #edf2f7;">
+                                                                                    <div>25 élèves</div>
+                                                                                    <div style="color: #64748b; font-size: 12px;">4 adultes</div>
+                                                                                </td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; border-bottom: 1px solid #edf2f7; line-height: 1.4;">
+                                                                                    <div style="font-weight: bold; color: #0f172a;">Atelier Robotique</div>
+                                                                                    <div style="font-weight: bold; color: #2563eb; font-size: 12px;">Vendredi 16 mai 2024 à 14h</div>
+                                                                                </td>
+                                                                                <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">Mme. Marie</td>
+                                                                                <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">Hugo (LONGWY)</td>
+                                                                                <td style="padding: 12px; font-size: 14px; border-right: 1px solid #edf2f7; color: #1e293b; border-bottom: 1px solid #edf2f7;">CM2</td>
+                                                                                <td style="padding: 12px; font-size: 14px; color: #1e293b; line-height: 1.4; border-bottom: 1px solid #edf2f7;">
+                                                                                    <div>22 élèves</div>
+                                                                                    <div style="color: #64748b; font-size: 12px;">2 adultes</div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        `,
+                                                                        establishment_name: "MÉDIATHÈQUE DU GRAND LONGWY",
+                                                                        header_bg_color: "#059669"
+                                                                    };
+                                                                    let rendered = html;
+                                                                    Object.entries(mockData).forEach(([key, value]) => {
+                                                                        rendered = rendered.replaceAll(`{{${key}}}`, String(value));
+                                                                    });
+                                                                    return rendered;
+                                                                })(formState.emailListTemplate || '')}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="border-t border-dashed border-gray-200"></div>
+
+                                            {/* Template 4: Rappel Automatique */}
+                                            <div className="space-y-6">
+                                                <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-amber-600 rounded-lg text-white">
+                                                            <ClockIcon className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h4 className="text-lg font-bold text-gray-800">E-mail de rappel automatique</h4>
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${formState.emailReminderEnabled !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                    {formState.emailReminderEnabled !== false ? 'Actif' : 'Inactif'}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-400">Modèle de l'e-mail de rappel envoyé aux destinataires avant leur animation</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sujet de l'e-mail</label>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if(window.confirm("Rétablir le sujet par défaut ?")) {
+                                                                            setFormState({ ...formState, emailReminderSubject: DEFAULT_EMAIL_REMINDER_SUBJECT });
+                                                                        }
+                                                                    }}
+                                                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                                >
+                                                                    Rétablir
+                                                                </button>
+                                                            </div>
+                                                            <input 
+                                                                type="text" 
+                                                                name="emailReminderSubject" 
+                                                                value={formState.emailReminderSubject || ''} 
+                                                                onChange={handleChange} 
+                                                                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white font-semibold" 
+                                                                placeholder="Sujet de l'e-mail de rappel..."
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Code HTML (template_rappel)</label>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if(window.confirm("Voulez-vous vraiment restaurer le modèle par défaut pour le rappel ? Vos modifications actuelles seront perdues.")) {
+                                                                            setFormState({ ...formState, emailReminderTemplate: DEFAULT_EMAIL_REMINDER_TEMPLATE });
+                                                                            showNotification("Modèle Rappel réinitialisé ! N'oubliez pas d'enregistrer.");
+                                                                        }
+                                                                    }}
+                                                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-tight flex items-center gap-1"
+                                                                >
+                                                                    <ArrowsPointingInIcon className="w-3 h-3" />
+                                                                    Rétablir le défaut
+                                                                </button>
+                                                            </div>
+                                                            <textarea 
+                                                                value={formState.emailReminderTemplate || ''}
+                                                                onChange={(e) => setFormState({ ...formState, emailReminderTemplate: e.target.value })}
+                                                                className="w-full h-[500px] p-4 font-mono text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none bg-gray-900 text-blue-100 resize-none leading-relaxed"
+                                                                spellCheck={false}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-col">
+                                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aperçu du rendu</label>
+                                                        <div className="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                                                            <div className="bg-gray-50 border-b border-gray-100 p-3 text-[10px] font-bold text-gray-400 flex items-center justify-between uppercase tracking-widest">
+                                                                <span>Visualisation Temps Réel</span>
+                                                                <div className="flex gap-1">
+                                                                    <div className="w-2 h-2 rounded-full bg-red-300"></div>
+                                                                    <div className="w-2 h-2 rounded-full bg-yellow-300"></div>
+                                                                    <div className="w-2 h-2 rounded-full bg-green-300"></div>
+                                                                </div>
+                                                            </div>
+                                                            <iframe 
+                                                                title="Reminder Preview"
+                                                                className="w-full flex-1 border-none"
+                                                                srcDoc={((html) => {
+                                                                    if (!html) return "<body style='display:flex;align-items:center;justify-center;height:100vh;color:#94a3b8;font-family:sans-serif;'>Aucun code HTML détecté</body>";
+                                                                    const mockData = {
+                                                                        animation_title: "Escape Game Numérique",
+                                                                        booking_date: "Mercredi 15 Mai 2024",
+                                                                        booking_date_clean: "15.05.2024",
+                                                                        booking_time: "10:00 - 12:00",
+                                                                        to_name: "Mme Martin",
+                                                                        teacher_name: "Sophie Martin",
+                                                                        school_name: "École Pasteur",
+                                                                        commune: "Longwy",
+                                                                        student_count: 24,
+                                                                        adult_count: 3,
+                                                                        class_level: "CM1/CM2",
+                                                                        bus_info: "Non",
+                                                                        teacher_phone: "06 00 00 00 00",
+                                                                        teacher_email: "martin@ecole.fr",
+                                                                        establishment_name: "MÉDIATHÈQUE DU GRAND LONGWY",
+                                                                        header_bg_color: "#b45309"
+                                                                    };
+                                                                    let rendered = html;
+                                                                    Object.entries(mockData).forEach(([key, value]) => {
+                                                                        rendered = rendered.replaceAll(`{{${key}}}`, String(value));
+                                                                    });
+                                                                    return rendered;
+                                                                })(formState.emailReminderTemplate || '')}
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

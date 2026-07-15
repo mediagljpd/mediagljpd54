@@ -70,7 +70,9 @@ const BookingSystem: React.FC<BookingSystemProps> = ({
         emailService.sendBookingConfirmation(newBooking, settings);
         
         if (selectedAnimation.animator) {
-            const animator = settings.animators.find(a => a.name === selectedAnimation.animator);
+            const animator = settings.animators.find(a => 
+                a.name.trim().toLowerCase() === selectedAnimation.animator?.trim().toLowerCase()
+            );
             if (animator && animator.email) {
                 emailService.sendAnimatorNotification(newBooking, animator, settings);
             }
@@ -156,7 +158,7 @@ const BookingSystem: React.FC<BookingSystemProps> = ({
               </header>
               <BookingCalendar animation={selectedAnimation} onBookSlot={handleBookSlot} />
               {bookingDetails && <BookingForm animation={selectedAnimation} date={bookingDetails.date} time={bookingDetails.time} onConfirm={handleConfirmBooking} onCancel={() => setBookingDetails(null)} />}
-              {confirmedBooking && <BookingConfirmation booking={confirmedBooking} onOk={handleCloseConfirmation} />}
+              {confirmedBooking && <BookingConfirmation booking={confirmedBooking} onOk={handleCloseConfirmation} settings={settings} />}
           </div>
           <AppFooter onNavigate={onNavigate} />
         </div>

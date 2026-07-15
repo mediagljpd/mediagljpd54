@@ -52,7 +52,11 @@ const ManageStats: React.FC = () => {
         const byLevel: Record<string, number> = {};
 
         filteredBookings.forEach(b => {
-            if (b.commune) {
+            if (b.isOutOfGrandLongwy) {
+                const cleanCommune = 'HORS GRAND LONGWY';
+                byCommune[cleanCommune] = (byCommune[cleanCommune] || 0) + 1;
+                communeLabels[cleanCommune] = 'Hors Grand Longwy';
+            } else if (b.commune) {
                 // Normalize commune name by removing the postal code part for grouping
                 const cleanCommune = b.commune.replace(/\s*\(\d{5}\)$/, '').trim().toUpperCase();
                 byCommune[cleanCommune] = (byCommune[cleanCommune] || 0) + 1;
@@ -98,7 +102,7 @@ const ManageStats: React.FC = () => {
             'Date': b.date,
             'Heure': `${b.time}h`,
             'Animation': b.animationTitle,
-            'Commune': b.commune,
+            'Commune': b.isOutOfGrandLongwy ? (b.commune ? `Hors Grand Longwy (${b.commune})` : 'Hors Grand Longwy') : b.commune,
             'École': b.schoolName,
             'Niveau': b.classLevel,
             'Élèves': b.studentCount,
@@ -269,7 +273,9 @@ const ManageStats: React.FC = () => {
                                 [...filteredBookings].sort((a, b) => b.date.localeCompare(a.date)).map((b) => (
                                     <tr key={b.id} className="hover:bg-gray-50/50 transition-colors">
                                         <td className="px-6 py-4 text-xs font-bold text-gray-700">{b.date}</td>
-                                        <td className="px-6 py-4 text-xs text-gray-600">{b.commune}</td>
+                                        <td className="px-6 py-4 text-xs text-gray-600">
+                                            {b.isOutOfGrandLongwy ? (b.commune ? `Hors Grand Longwy (${b.commune})` : 'Hors Grand Longwy') : b.commune}
+                                        </td>
                                         <td className="px-6 py-4 text-xs text-gray-600">{b.schoolName}</td>
                                         <td className="px-6 py-4 text-xs font-black text-blue-600">{b.classLevel}</td>
                                         <td className="px-6 py-4 text-xs text-center font-bold text-gray-700">{b.studentCount}</td>

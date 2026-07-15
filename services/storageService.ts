@@ -27,6 +27,12 @@ export const storageService = {
 
         const resourceType = file.type === 'application/pdf' ? 'raw' : 'image';
 
+        if (file.type === 'application/pdf') {
+            // Generate a unique public ID ending with .pdf to force Cloudinary to serve it with Content-Type: application/pdf
+            const uniqueId = `registration_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.pdf`;
+            formData.append('public_id', uniqueId);
+        }
+
         try {
             const response = await fetch(
                 `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`,

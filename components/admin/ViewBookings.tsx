@@ -6,7 +6,7 @@ import { AdminSubComponentProps } from './types';
 import { generateBusPdf } from '../../services/documentGenerator';
 import { formatPhoneNumber } from '../../utils/formatters';
 import { emailService } from '../../services/emailService';
-import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, SendIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon, XIcon } from '../Icons';
+import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, SendIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon, XIcon, BellIcon } from '../Icons';
 
 import BookingEditForm from './BookingEditForm';
 import BookingsCalendar from './BookingsCalendar';
@@ -367,6 +367,62 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         }
     };
 
+    const [isSendingReminders, setIsSendingReminders] = useState(false);
+    const [showReminderConfirm, setShowReminderConfirm] = useState(false);
+
+    const handleSendReminders = () => {
+        const selectedBookings = bookings.filter(b => selectedBookingIds.has(b.id));
+        if (selectedBookings.length === 0) {
+            showNotification("Aucune réservation sélectionnée.");
+            return;
+        }
+
+        if (settings.emailReminderEnabled === false) {
+            showNotification("Le rappel automatique par e-mail est désactivé dans les paramètres généraux.", "error");
+            return;
+        }
+
+        setShowReminderConfirm(true);
+    };
+
+    const confirmSendReminders = async () => {
+        const selectedBookings = bookings.filter(b => selectedBookingIds.has(b.id));
+        if (selectedBookings.length === 0) {
+            return;
+        }
+
+        setIsSendingReminders(true);
+        setShowReminderConfirm(false);
+        let successCount = 0;
+        let failCount = 0;
+
+        try {
+            for (const booking of selectedBookings) {
+                try {
+                    // Update reminderSent status in local and database
+                    await saveBooking({ ...booking, reminderSent: true });
+                    
+                    // Send booking reminder (which will send to teacher and/or animator according to settings)
+                    await emailService.sendBookingReminder(booking, settings, animations);
+                    successCount++;
+                } catch (err) {
+                    console.error("Error sending manual reminder:", err);
+                    failCount++;
+                }
+            }
+            if (failCount === 0) {
+                showNotification(`${successCount} rappel(s) envoyé(s) avec succès.`);
+            } else {
+                showNotification(`${successCount} rappel(s) envoyé(s), ${failCount} échec(s).`, "error");
+            }
+            setSelectedBookingIds(new Set());
+        } catch (error) {
+            showNotification("Erreur lors de l'envoi des rappels.", "error");
+        } finally {
+            setIsSendingReminders(false);
+        }
+    };
+
     const confirmSingleDelete = async () => {
         if (!deleteId) return;
         try {
@@ -389,6 +445,11 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         const selectedBookings = bookings.filter(b => selectedBookingIds.has(b.id));
         if (selectedBookings.length === 0) {
             showNotification("Aucune réservation sélectionnée.");
+            return;
+        }
+
+        if (settings.emailListEnabled === false) {
+            showNotification("L'envoi d'e-mails pour la liste est désactivé dans les paramètres généraux.", "error");
             return;
         }
 
@@ -632,6 +693,13 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                             <div className="bg-indigo-900 text-white p-4 mb-4 rounded-xl flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-4">
                                 <span className="font-black text-sm uppercase tracking-widest">{selectedBookingIds.size} sélectionné(s)</span>
                                 <div className="flex gap-2">
+                                    <button 
+                                        onClick={handleSendReminders} 
+                                        disabled={isSendingReminders}
+                                        className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-5 py-2 text-xs font-black uppercase rounded-lg transition-colors"
+                                    >
+                                        <BellIcon className="w-4 h-4" /> {isSendingReminders ? 'Envoi...' : 'Rappel'}
+                                    </button>
                                     <button onClick={() => setIsSendListModalOpen(true)} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2 text-xs font-black uppercase rounded-lg transition-colors">
                                         <SendIcon className="w-4 h-4" /> Envoi Liste
                                     </button>
@@ -966,6 +1034,12 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                         <h2 className="text-2xl font-black text-gray-800 mb-2 uppercase tracking-tight">Envoyer la liste</h2>
                         <p className="text-sm text-gray-500 mb-6 font-medium">Saisissez l'adresse e-mail pour envoyer le tableau récapitulatif des {selectedBookingIds.size} réservation(s) sélectionnée(s).</p>
                         
+                        {settings?.emailListEnabled === false && (
+                            <div className="mb-6 p-4 bg-amber-50 rounded-2xl border border-amber-200 text-amber-800 text-xs font-semibold leading-relaxed">
+                                ⚠️ <span className="font-bold">Attention :</span> L'envoi d'e-mails pour la liste est actuellement désactivé dans vos paramètres généraux. Vous devez l'activer pour pouvoir effectuer cet envoi.
+                            </div>
+                        )}
+                        
                         <form onSubmit={handleSendList} className="space-y-6">
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Adresse e-mail destinataire</label>
@@ -1033,6 +1107,16 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 isDanger={true}
                 onConfirm={confirmBulkDelete}
                 onCancel={() => setShowBulkDeleteConfirm(false)}
+            />
+
+            <ConfirmationModal 
+                isOpen={showReminderConfirm}
+                title="Envoyer les rappels"
+                message={`Voulez-vous envoyer un e-mail de rappel aux destinataires (enseignants et/ou animateurs selon vos paramètres globaux) pour les ${selectedBookingIds.size} réservations sélectionnées ?`}
+                confirmLabel="Envoyer"
+                isDanger={false}
+                onConfirm={confirmSendReminders}
+                onCancel={() => setShowReminderConfirm(false)}
             />
         </div>
     );
