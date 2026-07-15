@@ -5,8 +5,10 @@ import { toYYYYMMDD } from '../../utils/date';
 import { AppContext } from '../../AppContext';
 import { SearchIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, XIcon } from '../Icons';
 
-const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, onConfirm: (formData: Omit<Booking, 'id' | 'animationTitle'>) => void, onCancel: () => void }> = ({ animation, date, time, onConfirm, onCancel }) => {
+const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, onConfirm: (formData: Omit<Booking, 'id' | 'animationTitle'>) => Promise<void>, onCancel: () => void }> = ({ animation, date, time, onConfirm, onCancel }) => {
     const { settings } = useContext(AppContext);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState<string | null>(null);
     
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
@@ -106,7 +108,7 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
         if (showErrors) setShowErrors(false);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
         if (!formData.classLevel || !isCommuneValid || !isSchoolValid) {
@@ -114,14 +116,38 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
             return;
         }
 
-        // Initialisation des statuts bus pour l'admin
-        onConfirm({
-            ...formData,
-            studentCount: parseInt(formData.studentCount as any) || 0,
-            adultCount: parseInt(formData.adultCount as any) || 0,
-            busStatus: formData.noBusRequired ? 'validated' : 'pending',
-            busCost: 0
-        });
+        setIsSubmitting(true);
+        setSubmitError(null);
+
+        try {
+            await onConfirm({
+                ...formData,
+                studentCount: parseInt(formData.studentCount as any) || 0,
+                adultCount: parseInt(formData.adultCount as any) || 0,
+                busStatus: formData.noBusRequired ? 'validated' : 'pending',
+                busCost: 0
+            });
+        } catch (error: any) {
+            console.error("Error confirming booking:", error);
+            let userMsg = "Une erreur est survenue lors de la réservation. Veuillez réessayer.";
+            try {
+                const parsed = JSON.parse(error.message);
+                if (parsed && parsed.error) {
+                    const rawError = parsed.error;
+                    if (rawError.includes("Ce créneau") || rawError.includes("L'après-midi") || rawError.includes("L'animateur")) {
+                        userMsg = rawError;
+                    } else if (rawError.includes("insufficient permissions")) {
+                        userMsg = "Erreur d'autorisation. Veuillez vous reconnecter ou réessayer.";
+                    }
+                }
+            } catch (e) {
+                if (error.message) {
+                    userMsg = error.message;
+                }
+            }
+            setSubmitError(userMsg);
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -389,9 +415,24 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                         </div>
                     </div>
 
+                    {submitError && (
+                        <div className="col-span-2 mt-2 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm font-bold text-center">
+                            {submitError}
+                        </div>
+                    )}
+
                     <div className="col-span-2 flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={onCancel} className="px-6 py-2 bg-gray-300 rounded-md font-bold hover:bg-gray-400">Annuler</button>
-                        <button type="submit" className="px-8 py-2 bg-green-600 text-white rounded-md font-bold hover:bg-green-700 shadow-md transform active:scale-95 transition-all">Confirmer la réservation</button>
+                        <button type="button" onClick={onCancel} disabled={isSubmitting} className="px-6 py-2 bg-gray-300 rounded-md font-bold hover:bg-gray-400 disabled:opacity-50">Annuler</button>
+                        <button type="submit" disabled={isSubmitting} className="px-8 py-2 bg-green-600 text-white rounded-md font-bold hover:bg-green-700 shadow-md transform active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                            {isSubmitting ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    Réservation en cours...
+                                </>
+                            ) : (
+                                "Confirmer la réservation"
+                            )}
+                        </button>
                     </div>
                 </form>
             </div>

@@ -1213,7 +1213,8 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             )}
 
             {editingBooking && <BookingEditForm booking={editingBooking} animations={animations} bookings={bookings} onSave={(b) => { 
-                saveBooking(b); 
+                const anim = animations.find(a => a.id === b.animationId);
+                saveBooking(b, anim?.animator); 
                 setEditingBooking(null); 
                 showNotification('Modifiée !'); 
             }} onCancel={() => setEditingBooking(null)} />}

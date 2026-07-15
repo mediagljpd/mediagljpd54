@@ -63,26 +63,23 @@ const BookingSystem: React.FC<BookingSystemProps> = ({
         animationTitle: selectedAnimation.title,
     };
     
-    try {
-        await saveBooking(newBooking);
-        
-        // Envoi des e-mails en arrière-plan
-        emailService.sendBookingConfirmation(newBooking, settings);
-        
-        if (selectedAnimation.animator) {
-            const animator = settings.animators.find(a => 
-                a.name.trim().toLowerCase() === selectedAnimation.animator?.trim().toLowerCase()
-            );
-            if (animator && animator.email) {
-                emailService.sendAnimatorNotification(newBooking, animator, settings);
-            }
+    // On transmet l'animateur pour le contrôle de concurrence atomique Firestore
+    await saveBooking(newBooking, selectedAnimation.animator);
+    
+    // Envoi des e-mails en arrière-plan
+    emailService.sendBookingConfirmation(newBooking, settings);
+    
+    if (selectedAnimation.animator) {
+        const animator = settings.animators.find(a => 
+            a.name.trim().toLowerCase() === selectedAnimation.animator?.trim().toLowerCase()
+        );
+        if (animator && animator.email) {
+            emailService.sendAnimatorNotification(newBooking, animator, settings);
         }
-
-        setBookingDetails(null);
-        setConfirmedBooking(newBooking);
-    } catch (error) {
-        alert("Une erreur est survenue lors de la réservation. Veuillez réessayer.");
     }
+
+    setBookingDetails(null);
+    setConfirmedBooking(newBooking);
   };
   
   const handleCloseConfirmation = () => {

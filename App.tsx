@@ -717,9 +717,9 @@ export function App() {
     orderedAnims.forEach(anim => dataService.saveAnimation(anim));
   }, []);
 
-  const saveBooking = useCallback(async (booking: Booking) => {
-    await dataService.saveBooking(booking);
-  }, []);
+  const saveBooking = useCallback(async (booking: Booking, animatorName?: string) => {
+    await dataService.saveBooking(booking, animatorName, bookings, animations);
+  }, [bookings, animations]);
 
   const removeBooking = useCallback(async (bookingId: string) => {
     await dataService.removeBooking(bookingId);
@@ -727,8 +727,8 @@ export function App() {
 
   const updateBookings = useCallback((newBookings: Booking[]) => {
     setBookings(newBookings);
-    if (db) dataService.saveBookings(newBookings);
-  }, []);
+    if (db) dataService.saveBookings(newBookings, animations);
+  }, [animations]);
 
   const updateSettings = useCallback(async (newSettings: Partial<AppSettings>) => {
     try {
