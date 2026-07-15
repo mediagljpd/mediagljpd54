@@ -38,6 +38,12 @@ service cloud.firestore {
       allow create, update, delete: if isValidId(bookingId);
     }
 
+    // DayLocks: Public read/create/update/delete
+    match /dayLocks/{dayLockId} {
+      allow read: if true;
+      allow create, update, delete: if isValidId(dayLockId);
+    }
+
     // Admins list: Un utilisateur peut lire son propre document d'admin pour vérifier son statut
     match /admins/{adminId} {
       allow read: if isSignedIn() && (request.auth.uid == adminId || isAdmin());
