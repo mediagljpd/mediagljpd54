@@ -33,7 +33,7 @@ const BUS_STATUS_OPTIONS = [
 ];
 
 const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
-    const { bookings, animations, removeBooking, updateBookings, settings, saveBooking, currentUser } = useContext(AppContext);
+    const { bookings, animations, removeBooking, updateBookings, settings, saveBooking, currentUser, updateSettings } = useContext(AppContext);
     const isBusManager = currentUser?.role === 'admin' || !!currentUser?.permissions?.canManageBus;
     
     type AugmentedBooking = Booking & { animator?: string };
@@ -119,8 +119,101 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const [sortConfig, setSortConfig] = useState<{ key: SortableKey, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
     const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
     const [busManagementBooking, setBusManagementBooking] = useState<Booking | null>(null);
-    const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+
+    // Clés de préférence d'affichage par défaut pour la session personnelle (fallback local)
+    const viewPrefKey = `booking_default_view_${currentUser?.id || currentUser?.username || 'global'}`;
+    const scopePrefKey = `booking_default_scope_${currentUser?.id || currentUser?.username || 'global'}`;
+
+    const [defaultViewPref, setDefaultViewPref] = useState<'list' | 'calendar'>(() => {
+        const userPref = currentUser?.id ? settings.userPreferences?.[currentUser.id] : null;
+        if (userPref?.defaultViewPref) return userPref.defaultViewPref;
+        const saved = localStorage.getItem(viewPrefKey);
+        return (saved === 'list' || saved === 'calendar') ? saved : 'list';
+    });
+
+    const [defaultScopePref, setDefaultScopePref] = useState<'all' | 'mine'>(() => {
+        const userPref = currentUser?.id ? settings.userPreferences?.[currentUser.id] : null;
+        if (userPref?.defaultScopePref) return userPref.defaultScopePref;
+        const saved = localStorage.getItem(scopePrefKey);
+        return (saved === 'all' || saved === 'mine') ? saved : 'all';
+    });
+
+    const [viewMode, setViewMode] = useState<'list' | 'calendar'>(() => {
+        const userPref = currentUser?.id ? settings.userPreferences?.[currentUser.id] : null;
+        if (userPref?.defaultViewPref) return userPref.defaultViewPref;
+        const saved = localStorage.getItem(`booking_default_view_${currentUser?.id || currentUser?.username || 'global'}`);
+        return (saved === 'list' || saved === 'calendar') ? saved : 'list';
+    });
+
     const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set());
+
+    const handleDefaultViewChange = async (newView: 'list' | 'calendar') => {
+        setDefaultViewPref(newView);
+        localStorage.setItem(viewPrefKey, newView);
+        setViewMode(newView);
+
+        if (currentUser?.id && updateSettings) {
+            try {
+                const userPrefs = settings.userPreferences || {};
+                const currentUserPref = userPrefs[currentUser.id] || {};
+                await updateSettings({
+                    userPreferences: {
+                        ...userPrefs,
+                        [currentUser.id]: {
+                            ...currentUserPref,
+                            defaultViewPref: newView
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error("Erreur de sauvegarde de la préférence de vue dans Firestore:", err);
+            }
+        }
+    };
+
+    const handleDefaultScopeChange = async (newScope: 'all' | 'mine') => {
+        setDefaultScopePref(newScope);
+        localStorage.setItem(scopePrefKey, newScope);
+        if (newScope === 'mine' && currentUser?.animatorName) {
+            setSelectedAnimators(new Set([currentUser.animatorName]));
+        } else {
+            setSelectedAnimators(new Set(animators.map(a => a.name)));
+        }
+
+        if (currentUser?.id && updateSettings) {
+            try {
+                const userPrefs = settings.userPreferences || {};
+                const currentUserPref = userPrefs[currentUser.id] || {};
+                await updateSettings({
+                    userPreferences: {
+                        ...userPrefs,
+                        [currentUser.id]: {
+                            ...currentUserPref,
+                            defaultScopePref: newScope
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error("Erreur de sauvegarde de la préférence de portée dans Firestore:", err);
+            }
+        }
+    };
+
+    // Synchronisation dynamique si les paramètres de la base changent ou sont chargés après montage
+    useEffect(() => {
+        if (!currentUser?.id) return;
+        const userPref = settings.userPreferences?.[currentUser.id];
+        if (userPref) {
+            if (userPref.defaultViewPref) {
+                setDefaultViewPref(userPref.defaultViewPref);
+                setViewMode(userPref.defaultViewPref);
+            }
+            if (userPref.defaultScopePref) {
+                setDefaultScopePref(userPref.defaultScopePref);
+            }
+        }
+    }, [settings.userPreferences, currentUser?.id]);
+
     const headerCheckboxRef = useRef<HTMLInputElement>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
@@ -165,18 +258,27 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             : SCHOOL_YEAR_MONTHS.map(m => m.value);
 
         let initialAnims: string[] = [];
-        if (isLimitedUser && currentUser?.animatorName) {
-            // Mode restreint : Uniquement l'animateur lié
+        const userPref = currentUser?.id ? settings.userPreferences?.[currentUser.id] : null;
+        const activeScope = userPref?.defaultScopePref || 
+            (localStorage.getItem(`booking_default_scope_${currentUser?.id || currentUser?.username || 'global'}`) === 'mine' ? 'mine' : 'all');
+
+        if (activeScope === 'mine' && currentUser?.animatorName) {
+            initialAnims = [currentUser.animatorName];
+        } else if (activeScope === 'all') {
+            // Explicitly show all bookings
+            initialAnims = animators.map(a => a.name);
+        } else if (isLimitedUser && currentUser?.animatorName) {
+            // Mode restreint default fallback
             initialAnims = [currentUser.animatorName];
         } else {
-            // Mode admin : Tous les animateurs
+            // Mode admin ou tout cocher par défaut : Tous les animateurs
             initialAnims = animators.map(a => a.name);
         }
 
         setSelectedAnimators(new Set(initialAnims));
         setSelectedMonths(new Set(initialMonths));
         filterInitialized.current = true;
-    }, [animators, currentUser, startYear, endYear]);
+    }, [animators, currentUser, startYear, endYear, settings]);
 
     const animatorItemsWithCounts = useMemo(() => {
         return animators.map(a => {
@@ -619,6 +721,33 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                     </span>
                 </div>
                  <div className="flex flex-wrap items-center gap-3">
+                    {/* Affichage par défaut */}
+                    <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 shadow-sm text-xs text-gray-600">
+                        <CogIcon className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="font-bold text-gray-500 whitespace-nowrap">Affichage par défaut :</span>
+                        <select
+                            value={defaultViewPref}
+                            onChange={(e) => handleDefaultViewChange(e.target.value as 'list' | 'calendar')}
+                            className="bg-transparent font-extrabold text-gray-800 focus:outline-none cursor-pointer hover:text-blue-600 border-none p-0 pr-1 text-xs"
+                        >
+                            <option value="list">Vue Liste</option>
+                            <option value="calendar">Vue Calendrier</option>
+                        </select>
+                        <span className="text-gray-300">|</span>
+                        <select
+                            value={defaultScopePref}
+                            onChange={(e) => handleDefaultScopeChange(e.target.value as 'all' | 'mine')}
+                            className="bg-transparent font-extrabold text-gray-800 focus:outline-none cursor-pointer hover:text-blue-600 border-none p-0 pr-1 text-xs"
+                        >
+                            <option value="all">Toutes les résas</option>
+                            {currentUser?.animatorName ? (
+                                <option value="mine">Mes résas</option>
+                            ) : (
+                                <option value="mine" disabled>Mes résas (indisponible)</option>
+                            )}
+                        </select>
+                    </div>
+
                     {viewMode === 'list' && (
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

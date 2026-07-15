@@ -165,6 +165,7 @@ export interface AppSettings {
   contactPhone?: string;
   contactEmail?: string;
   users?: AdminUser[];
+  userPreferences?: Record<string, { defaultViewPref?: 'list' | 'calendar'; defaultScopePref?: 'all' | 'mine' }>;
 
   // Auto-cleanup settings
   autoCleanupEnabled?: boolean;
