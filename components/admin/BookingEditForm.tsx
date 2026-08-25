@@ -274,6 +274,23 @@ const BookingEditForm: React.FC<{
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                        {settings.enableBookingStatus && (
+                            <div className="md:col-span-2 bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div>
+                                    <label className="block text-xs font-black text-amber-900 uppercase tracking-widest mb-0.5">Statut de la réservation</label>
+                                    <p className="text-xs text-amber-700">Définissez si cette réservation est en attente de confirmation par l'enseignant ou validée.</p>
+                                </div>
+                                <select 
+                                    name="status" 
+                                    value={formData.status || 'pending'} 
+                                    onChange={handleChange}
+                                    className="p-2.5 bg-white border border-amber-300 rounded-xl font-black text-sm text-gray-800 shadow-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                                >
+                                    <option value="pending">⏳ À confirmer</option>
+                                    <option value="validated">✅ Validé</option>
+                                </select>
+                            </div>
+                        )}
                         <div>
                             <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Enseignant</label>
                             <input type="text" name="teacherName" value={formData.teacherName} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>

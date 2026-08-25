@@ -5,10 +5,11 @@ import ManageCalendar from './admin/ManageCalendar';
 import ViewBookings from './admin/ViewBookings';
 import ManageSettings from './admin/ManageSettings';
 import { AdminView } from './admin/types';
-import { SparklesIcon, CalendarIcon, ListIcon, CogIcon, CheckIcon, XIcon, ShieldCheckIcon, DownloadIcon } from './Icons';
+import { SparklesIcon, CalendarIcon, ListIcon, CogIcon, CheckIcon, XIcon, ShieldCheckIcon, DownloadIcon, ArrowUturnLeftIcon } from './Icons';
 import { db, auth } from '../services/firebase';
 import { signOut } from 'firebase/auth';
 import { AppContext } from '../AppContext';
+import ConfirmationModal from './shared/ConfirmationModal';
 
 // Main Admin Panel Component
 const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
@@ -17,7 +18,9 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const [dbStatus, setDbStatus] = useState<'connected' | 'error'>('connected');
     const [showBackupAlert, setShowBackupAlert] = useState(false);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
     const saveTriggerRef = useRef<(() => void) | null>(null);
+    const cancelTriggerRef = useRef<(() => void) | null>(null);
     const { settings, currentUser } = useContext(AppContext);
     const notificationTimer = useRef<number | null>(null);
 
@@ -65,6 +68,9 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             setHasUnsavedChanges,
             registerSave: (saveFn: () => void) => {
                 saveTriggerRef.current = saveFn;
+            },
+            registerCancel: (cancelFn: () => void) => {
+                cancelTriggerRef.current = cancelFn;
             }
         };
         switch (activeView) {
@@ -79,6 +85,9 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const handleViewChange = (newView: AdminView) => {
         if (hasUnsavedChanges) {
             if (window.confirm("Vous avez des modifications non enregistrées. Voulez-vous vraiment changer de page et abandonner vos modifications ?")) {
+                if (cancelTriggerRef.current) {
+                    cancelTriggerRef.current();
+                }
                 setHasUnsavedChanges(false);
                 setActiveView(newView);
             }
@@ -126,9 +135,10 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         <div className="h-screen bg-gray-100 flex flex-col">
             <header className="bg-white shadow-sm z-30 px-6 py-4 flex-shrink-0">
                 <div className="max-w-screen-xl mx-auto">
-                    <div className="relative flex justify-center items-center">
-                        <div className="absolute left-0 flex items-center gap-2">
-                             <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    <div className="flex flex-wrap items-center justify-between gap-4 min-h-[44px]">
+                        {/* Left: Status Badges */}
+                        <div className="flex items-center gap-2 shrink-0">
+                             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                                  dbStatus === 'connected' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                              }`}>
                                  {dbStatus === 'connected' ? (
@@ -144,30 +154,49 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
                                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                                      </span>
-                                     Sauvegarde requise
+                                     <span className="hidden sm:inline">Sauvegarde requise</span>
                                  </div>
                              )}
                         </div>
                         
-                        <h1 className="text-2xl font-bold text-blue-600 whitespace-nowrap">Administration</h1>
+                        {/* Center: Title */}
+                        <h1 className="text-xl md:text-2xl font-bold text-blue-600 whitespace-nowrap text-center">
+                            Administration
+                        </h1>
                         
-                        <div className="absolute right-0 flex items-center gap-4">
-                            <span className="hidden md:block text-xs text-gray-500 font-medium">Année : {settings.activeYear}</span>
+                        {/* Right: Actions */}
+                        <div className="flex items-center gap-2.5 shrink-0">
+                            <span className="hidden 2xl:block text-xs text-gray-500 font-medium mr-1">Année : {settings.activeYear}</span>
                             
                             {hasUnsavedChanges && (
-                                <button 
-                                    onClick={() => {
-                                        if (saveTriggerRef.current) {
-                                            saveTriggerRef.current();
-                                        }
-                                    }}
-                                    className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-                                >
-                                    💾 Enregistrer les modifications
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button 
+                                        type="button"
+                                        onClick={() => setShowCancelConfirmModal(true)}
+                                        className="bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-700 border border-gray-300 px-3.5 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 shadow-sm hover:text-gray-900 cursor-pointer"
+                                        title="Annuler les modifications en attente"
+                                    >
+                                        <ArrowUturnLeftIcon className="w-4 h-4 text-gray-500" />
+                                        <span>Annuler</span>
+                                    </button>
+
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            if (saveTriggerRef.current) {
+                                                saveTriggerRef.current();
+                                            }
+                                        }}
+                                        className="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                                        title="Enregistrer toutes les modifications"
+                                    >
+                                        <span className="text-base leading-none">💾</span>
+                                        <span>Enregistrer</span>
+                                    </button>
+                                </div>
                             )}
 
-                            <button onClick={handleLogout} className="bg-red-500 text-white px-5 py-2 rounded-lg text-base font-medium hover:bg-red-600 transition-colors">
+                            <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-600 transition-colors">
                                 Déconnexion
                             </button>
                         </div>
@@ -201,6 +230,23 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                     {notification.type === 'success' ? '✓' : '✕'} {notification.message}
                 </div>
             )}
+
+            {/* Cancel Unsaved Changes Confirmation Modal */}
+            <ConfirmationModal 
+                isOpen={showCancelConfirmModal}
+                title="Annuler les modifications ?"
+                message="Voulez-vous vraiment annuler toutes les modifications apportées depuis le dernier enregistrement ? Tous les formulaires seront réinitialisés avec les données actuellement enregistrées dans la base de données, sans aucune perte de vos données existantes."
+                confirmLabel="Oui, annuler les modifications"
+                cancelLabel="Continuer l'édition"
+                isDanger={true}
+                onConfirm={() => {
+                    if (cancelTriggerRef.current) {
+                        cancelTriggerRef.current();
+                    }
+                    setShowCancelConfirmModal(false);
+                }}
+                onCancel={() => setShowCancelConfirmModal(false)}
+            />
 
             {/* Backup Reminder Modal */}
             {showBackupAlert && (

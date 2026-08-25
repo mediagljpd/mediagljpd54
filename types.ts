@@ -26,6 +26,8 @@ export interface Booking {
   studentCount: number;
   adultCount: number;
   busInfo: string;
+  // Statut de réservation (Mode hybride / Test)
+  status?: 'pending' | 'validated';
   // Nouveaux champs pour la gestion du bus
   noBusRequired?: boolean;
   busStatus?: 'pending' | 'validated';
@@ -43,6 +45,7 @@ export interface Holiday {
 export interface AnimatorSettings {
   inactiveSlots: number[];
   unavailableDates: string[];
+  unavailableReasons?: Record<string, string>;
   monthlyBookingLimit?: number;
 }
 
@@ -201,6 +204,10 @@ export interface AppSettings {
   emailReminderDays?: number;
   emailReminderTargetTeachers?: boolean;
   emailReminderTargetAnimators?: boolean;
+
+  // Statut des réservations (Mode hybride / Test)
+  enableBookingStatus?: boolean;
+  emailAnimatorOnValidationEnabled?: boolean;
 }
 
 export enum View {

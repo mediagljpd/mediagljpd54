@@ -6,7 +6,7 @@ import { AdminSubComponentProps } from './types';
 import { generateBusPdf } from '../../services/documentGenerator';
 import { formatPhoneNumber } from '../../utils/formatters';
 import { emailService } from '../../services/emailService';
-import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, SendIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon, XIcon, BellIcon } from '../Icons';
+import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, SendIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon, XIcon, BellIcon, ClockIcon, UserGroupIcon } from '../Icons';
 
 import BookingEditForm from './BookingEditForm';
 import BookingsCalendar from './BookingsCalendar';
@@ -32,6 +32,11 @@ const BUS_STATUS_OPTIONS = [
     { label: 'Pas de bus', value: 'none' },
 ];
 
+const BOOKING_STATUS_OPTIONS = [
+    { label: 'À confirmer', value: 'pending' },
+    { label: 'Validés', value: 'validated' },
+];
+
 const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
     const { bookings, animations, removeBooking, updateBookings, settings, saveBooking, currentUser, updateSettings } = useContext(AppContext);
     const isBusManager = currentUser?.role === 'admin' || !!currentUser?.permissions?.canManageBus;
@@ -44,6 +49,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const [selectedAnimators, setSelectedAnimators] = useState<Set<string>>(new Set());
     const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set());
     const [selectedBusStatuses, setSelectedBusStatuses] = useState<Set<string>>(new Set(['pending', 'validated', 'none']));
+    const [selectedBookingStatuses, setSelectedBookingStatuses] = useState<Set<string>>(new Set(['pending', 'validated']));
     const filterInitialized = useRef(false);
 
     const animatorMapForFiltering = useMemo(() => {
@@ -85,7 +91,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 return bYear === expectedYear;
             }).length;
 
-            // filteredCount: counts bookings in this month for the active school year matching selectedAnimators and selectedBusStatuses
+            // filteredCount: counts bookings in this month for the active school year matching selectedAnimators, selectedBusStatuses, and selectedBookingStatuses
             const filteredCount = bookings.filter(booking => {
                 const bDate = new Date(booking.date.replace(/-/g, '/'));
                 const bYear = bDate.getFullYear();
@@ -104,7 +110,10 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 }
                 const passesBus = selectedBusStatuses.has(currentStatus);
 
-                return passesAnimator && passesBus;
+                const currentBookingStatus = booking.status === 'validated' ? 'validated' : 'pending';
+                const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.has(currentBookingStatus);
+
+                return passesAnimator && passesBus && passesBookingStatus;
             }).length;
 
             return {
@@ -114,11 +123,12 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 totalCount
             };
         });
-    }, [bookings, startYear, endYear, selectedAnimators, selectedBusStatuses, animatorMapForFiltering]);
+    }, [bookings, startYear, endYear, selectedAnimators, selectedBusStatuses, selectedBookingStatuses, settings.enableBookingStatus, animatorMapForFiltering]);
 
     const [sortConfig, setSortConfig] = useState<{ key: SortableKey, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
     const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
     const [busManagementBooking, setBusManagementBooking] = useState<Booking | null>(null);
+    const [statusManagementBooking, setStatusManagementBooking] = useState<Booking | null>(null);
 
     // Clés de préférence d'affichage par défaut pour la session personnelle (fallback local)
     const viewPrefKey = `booking_default_view_${currentUser?.id || currentUser?.username || 'global'}`;
@@ -224,6 +234,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
     const [isSendListModalOpen, setIsSendListModalOpen] = useState(false);
     const [recipientListEmail, setRecipientListEmail] = useState('');
+    const [selectedRecipientAnimator, setSelectedRecipientAnimator] = useState('');
     const [isSendingList, setIsSendingList] = useState(false);
 
     useEffect(() => {
@@ -313,7 +324,10 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 }
                 const passesBus = selectedBusStatuses.has(currentStatus);
 
-                return passesMonth && passesBus;
+                const currentBookingStatus = b.status === 'validated' ? 'validated' : 'pending';
+                const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.has(currentBookingStatus);
+
+                return passesMonth && passesBus && passesBookingStatus;
             }).length;
 
             return {
@@ -323,7 +337,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 totalCount
             };
         });
-    }, [animators, bookings, startYear, endYear, animatorMapForFiltering, selectedMonths, selectedBusStatuses]);
+    }, [animators, bookings, startYear, endYear, animatorMapForFiltering, selectedMonths, selectedBusStatuses, selectedBookingStatuses, settings.enableBookingStatus]);
 
     const busStatusItemsWithCounts = useMemo(() => {
         return BUS_STATUS_OPTIONS.map(opt => {
@@ -342,7 +356,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 return currentStatus === opt.value;
             }).length;
 
-            // filteredCount: bookings for this bus status in the active school year matching selectedAnimators and selectedMonths
+            // filteredCount: bookings for this bus status in the active school year matching selectedAnimators, selectedMonths and selectedBookingStatuses
             const filteredCount = bookings.filter(b => {
                 const bDate = new Date(b.date.replace(/-/g, '/'));
                 const bYear = bDate.getFullYear();
@@ -361,7 +375,10 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
                 const passesMonth = selectedMonths.has(bMonth);
 
-                return passesAnimator && passesMonth;
+                const currentBookingStatus = b.status === 'validated' ? 'validated' : 'pending';
+                const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.has(currentBookingStatus);
+
+                return passesAnimator && passesMonth && passesBookingStatus;
             }).length;
 
             return {
@@ -371,7 +388,54 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 totalCount
             };
         });
-    }, [bookings, startYear, endYear, selectedAnimators, selectedMonths, animatorMapForFiltering]);
+    }, [bookings, startYear, endYear, selectedAnimators, selectedMonths, selectedBookingStatuses, settings.enableBookingStatus, animatorMapForFiltering]);
+
+    const bookingStatusItemsWithCounts = useMemo(() => {
+        return BOOKING_STATUS_OPTIONS.map(opt => {
+            // totalCount: bookings for this booking status in the active school year
+            const totalCount = bookings.filter(b => {
+                const bDate = new Date(b.date.replace(/-/g, '/'));
+                const bYear = bDate.getFullYear();
+                const bMonth = bDate.getMonth();
+                const inSchoolYear = (bYear === startYear && bMonth >= 9) || (bYear === endYear && bMonth <= 5);
+                if (!inSchoolYear) return false;
+
+                const currentStatus = b.status === 'validated' ? 'validated' : 'pending';
+                return currentStatus === opt.value;
+            }).length;
+
+            // filteredCount: matching animator, month, and bus filters
+            const filteredCount = bookings.filter(b => {
+                const bDate = new Date(b.date.replace(/-/g, '/'));
+                const bYear = bDate.getFullYear();
+                const bMonth = bDate.getMonth();
+                const inSchoolYear = (bYear === startYear && bMonth >= 9) || (bYear === endYear && bMonth <= 5);
+                if (!inSchoolYear) return false;
+
+                const currentStatus = b.status === 'validated' ? 'validated' : 'pending';
+                if (currentStatus !== opt.value) return false;
+
+                const bAnimator = animatorMapForFiltering.get(b.animationId);
+                const passesAnimator = !bAnimator || selectedAnimators.has(bAnimator);
+                const passesMonth = selectedMonths.has(bMonth);
+
+                let currentBusStatus = 'none';
+                if (!b.noBusRequired) {
+                    currentBusStatus = b.busStatus || 'pending';
+                }
+                const passesBus = selectedBusStatuses.has(currentBusStatus);
+
+                return passesAnimator && passesMonth && passesBus;
+            }).length;
+
+            return {
+                name: opt.label,
+                value: opt.value,
+                filteredCount,
+                totalCount
+            };
+        });
+    }, [bookings, startYear, endYear, selectedAnimators, selectedMonths, selectedBusStatuses, animatorMapForFiltering]);
 
     const filteredBookings = useMemo(() => {
         return bookings.filter(booking => {
@@ -390,9 +454,13 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             }
             const passesBus = selectedBusStatuses.has(currentStatus);
 
-            return passesAnimator && passesMonth && passesBus;
+            // 4. Filtre Statut de réservation
+            const currentBookingStatus = booking.status === 'validated' ? 'validated' : 'pending';
+            const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.has(currentBookingStatus);
+
+            return passesAnimator && passesMonth && passesBus && passesBookingStatus;
         });
-    }, [bookings, selectedAnimators, selectedMonths, selectedBusStatuses, animatorMapForFiltering]);
+    }, [bookings, selectedAnimators, selectedMonths, selectedBusStatuses, selectedBookingStatuses, settings.enableBookingStatus, animatorMapForFiltering]);
 
     const sortedBookings = useMemo(() => {
         let processableBookings: AugmentedBooking[] = filteredBookings.map(b => ({
@@ -466,6 +534,107 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             showNotification("Erreur lors de la suppression groupée.", "error");
         } finally {
             setShowBulkDeleteConfirm(false);
+        }
+    };
+
+    const handleToggleBookingStatus = async (b: Booking) => {
+        const newStatus: 'pending' | 'validated' = b.status === 'validated' ? 'pending' : 'validated';
+        try {
+            const anim = animations.find(a => a.id === b.animationId || a.title === b.animationTitle);
+            await saveBooking({ ...b, status: newStatus }, anim?.animator);
+
+            if (newStatus === 'validated' && b.status !== 'validated' && settings.emailAnimatorOnValidationEnabled !== false && anim?.animator) {
+                const animator = (settings.animators || []).find(
+                    a => a.name.trim().toLowerCase() === anim.animator?.trim().toLowerCase()
+                );
+                if (animator && animator.email) {
+                    await emailService.sendAnimatorValidationNotification({ ...b, status: 'validated' }, animator, settings);
+                    showNotification(`Réservation validée & e-mail envoyé à ${animator.name} !`);
+                    return;
+                }
+            }
+
+            showNotification(newStatus === 'validated' ? 'Réservation validée !' : 'Réservation passée en "À confirmer".');
+        } catch (error) {
+            showNotification("Erreur lors de la mise à jour du statut.", "error");
+        }
+    };
+
+    const handleSaveStatusManagement = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (statusManagementBooking) {
+            try {
+                const anim = animations.find(a => a.id === statusManagementBooking.animationId || a.title === statusManagementBooking.animationTitle);
+                const previousBooking = bookings.find(b => b.id === statusManagementBooking.id);
+                const previousStatus = previousBooking?.status || 'pending';
+                
+                await saveBooking(statusManagementBooking, anim?.animator);
+
+                // Envoi de l'e-mail à l'animateur si le statut passe à "validated"
+                if (statusManagementBooking.status === 'validated' && previousStatus !== 'validated') {
+                    if (settings.emailAnimatorOnValidationEnabled !== false && anim?.animator) {
+                        const animator = (settings.animators || []).find(
+                            a => a.name.trim().toLowerCase() === anim.animator?.trim().toLowerCase()
+                        );
+                        if (animator && animator.email) {
+                            await emailService.sendAnimatorValidationNotification(statusManagementBooking, animator, settings);
+                            showNotification(`Statut validé & e-mail envoyé à ${animator.name} !`);
+                            setStatusManagementBooking(null);
+                            return;
+                        }
+                    }
+                }
+
+                setStatusManagementBooking(null);
+                showNotification(statusManagementBooking.status === 'validated' ? 'Réservation validée !' : 'Statut de la réservation mis à jour !');
+            } catch (error) {
+                showNotification("Erreur lors de la mise à jour du statut.", "error");
+            }
+        }
+    };
+
+    const handleBulkValidate = async () => {
+        const selectedBookings = bookings.filter(b => selectedBookingIds.has(b.id));
+        if (selectedBookings.length === 0) return;
+        try {
+            let emailCount = 0;
+            for (const b of selectedBookings) {
+                const anim = animations.find(a => a.id === b.animationId || a.title === b.animationTitle);
+                await saveBooking({ ...b, status: 'validated' }, anim?.animator);
+
+                if (b.status !== 'validated' && settings.emailAnimatorOnValidationEnabled !== false && anim?.animator) {
+                    const animator = (settings.animators || []).find(
+                        a => a.name.trim().toLowerCase() === anim.animator?.trim().toLowerCase()
+                    );
+                    if (animator && animator.email) {
+                        await emailService.sendAnimatorValidationNotification({ ...b, status: 'validated' }, animator, settings);
+                        emailCount++;
+                    }
+                }
+            }
+            if (emailCount > 0) {
+                showNotification(`${selectedBookings.length} réservation(s) validée(s) (${emailCount} e-mail(s) animateur envoyé(s)) !`);
+            } else {
+                showNotification(`${selectedBookings.length} réservation(s) validée(s) !`);
+            }
+            setSelectedBookingIds(new Set());
+        } catch (error) {
+            showNotification("Erreur lors de la validation groupée.", "error");
+        }
+    };
+
+    const handleBulkSetPending = async () => {
+        const selectedBookings = bookings.filter(b => selectedBookingIds.has(b.id));
+        if (selectedBookings.length === 0) return;
+        try {
+            await Promise.all(selectedBookings.map(b => {
+                const anim = animations.find(a => a.id === b.animationId || a.title === b.animationTitle);
+                return saveBooking({ ...b, status: 'pending' }, anim?.animator);
+            }));
+            showNotification(`${selectedBookings.length} réservation(s) passée(s) en "À confirmer" !`);
+            setSelectedBookingIds(new Set());
+        } catch (error) {
+            showNotification("Erreur lors de la mise à jour groupée.", "error");
         }
     };
 
@@ -558,9 +727,11 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         setIsSendingList(true);
         try {
             await emailService.sendBookingList(recipientListEmail.trim(), selectedBookings, settings);
-            showNotification("La liste a été envoyée par e-mail.");
+            const targetName = selectedRecipientAnimator ? `${selectedRecipientAnimator} (${recipientListEmail.trim()})` : recipientListEmail.trim();
+            showNotification(`La liste (${selectedBookings.length} résa.) a été envoyée par e-mail à ${targetName} !`);
             setIsSendListModalOpen(false);
             setRecipientListEmail('');
+            setSelectedRecipientAnimator('');
         } catch (error) {
             showNotification("Erreur lors de l'envoi de l'e-mail.", "error");
         } finally {
@@ -778,10 +949,10 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 </div>
             </div>
             
-            {/* Zone de filtres harmonisée sur une seule ligne sur desktop */}
+            {/* Zone de filtres harmonisée */}
             <div className="mb-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-                    <div className="lg:col-span-4 flex flex-col">
+                <div className={`grid grid-cols-1 md:grid-cols-2 ${settings.enableBookingStatus ? 'lg:grid-cols-12' : 'lg:grid-cols-12'} gap-6 items-stretch`}>
+                    <div className={`${settings.enableBookingStatus ? 'lg:col-span-3' : 'lg:col-span-4'} flex flex-col`}>
                         <FilterSection 
                             title="Animateurs"
                             items={animatorItemsWithCounts}
@@ -791,7 +962,19 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                             onDeselectAll={() => deselectAll(setSelectedAnimators)}
                         />
                     </div>
-                    <div className="lg:col-span-3 flex flex-col">
+                    {settings.enableBookingStatus && (
+                        <div className="lg:col-span-3 flex flex-col">
+                            <FilterSection 
+                                title="Statut réservation"
+                                items={bookingStatusItemsWithCounts}
+                                selected={selectedBookingStatuses}
+                                onToggle={(v) => toggleItem(selectedBookingStatuses, setSelectedBookingStatuses, v)}
+                                onSelectAll={() => selectAll(BOOKING_STATUS_OPTIONS.map(o => o.value), setSelectedBookingStatuses)}
+                                onDeselectAll={() => deselectAll(setSelectedBookingStatuses)}
+                            />
+                        </div>
+                    )}
+                    <div className={`${settings.enableBookingStatus ? 'lg:col-span-2' : 'lg:col-span-3'} flex flex-col`}>
                         <FilterSection 
                             title="Gestion du bus"
                             items={busStatusItemsWithCounts}
@@ -801,7 +984,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                             onDeselectAll={() => deselectAll(setSelectedBusStatuses)}
                         />
                     </div>
-                    <div className="lg:col-span-5 flex flex-col">
+                    <div className={`${settings.enableBookingStatus ? 'lg:col-span-4' : 'lg:col-span-5'} flex flex-col`}>
                         <FilterSection 
                             title="Mois"
                             items={monthItemsWithCounts}
@@ -819,9 +1002,27 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 {viewMode === 'list' ? (
                     <>
                         {selectedBookingIds.size > 0 && (
-                            <div className="bg-indigo-900 text-white p-4 mb-4 rounded-xl flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-4">
+                            <div className="bg-indigo-900 text-white p-4 mb-4 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-4">
                                 <span className="font-black text-sm uppercase tracking-widest">{selectedBookingIds.size} sélectionné(s)</span>
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2">
+                                    {settings.enableBookingStatus && (
+                                        <>
+                                            <button 
+                                                onClick={handleBulkValidate} 
+                                                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-xs font-black uppercase rounded-lg transition-colors shadow-sm"
+                                                title="Valider toutes les réservations sélectionnées"
+                                            >
+                                                <CheckIcon className="w-4 h-4" /> Valider
+                                            </button>
+                                            <button 
+                                                onClick={handleBulkSetPending} 
+                                                className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 text-xs font-black uppercase rounded-lg transition-colors shadow-sm"
+                                                title="Passer en 'À confirmer' toutes les réservations sélectionnées"
+                                            >
+                                                <ClockIcon className="w-4 h-4" /> À confirmer
+                                            </button>
+                                        </>
+                                    )}
                                     <button 
                                         onClick={handleSendReminders} 
                                         disabled={isSendingReminders}
@@ -850,6 +1051,9 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                         </th>
                                         <SortableHeader columnKey="date" title="Date & Animation" />
                                         <SortableHeader columnKey="teacherName" title="Établissement" />
+                                        {settings.enableBookingStatus && (
+                                            <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Statut</th>
+                                        )}
                                         <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Transport (Bus)</th>
                                         <th className="px-6 py-4 text-right text-xs font-black text-gray-400 uppercase tracking-widest">Actions</th>
                                     </tr>
@@ -874,6 +1078,35 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tight mt-1">{b.commune}</span>
                                                 </div>
                                             </td>
+                                            {settings.enableBookingStatus && (
+                                                <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
+                                                    <div className="flex flex-col items-start gap-1">
+                                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
+                                                            b.status === 'validated' 
+                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                        }`}>
+                                                            {b.status === 'validated' ? (
+                                                                <>
+                                                                    <CheckIcon className="w-3 h-3 text-emerald-600" />
+                                                                    <span>Validé</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <ClockIcon className="w-3 h-3 text-amber-600" />
+                                                                    <span>À confirmer</span>
+                                                                </>
+                                                            )}
+                                                        </span>
+                                                        <button 
+                                                            onClick={() => setStatusManagementBooking({ ...b, status: b.status || 'pending' })} 
+                                                            className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase mt-1 hover:underline text-left"
+                                                        >
+                                                            Gestion du statut
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            )}
                                             <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex flex-col items-start gap-1">
                                                     {b.noBusRequired ? (
@@ -970,6 +1203,40 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                             </div>
 
                             <div className="space-y-6">
+                                {settings.enableBookingStatus && (
+                                    <div>
+                                        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Statut de la réservation</h3>
+                                        <div className={`rounded-2xl p-4 border flex items-center justify-between gap-4 ${
+                                            viewingBooking.status === 'validated' 
+                                                ? 'bg-emerald-50/70 border-emerald-200' 
+                                                : 'bg-amber-50/70 border-amber-200'
+                                        }`}>
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-2 rounded-xl ${viewingBooking.status === 'validated' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                    {viewingBooking.status === 'validated' ? <CheckIcon className="w-5 h-5" /> : <ClockIcon className="w-5 h-5" />}
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">État actuel</p>
+                                                    <p className={`font-black text-base ${viewingBooking.status === 'validated' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                                        {viewingBooking.status === 'validated' ? 'Validé' : 'À confirmer'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const b = viewingBooking;
+                                                    setViewingBookingId(null);
+                                                    setTimeout(() => setStatusManagementBooking({ ...b, status: b.status || 'pending' }), 10);
+                                                }}
+                                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-sm"
+                                            >
+                                                Gestion du statut
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div>
                                     <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Transport & Logistique</h3>
                                     <div className="bg-blue-50 rounded-2xl p-4 space-y-3 border border-blue-100">
@@ -1026,6 +1293,137 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 </div>
             )}
             
+            {/* Modale Gestion du Statut */}
+            {statusManagementBooking && (() => {
+                const statusAnim = animations.find(a => a.id === statusManagementBooking.animationId || a.title === statusManagementBooking.animationTitle);
+                const statusAnimator = statusAnim?.animator 
+                    ? (settings.animators || []).find(a => a.name.trim().toLowerCase() === statusAnim.animator?.trim().toLowerCase())
+                    : null;
+
+                return (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[1000]">
+                        <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-lg relative flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+                            <button 
+                                type="button" 
+                                onClick={() => setStatusManagementBooking(null)} 
+                                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <XIcon className="w-6 h-6" />
+                            </button>
+                            <div className="flex justify-between items-start mb-2 pr-6">
+                                <h2 className="text-2xl font-black text-gray-800">Gestion du statut</h2>
+                            </div>
+                            <p className="text-sm text-gray-500 mb-6 font-medium">
+                                Définition du statut pour la réservation de <strong>{statusManagementBooking.teacherName}</strong> ({statusManagementBooking.schoolName}, {statusManagementBooking.commune}).
+                            </p>
+                            
+                            <form onSubmit={handleSaveStatusManagement} className="space-y-5 overflow-y-auto pr-1.5 custom-scrollbar">
+                                <div className="space-y-3">
+                                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">État de la réservation</label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setStatusManagementBooking({...statusManagementBooking, status: 'pending'})} 
+                                            className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all gap-2 ${
+                                                statusManagementBooking.status !== 'validated' 
+                                                    ? 'border-amber-500 bg-amber-50/80 text-amber-900 shadow-sm' 
+                                                    : 'border-gray-100 bg-gray-50/50 text-gray-400 hover:bg-gray-100/60'
+                                            }`}
+                                        >
+                                            <div className={`p-2.5 rounded-xl ${statusManagementBooking.status !== 'validated' ? 'bg-amber-200/70 text-amber-800' : 'bg-gray-200/50 text-gray-400'}`}>
+                                                <ClockIcon className="w-6 h-6" />
+                                            </div>
+                                            <span className="font-black text-sm uppercase tracking-wide">À confirmer</span>
+                                            <span className="text-[11px] text-center font-medium opacity-80">En attente de validation</span>
+                                        </button>
+
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setStatusManagementBooking({...statusManagementBooking, status: 'validated'})} 
+                                            className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all gap-2 ${
+                                                statusManagementBooking.status === 'validated' 
+                                                    ? 'border-emerald-500 bg-emerald-50/80 text-emerald-900 shadow-sm' 
+                                                    : 'border-gray-100 bg-gray-50/50 text-gray-400 hover:bg-gray-100/60'
+                                            }`}
+                                        >
+                                            <div className={`p-2.5 rounded-xl ${statusManagementBooking.status === 'validated' ? 'bg-emerald-200/70 text-emerald-800' : 'bg-gray-200/50 text-gray-400'}`}>
+                                                <CheckIcon className="w-6 h-6" />
+                                            </div>
+                                            <span className="font-black text-sm uppercase tracking-wide">Validé</span>
+                                            <span className="text-[11px] text-center font-medium opacity-80">Réservation confirmée</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Information précise sur l'envoi de l'e-mail de notification */}
+                                {statusManagementBooking.status === 'validated' ? (
+                                    <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl text-xs text-emerald-950 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <div className="flex items-center gap-2 font-black uppercase text-[10px] tracking-wider text-emerald-800">
+                                            <span className="text-base">📧</span> Envoi de l'e-mail de notification animateur
+                                        </div>
+                                        {settings.emailAnimatorOnValidationEnabled !== false ? (
+                                            statusAnimator && statusAnimator.email ? (
+                                                <p className="leading-relaxed">
+                                                    Lors de la validation, l'e-mail de notification sera automatiquement envoyé à l'animateur concerné : <strong className="font-bold text-emerald-900">{statusAnimator.name}</strong> (<span className="underline">{statusAnimator.email}</span>).
+                                                </p>
+                                            ) : statusAnimator ? (
+                                                <p className="text-amber-800 font-medium leading-relaxed">
+                                                    ⚠️ L'animateur <strong>{statusAnimator.name}</strong> n'a pas d'adresse e-mail renseignée dans les paramètres. Aucun e-mail ne sera envoyé.
+                                                </p>
+                                            ) : statusAnim?.animator ? (
+                                                <p className="text-amber-800 font-medium leading-relaxed">
+                                                    ⚠️ L'animateur <strong>{statusAnim.animator}</strong> n'a pas de profil configuré avec une adresse e-mail.
+                                                </p>
+                                            ) : (
+                                                <p className="text-gray-600 font-medium leading-relaxed">
+                                                    ℹ️ Aucun animateur n'est affecté à cette animation.
+                                                </p>
+                                            )
+                                        ) : (
+                                            <p className="text-gray-700 font-medium leading-relaxed">
+                                                ℹ️ L'envoi automatique d'e-mail à l'animateur lors de la validation est actuellement <strong className="font-bold text-red-600">désactivé</strong> dans les Paramètres.
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="p-3.5 bg-amber-50/60 border border-amber-100 rounded-2xl text-xs text-amber-800 font-medium">
+                                        ⏳ La réservation reste en statut « À confirmer ». Aucun e-mail de notification ne sera envoyé.
+                                    </div>
+                                )}
+
+                                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 text-xs text-gray-600 space-y-2 font-medium">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Animation :</span>
+                                        <span className="font-bold text-gray-800 text-right truncate max-w-[240px]" title={statusManagementBooking.animationTitle}>{statusManagementBooking.animationTitle}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Animateur :</span>
+                                        <span className="font-bold text-indigo-700 text-right">{statusAnim?.animator || "Non assigné"}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Date & Créneau :</span>
+                                        <span className="font-bold text-gray-800">{new Date(statusManagementBooking.date.replace(/-/g, '/')).toLocaleDateString('fr-FR')} à {statusManagementBooking.time}h</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Établissement :</span>
+                                        <span className="font-bold text-gray-800 text-right">{statusManagementBooking.schoolName} ({statusManagementBooking.commune})</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3 pt-4 border-t border-gray-100 sticky bottom-0 bg-white">
+                                    <button type="button" onClick={() => setStatusManagementBooking(null)} className="flex-grow py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-100 transition-colors">
+                                        Annuler
+                                    </button>
+                                    <button type="submit" className="flex-[2] py-3 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">
+                                        Confirmer
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* Modales conservées */}
             {busManagementBooking && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[1000]">
@@ -1152,53 +1550,175 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             {/* Modal Envoi Liste */}
             {isSendListModalOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[1000]">
-                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md relative" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-lg relative max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                         <button 
                             type="button" 
-                            onClick={() => setIsSendListModalOpen(false)} 
+                            onClick={() => {
+                                setIsSendListModalOpen(false);
+                                setSelectedRecipientAnimator('');
+                                setRecipientListEmail('');
+                            }} 
                             className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
                         >
                             <XIcon className="w-6 h-6" />
                         </button>
-                        <h2 className="text-2xl font-black text-gray-800 mb-2 uppercase tracking-tight">Envoyer la liste</h2>
-                        <p className="text-sm text-gray-500 mb-6 font-medium">Saisissez l'adresse e-mail pour envoyer le tableau récapitulatif des {selectedBookingIds.size} réservation(s) sélectionnée(s).</p>
+                        <div className="flex items-center gap-3 mb-2 pr-6">
+                            <div className="p-2 bg-green-100 text-green-700 rounded-xl">
+                                <SendIcon className="w-6 h-6" />
+                            </div>
+                            <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">Envoyer la liste</h2>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-5 font-medium">
+                            Sélectionnez un animateur existant ou saisissez une adresse e-mail pour envoyer le tableau récapitulatif des <strong>{selectedBookingIds.size} réservation(s)</strong> sélectionnée(s).
+                        </p>
                         
                         {settings?.emailListEnabled === false && (
-                            <div className="mb-6 p-4 bg-amber-50 rounded-2xl border border-amber-200 text-amber-800 text-xs font-semibold leading-relaxed">
+                            <div className="mb-5 p-4 bg-amber-50 rounded-2xl border border-amber-200 text-amber-800 text-xs font-semibold leading-relaxed">
                                 ⚠️ <span className="font-bold">Attention :</span> L'envoi d'e-mails pour la liste est actuellement désactivé dans vos paramètres généraux. Vous devez l'activer pour pouvoir effectuer cet envoi.
                             </div>
                         )}
                         
-                        <form onSubmit={handleSendList} className="space-y-6">
+                        <form onSubmit={handleSendList} className="space-y-5 overflow-y-auto pr-1 custom-scrollbar">
+                            {/* Sélection d'un animateur existant */}
+                            <div className="space-y-2.5 bg-gray-50/80 p-4 rounded-2xl border border-gray-100">
+                                <div className="flex items-center justify-between">
+                                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                                        <UserGroupIcon className="w-4 h-4 text-indigo-600" />
+                                        <span>Choisir un animateur existant</span>
+                                    </label>
+                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">Facultatif</span>
+                                </div>
+                                <select 
+                                    value={selectedRecipientAnimator}
+                                    onChange={(e) => {
+                                        const animName = e.target.value;
+                                        setSelectedRecipientAnimator(animName);
+                                        if (animName) {
+                                            const found = animators.find(a => a.name === animName);
+                                            if (found?.email) {
+                                                setRecipientListEmail(found.email);
+                                            } else {
+                                                setRecipientListEmail('');
+                                            }
+                                        }
+                                    }}
+                                    className="w-full px-4 py-2.5 bg-white border-2 border-gray-200 rounded-xl font-bold text-gray-800 focus:border-green-500 outline-none transition-all cursor-pointer text-sm"
+                                >
+                                    <option value="">-- Choisir un animateur dans la liste --</option>
+                                    {animators.map(a => (
+                                        <option key={a.name} value={a.name}>
+                                            {a.name} {a.email ? `(${a.email})` : '— (aucun e-mail renseigné)'}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                {/* Boutons / Badges de sélection rapide */}
+                                {animators.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                        {animators.map(a => {
+                                            const isSelected = selectedRecipientAnimator === a.name;
+                                            return (
+                                                <button
+                                                    key={a.name}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (isSelected) {
+                                                            setSelectedRecipientAnimator('');
+                                                        } else {
+                                                            setSelectedRecipientAnimator(a.name);
+                                                            if (a.email) {
+                                                                setRecipientListEmail(a.email);
+                                                            } else {
+                                                                setRecipientListEmail('');
+                                                            }
+                                                        }
+                                                    }}
+                                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                                                        isSelected
+                                                            ? 'bg-green-600 text-white border-green-600 shadow-sm shadow-green-200'
+                                                            : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    <span>{a.name}</span>
+                                                    {a.email ? (
+                                                        <span className={`text-[10px] ${isSelected ? 'text-green-100' : 'text-gray-400'}`}>✉️</span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-amber-500" title="Aucun e-mail configuré">⚠️</span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Saisie / Confirmation de l'adresse e-mail */}
                             <div className="space-y-2">
-                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Adresse e-mail destinataire</label>
+                                <div className="flex items-center justify-between">
+                                    <label className="block text-xs font-black text-gray-700 uppercase tracking-wider">
+                                        Adresse e-mail destinataire
+                                    </label>
+                                    {selectedRecipientAnimator && (
+                                        <span className="text-[11px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-md border border-green-200">
+                                            Lié à : {selectedRecipientAnimator}
+                                        </span>
+                                    )}
+                                </div>
                                 <input 
                                     type="email" 
                                     required
                                     value={recipientListEmail}
-                                    onChange={(e) => setRecipientListEmail(e.target.value)}
-                                    placeholder="exemple@mail.com"
-                                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold text-gray-800 focus:border-green-500 outline-none transition-all placeholder:text-gray-300"
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setRecipientListEmail(val);
+                                        const match = animators.find(a => a.email && a.email.toLowerCase() === val.trim().toLowerCase());
+                                        setSelectedRecipientAnimator(match ? match.name : '');
+                                    }}
+                                    placeholder="animateur@exemple.com ou autre adresse"
+                                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold text-gray-800 focus:border-green-500 outline-none transition-all placeholder:text-gray-300 text-sm"
                                 />
+
+                                {selectedRecipientAnimator && (() => {
+                                    const animObj = animators.find(a => a.name === selectedRecipientAnimator);
+                                    if (animObj && !animObj.email) {
+                                        return (
+                                            <p className="text-xs text-amber-800 bg-amber-50 p-3 rounded-xl border border-amber-200 font-medium leading-relaxed">
+                                                ⚠️ L'animateur <strong>{selectedRecipientAnimator}</strong> n'a pas d'adresse e-mail enregistrée dans les Paramètres. Veuillez saisir son adresse e-mail dans le champ ci-dessus.
+                                            </p>
+                                        );
+                                    }
+                                    if (animObj && animObj.email) {
+                                        return (
+                                            <p className="text-[11px] text-green-700 font-medium flex items-center gap-1.5">
+                                                <span>✓</span> La liste sera expédiée à l'adresse officielle de l'animateur <strong>{animObj.name}</strong> (<span className="underline">{animObj.email}</span>).
+                                            </p>
+                                        );
+                                    }
+                                    return null;
+                                })()}
                             </div>
                             
-                            <div className="flex gap-3 pt-2">
+                            <div className="flex gap-3 pt-3 border-t border-gray-100">
                                 <button 
                                     type="button" 
-                                    onClick={() => setIsSendListModalOpen(false)} 
+                                    onClick={() => {
+                                        setIsSendListModalOpen(false);
+                                        setSelectedRecipientAnimator('');
+                                        setRecipientListEmail('');
+                                    }} 
                                     className="flex-grow py-3 rounded-2xl font-bold text-gray-400 hover:bg-gray-100 transition-colors"
                                 >
                                     Annuler
                                 </button>
                                 <button 
                                     type="submit" 
-                                    disabled={isSendingList}
+                                    disabled={isSendingList || !recipientListEmail.trim()}
                                     className="flex-[2] py-3 bg-green-600 text-white rounded-2xl font-black text-sm uppercase tracking-wider hover:bg-green-700 shadow-lg shadow-green-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                 >
                                     {isSendingList ? (
                                         <>
                                             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                            Envoi...
+                                            Envoi en cours...
                                         </>
                                     ) : (
                                         <>

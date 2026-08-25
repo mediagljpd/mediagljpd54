@@ -80,6 +80,7 @@ const RandomBookingGenerator: React.FC<{
             studentCount: Math.floor(Math.random() * 11) + 20, // 20-30
             adultCount: Math.floor(Math.random() * 3) + 2, // 2-4
             busInfo: `Le bus doit récupérer la classe à l'école primaire de ${teacherLastName}ville à 8h30.`,
+            status: 'pending'
         };
     };
 

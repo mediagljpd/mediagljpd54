@@ -7,7 +7,7 @@ import { AdminSubComponentProps } from './types';
 import { storageService } from '../../services/storageService';
 import { backupService } from '../../services/backupService';
 import ConfirmationModal from '../shared/ConfirmationModal';
-import { PaintBrushIcon, PaletteIcon, CogIcon, BellIcon, ClockIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, InformationCircleIcon } from '../Icons';
+import { PaintBrushIcon, PaletteIcon, CogIcon, BellIcon, ClockIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, InformationCircleIcon, SendIcon, ArrowUturnLeftIcon } from '../Icons';
 import * as XLSX from 'xlsx';
 import { validatePassword } from '../../utils/validators';
 import PasswordPolicy from './PasswordPolicy';
@@ -339,7 +339,8 @@ const DEFAULT_EMAIL_LIST_TEMPLATE = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.
 const ManageSettings: React.FC<AdminSubComponentProps> = ({ 
     showNotification,
     setHasUnsavedChanges,
-    registerSave
+    registerSave,
+    registerCancel
 }) => {
     const { settings, updateSettings, currentUser } = useContext(AppContext);
 
@@ -395,6 +396,8 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
         if (!migSettings.infoPages) migSettings.infoPages = [];
         if (migSettings.emailReminderTargetTeachers === undefined) migSettings.emailReminderTargetTeachers = true;
         if (migSettings.emailReminderTargetAnimators === undefined) migSettings.emailReminderTargetAnimators = false;
+        if (migSettings.enableBookingStatus === undefined) migSettings.enableBookingStatus = false;
+        if (migSettings.emailAnimatorOnValidationEnabled === undefined) migSettings.emailAnimatorOnValidationEnabled = true;
         
         if (!isInitializedRef.current) {
             setFormState(migSettings);
@@ -438,6 +441,8 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
         if (!migSettings.infoPages) migSettings.infoPages = [];
         if (migSettings.emailReminderTargetTeachers === undefined) migSettings.emailReminderTargetTeachers = true;
         if (migSettings.emailReminderTargetAnimators === undefined) migSettings.emailReminderTargetAnimators = false;
+        if (migSettings.enableBookingStatus === undefined) migSettings.enableBookingStatus = false;
+        if (migSettings.emailAnimatorOnValidationEnabled === undefined) migSettings.emailAnimatorOnValidationEnabled = true;
 
         return JSON.stringify(formState) !== JSON.stringify(migSettings);
     }, [formState, settings]);
@@ -458,6 +463,42 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
         handleSave(e || { preventDefault: () => {} } as React.FormEvent);
     };
 
+    const handleCancel = () => {
+        // Rebuild clean migrated settings from current database/context settings
+        const migSettings = { ...settings };
+        if (migSettings.bookingLeadTime === undefined) migSettings.bookingLeadTime = 14;
+        if (!migSettings.allowedDays) migSettings.allowedDays = [2, 4];
+        if (!migSettings.availableTimeSlots) migSettings.availableTimeSlots = [9, 10, 14, 15];
+        if (!migSettings.classLevels) migSettings.classLevels = ['PS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
+        if (!migSettings.communes) migSettings.communes = [];
+        if (!migSettings.schools) migSettings.schools = [];
+        if (migSettings.allowedDays.includes(1)) {
+            migSettings.allowedDays = migSettings.allowedDays.filter(d => d !== 1);
+        }
+        if (migSettings.autoCleanupEnabled === undefined) migSettings.autoCleanupEnabled = false;
+        if (migSettings.cleanupDay === undefined) migSettings.cleanupDay = 1;
+        if (migSettings.cleanupMonth === undefined) migSettings.cleanupMonth = 7;
+        if (!migSettings.infoPages) migSettings.infoPages = [];
+        if (migSettings.emailReminderTargetTeachers === undefined) migSettings.emailReminderTargetTeachers = true;
+        if (migSettings.emailReminderTargetAnimators === undefined) migSettings.emailReminderTargetAnimators = false;
+        if (migSettings.enableBookingStatus === undefined) migSettings.enableBookingStatus = false;
+        if (migSettings.emailAnimatorOnValidationEnabled === undefined) migSettings.emailAnimatorOnValidationEnabled = true;
+
+        setFormState(migSettings);
+        prevSettingsRef.current = settings;
+
+        // Reset temporary security inputs if any
+        setIsChangingPassword(false);
+        setNewPassword('');
+        setConfirmPassword('');
+        setSecurityError(null);
+
+        showNotification("Modifications annulées. L'état précédent a été restauré.");
+    };
+
+    const handleCancelRef = useRef<(() => void) | null>(null);
+    handleCancelRef.current = handleCancel;
+
     useEffect(() => {
         if (registerSave) {
             registerSave(() => {
@@ -467,6 +508,16 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
             });
         }
     }, [registerSave]);
+
+    useEffect(() => {
+        if (registerCancel) {
+            registerCancel(() => {
+                if (handleCancelRef.current) {
+                    handleCancelRef.current();
+                }
+            });
+        }
+    }, [registerCancel]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -923,7 +974,8 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
             'emailAnimatorTemplate', 'emailAnimatorSubject', 'emailAnimatorEnabled',
             'emailListTemplate', 'emailListSubject', 'emailListEnabled',
             'emailReminderTemplate', 'emailReminderSubject', 'emailReminderEnabled', 'emailReminderDays',
-            'emailReminderTargetTeachers', 'emailReminderTargetAnimators'
+            'emailReminderTargetTeachers', 'emailReminderTargetAnimators',
+            'enableBookingStatus', 'emailAnimatorOnValidationEnabled'
         ];
 
         const settingsToUpdate: Partial<AppSettings> = {};
@@ -1114,6 +1166,12 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                                 ⚠️ Lecture seule
                                             </span>
                                         )}
+                                        {currentUser?.role === 'admin' && isDirty && (
+                                            <span className="shrink-0 bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
+                                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                                                Modifications non enregistrées
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="text-sm text-gray-500 mt-1">
                                         {activeTab === 'design' && "Personnalisez les textes, les couleurs et le style de votre accueil"}
@@ -1129,6 +1187,26 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                         {activeTab === 'information' && "Consultez les détails techniques, les services utilisés et le diagnostic de sécurité"}
                                     </p>
                                 </div>
+
+                                {currentUser?.role === 'admin' && isDirty && (
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleCancel}
+                                            className="px-3.5 py-2 rounded-xl text-xs font-bold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                            title="Annuler les modifications et rétablir les données de la base"
+                                        >
+                                            <ArrowUturnLeftIcon className="w-3.5 h-3.5 text-gray-500" />
+                                            <span>Annuler</span>
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-green-600 hover:bg-green-700 transition-all flex items-center gap-1.5 shadow-md shadow-green-100 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                                        >
+                                            💾 <span>Enregistrer</span>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Content Body */}
@@ -2595,6 +2673,83 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                                     </div>
                                                 </div>
                                             )}
+                                        </div>
+
+                                        {/* GESTION DU STATUT DES RÉSERVATIONS (Mode hybride / Test) */}
+                                        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                                                        <CheckIcon className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-lg font-bold text-gray-800">Gestion du statut des réservations</h4>
+                                                        <p className="text-xs text-gray-400">Activer le suivi par statut (« À confirmer » / « Validé ») avec filtres et validation individuelle ou groupée</p>
+                                                    </div>
+                                                </div>
+                                                {/* Switch */}
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`text-[10px] font-bold ${formState.enableBookingStatus ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                                        {formState.enableBookingStatus ? 'Activé' : 'Désactivé'}
+                                                    </span>
+                                                    <label className="relative inline-flex items-center cursor-pointer">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={!!formState.enableBookingStatus}
+                                                            disabled={currentUser?.role !== 'admin'}
+                                                            onChange={(e) => {
+                                                                if (currentUser?.role === 'admin') {
+                                                                    setFormState({ ...formState, enableBookingStatus: e.target.checked });
+                                                                }
+                                                            }}
+                                                            className="sr-only peer"
+                                                        />
+                                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl text-xs text-gray-600 leading-relaxed space-y-1.5">
+                                                <p className="font-semibold text-gray-700">📌 Fonctionnement en mode test / hybride (1ère année) :</p>
+                                                <ul className="list-disc list-inside space-y-1 text-gray-500 pl-1 text-[11px]">
+                                                    <li>Toute nouvelle inscription sur la plateforme est positionnée par défaut sur le statut <span className="font-bold text-amber-700">« À confirmer »</span>.</li>
+                                                    <li>Le statut est visible dans la liste des réservations avec un badge clair et dynamique.</li>
+                                                    <li>Vous disposez d'un filtre dédié pour trier les réservations par statut (À confirmer / Validé).</li>
+                                                    <li>Vous pouvez valider des réservations individuellement d'un clic ou en masse en cochant plusieurs réservations.</li>
+                                                </ul>
+                                            </div>
+
+                                            {/* Option d'envoi d'e-mail de notification à l'animateur lors de la validation */}
+                                            <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl flex items-center justify-between gap-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+                                                        <SendIcon className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <h5 className="text-sm font-bold text-gray-800">Notification par e-mail à l'animateur lors de la validation</h5>
+                                                        <p className="text-[11px] text-gray-500">Envoyer automatiquement l'e-mail de notification à l'animateur concerné lorsque le statut passe en « Validé » (fonctionnement indépendant de l'envoi lors de la réservation calendrier).</p>
+                                                    </div>
+                                                </div>
+                                                {/* Switch */}
+                                                <div className="flex items-center gap-3 flex-shrink-0">
+                                                    <span className={`text-[10px] font-bold ${formState.emailAnimatorOnValidationEnabled !== false ? 'text-emerald-600' : 'text-red-500'}`}>
+                                                        {formState.emailAnimatorOnValidationEnabled !== false ? 'Activé' : 'Désactivé'}
+                                                    </span>
+                                                    <label className="relative inline-flex items-center cursor-pointer">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={formState.emailAnimatorOnValidationEnabled !== false}
+                                                            disabled={currentUser?.role !== 'admin'}
+                                                            onChange={(e) => {
+                                                                if (currentUser?.role === 'admin') {
+                                                                    setFormState({ ...formState, emailAnimatorOnValidationEnabled: e.target.checked });
+                                                                }
+                                                            }}
+                                                            className="sr-only peer"
+                                                        />
+                                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                                                    </label>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="border-t border-dashed border-gray-200 my-6"></div>

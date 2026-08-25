@@ -306,6 +306,68 @@ export const emailService = {
         }
     },
 
+    sendAnimatorValidationNotification: async (booking: Booking, animator: Animator, settings: AppSettings) => {
+        if (!window.emailjs) return;
+        
+        // Contrôle indépendant : actif par défaut, désactivable dans la gestion du statut
+        if (settings.emailAnimatorOnValidationEnabled === false) {
+            console.log("EmailJS: Envoi de l'e-mail de notification (Animateur sur validation) désactivé dans les paramètres.");
+            return;
+        }
+        
+        if (!animator.email || animator.email.trim() === "") {
+            return;
+        }
+
+        const targetEmail = animator.email.trim();
+        const busInfoLabel = booking.noBusRequired 
+            ? "Non" 
+            : `Oui ${booking.busInfo ? `(${booking.busInfo})` : ""}`;
+            
+        const info = settings.establishmentInfo || { name: "Cité des Paysages", email: "", phone: "", address: "" };
+
+        const params = {
+            to_email: targetEmail,
+            to_name: animator.name,
+            animator_name: animator.name,
+            animation_title: booking.animationTitle,
+            teacher_name: booking.teacherName,
+            class_level: booking.classLevel,
+            school_name: booking.schoolName,
+            commune: booking.commune,
+            booking_date: formatLongDateOnlyFR(booking.date),
+            booking_date_short: formatDateFR(booking.date),
+            booking_date_clean: formatDateFR(booking.date).replace(/\//g, '.'),
+            booking_time: `${booking.time}h00`,
+            student_count: booking.studentCount,
+            adult_count: booking.adultCount,
+            bus_info: busInfoLabel,
+            teacher_phone: booking.phoneNumber,
+            teacher_email: booking.email,
+            establishment_name: info.name,
+            logo_url: info.logoUrl || "",
+            header_bg_color: settings.headerBgColor || "#0f172a",
+            reply_to: 'mediatheque@grandlongwy.fr',
+            from_name: info.name,
+            from_email: 'mediatheque@grandlongwy.fr'
+        };
+
+        let dynamicParams: any = { ...params };
+        if (settings.emailAnimatorTemplate) {
+            dynamicParams.message_html = renderTemplate(settings.emailAnimatorTemplate, params);
+        }
+        if (settings.emailAnimatorSubject) {
+            dynamicParams.subject = renderTemplate(settings.emailAnimatorSubject, params);
+        }
+
+        try {
+            await window.emailjs.send(MAIN_SERVICE_ID, TEMPLATE_ID_NOTIFICATION_ANIMATOR, dynamicParams, MAIN_PUBLIC_KEY);
+            console.log('EmailJS: Notification animateur (sur validation) envoyée.');
+        } catch (error) {
+            console.error('EmailJS Error (Notification Animateur sur validation):', error);
+        }
+    },
+
     sendBookingList: async (recipientEmail: string, bookings: Booking[], settings: AppSettings) => {
         if (!window.emailjs || !recipientEmail) return;
 

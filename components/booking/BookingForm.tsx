@@ -125,7 +125,8 @@ const BookingForm: React.FC<{ animation: Animation, date: Date, time: number, on
                 studentCount: parseInt(formData.studentCount as any) || 0,
                 adultCount: parseInt(formData.adultCount as any) || 0,
                 busStatus: formData.noBusRequired ? 'validated' : 'pending',
-                busCost: 0
+                busCost: 0,
+                status: 'pending'
             });
         } catch (error: any) {
             console.error("Error confirming booking:", error);

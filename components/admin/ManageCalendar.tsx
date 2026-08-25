@@ -4,11 +4,16 @@ import { AppContext } from '../../AppContext';
 import { AnimatorSettings, Holiday } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { toYYYYMMDD } from '../../utils/date';
-import { PencilIcon, TrashIcon, CalendarDaysIcon } from '../Icons';
+import { PencilIcon, TrashIcon, CalendarDaysIcon, CheckIcon, XIcon } from '../Icons';
 import ConfirmationModal from '../shared/ConfirmationModal';
 import HolidayEditModal from './HolidayEditModal';
 
-const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, setHasUnsavedChanges: setParentUnsavedChanges, registerSave }) => {
+const ManageCalendar: React.FC<AdminSubComponentProps> = ({ 
+    showNotification, 
+    setHasUnsavedChanges: setParentUnsavedChanges, 
+    registerSave,
+    registerCancel 
+}) => {
     const { settings, updateSettings, currentUser } = useContext(AppContext);
     const animators = useMemo(() => settings.animators || [], [settings.animators]);
     const [holidayToDelete, setHolidayToDelete] = useState<string | null>(null);
@@ -23,11 +28,16 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
         return (animators[0] && animators[0].name) || '';
     });
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
+    const [unavailableReasons, setUnavailableReasons] = useState<Record<string, string>>({});
     const [inactiveSlots, setInactiveSlots] = useState<number[]>([]);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
     
     const [noLimit, setNoLimit] = useState<boolean>(true);
     const [monthlyBookingLimit, setMonthlyBookingLimit] = useState<number | undefined>(undefined);
+    
+    // Modal states for editing reason
+    const [editingReasonDates, setEditingReasonDates] = useState<string[] | null>(null);
+    const [reasonInput, setReasonInput] = useState<string>('');
     
     const canEditCurrentAnimatorSettings = useMemo(() => {
         if (currentUser?.role === 'admin') return true;
@@ -153,16 +163,20 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
             const animSettings = settings.animatorSettings?.[selectedAnimatorName] || { unavailableDates: [], inactiveSlots: [] };
             setInactiveSlots(animSettings.inactiveSlots || []);
             setSelectedDates(animSettings.unavailableDates || []);
+            setUnavailableReasons(animSettings.unavailableReasons || {});
             const limit = animSettings.monthlyBookingLimit;
             setMonthlyBookingLimit(limit);
             setNoLimit(limit === undefined);
             setHasUnsavedChanges(false);
+            setCheckedDates(new Set());
         } else {
             setInactiveSlots([]);
             setSelectedDates([]);
+            setUnavailableReasons({});
             setMonthlyBookingLimit(undefined);
             setNoLimit(true);
             setHasUnsavedChanges(false);
+            setCheckedDates(new Set());
         }
     }, [selectedAnimatorName, settings.animatorSettings]);
 
@@ -204,11 +218,21 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
         if (!selectedAnimatorName) return;
         
         const isCurrentlyUnavailable = selectedDates.includes(dateStr);
-        const newUnavailabilities = isCurrentlyUnavailable
-            ? selectedDates.filter(d => d !== dateStr)
-            : [...selectedDates, dateStr].sort();
-
-        setSelectedDates(newUnavailabilities);
+        if (isCurrentlyUnavailable) {
+            setSelectedDates(prev => prev.filter(d => d !== dateStr));
+            setUnavailableReasons(prev => {
+                const next = { ...prev };
+                delete next[dateStr];
+                return next;
+            });
+            setCheckedDates(prev => {
+                const next = new Set(prev);
+                next.delete(dateStr);
+                return next;
+            });
+        } else {
+            setSelectedDates(prev => [...prev, dateStr].sort());
+        }
         setHasUnsavedChanges(true);
     };
 
@@ -220,12 +244,81 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
         setCheckedDates(newChecked);
     };
 
+    const toggleSelectAllDates = () => {
+        if (!canEditCurrentAnimatorSettings) return;
+        if (checkedDates.size === selectedDates.length) {
+            setCheckedDates(new Set());
+        } else {
+            setCheckedDates(new Set(selectedDates));
+        }
+    };
+
+    const handleOpenEditReasonModal = (dates: string[]) => {
+        if (!canEditCurrentAnimatorSettings || dates.length === 0) return;
+        setEditingReasonDates(dates);
+        if (dates.length === 1) {
+            setReasonInput(unavailableReasons[dates[0]] || '');
+        } else {
+            const firstReason = unavailableReasons[dates[0]] || '';
+            const allSame = dates.every(d => (unavailableReasons[d] || '') === firstReason);
+            setReasonInput(allSame ? firstReason : '');
+        }
+    };
+
+    const handleSaveReason = (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!editingReasonDates || editingReasonDates.length === 0) return;
+
+        const trimmed = reasonInput.trim();
+        setUnavailableReasons(prev => {
+            const next = { ...prev };
+            editingReasonDates.forEach(d => {
+                if (trimmed) {
+                    next[d] = trimmed;
+                } else {
+                    delete next[d];
+                }
+            });
+            return next;
+        });
+        setHasUnsavedChanges(true);
+        showNotification(
+            trimmed 
+                ? `Motif enregistré pour ${editingReasonDates.length} date${editingReasonDates.length > 1 ? 's' : ''}.` 
+                : `Motif effacé pour ${editingReasonDates.length} date${editingReasonDates.length > 1 ? 's' : ''}.`
+        );
+        setEditingReasonDates(null);
+        setReasonInput('');
+    };
+
+    const handleClearReason = () => {
+        if (!editingReasonDates || editingReasonDates.length === 0) return;
+        setUnavailableReasons(prev => {
+            const next = { ...prev };
+            editingReasonDates.forEach(d => {
+                delete next[d];
+            });
+            return next;
+        });
+        setHasUnsavedChanges(true);
+        showNotification(`Motif effacé pour ${editingReasonDates.length} date${editingReasonDates.length > 1 ? 's' : ''}.`);
+        setEditingReasonDates(null);
+        setReasonInput('');
+    };
+
     const deleteCheckedDates = () => {
         if (!canEditCurrentAnimatorSettings) return;
         if (!selectedAnimatorName || checkedDates.size === 0) return;
         
         const newUnavailabilities = selectedDates.filter(d => !checkedDates.has(d));
         setSelectedDates(newUnavailabilities);
+        setUnavailableReasons(prev => {
+            const next = { ...prev };
+            checkedDates.forEach(d => {
+                delete next[d];
+            });
+            return next;
+        });
         setCheckedDates(new Set());
         setHasUnsavedChanges(true);
     };
@@ -260,6 +353,16 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
         if (!canEditCurrentAnimatorSettings) return;
         if (!selectedAnimatorName) return;
         setSelectedDates(prev => prev.filter(d => d !== dateStr));
+        setUnavailableReasons(prev => {
+            const next = { ...prev };
+            delete next[dateStr];
+            return next;
+        });
+        setCheckedDates(prev => {
+            const next = new Set(prev);
+            next.delete(dateStr);
+            return next;
+        });
         setHasUnsavedChanges(true);
     };
     
@@ -285,7 +388,8 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
         const updatedAnimatorSettings: AnimatorSettings = {
             ...selectedAnimatorSettings,
             inactiveSlots: inactiveSlots,
-            unavailableDates: selectedDates
+            unavailableDates: selectedDates,
+            unavailableReasons: unavailableReasons
         };
 
         if (noLimit) {
@@ -299,7 +403,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
     
         updateSettings({ animatorSettings: newAnimatorSettings });
         setHasUnsavedChanges(false);
-        showNotification("Paramètres de l'animateur (dates et créneaux) enregistrés !");
+        showNotification("Paramètres de l'animateur (dates, créneaux et motifs) enregistrés !");
     };
 
     useEffect(() => {
@@ -312,6 +416,32 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
     const saveHandleRef = useRef(handleSaveAnimatorSettings);
     saveHandleRef.current = handleSaveAnimatorSettings;
 
+    const handleCancelAnimatorSettings = () => {
+        if (selectedAnimatorName) {
+            const animSettings = settings.animatorSettings?.[selectedAnimatorName] || { unavailableDates: [], inactiveSlots: [] };
+            setInactiveSlots(animSettings.inactiveSlots || []);
+            setSelectedDates(animSettings.unavailableDates || []);
+            setUnavailableReasons(animSettings.unavailableReasons || {});
+            const limit = animSettings.monthlyBookingLimit;
+            setMonthlyBookingLimit(limit);
+            setNoLimit(limit === undefined);
+            setHasUnsavedChanges(false);
+            setCheckedDates(new Set());
+        } else {
+            setInactiveSlots([]);
+            setSelectedDates([]);
+            setUnavailableReasons({});
+            setMonthlyBookingLimit(undefined);
+            setNoLimit(true);
+            setHasUnsavedChanges(false);
+            setCheckedDates(new Set());
+        }
+        showNotification("Modifications du calendrier annulées.");
+    };
+
+    const cancelHandleRef = useRef(handleCancelAnimatorSettings);
+    cancelHandleRef.current = handleCancelAnimatorSettings;
+
     useEffect(() => {
         if (registerSave) {
             registerSave(() => {
@@ -319,6 +449,14 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
             });
         }
     }, [registerSave]);
+
+    useEffect(() => {
+        if (registerCancel) {
+            registerCancel(() => {
+                cancelHandleRef.current();
+            });
+        }
+    }, [registerCancel]);
 
     const handleAddHoliday = (e: React.FormEvent) => {
         e.preventDefault();
@@ -615,20 +753,21 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                                 >&gt;</button>
                             </div>
                             <div className="grid grid-cols-7 gap-1 text-center text-sm mb-6">
-                                {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => <div key={`${d}-${i}`} className="font-semibold">{d}</div>)}
+                                {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => <div key={`${d}-${i}`} className="font-semibold text-xs text-gray-500 py-1">{d}</div>)}
                                 {Array.from({ length: startingDay }).map((_, i) => <div key={`e-${i}`}></div>)}
                                 {Array.from({ length: daysInMonth }).map((_, dayIndex) => {
                                     const day = dayIndex + 1;
                                     const date = new Date(year, month, day);
                                     const dateStr = toYYYYMMDD(date);
                                     const isUnavailable = selectedDates.includes(dateStr);
-                                    let classes = "p-2 rounded-lg transition-colors ";
+                                    const reason = unavailableReasons[dateStr];
+                                    let classes = "relative p-2 rounded-lg transition-all flex flex-col items-center justify-center min-h-[38px] ";
                                     if (canEditCurrentAnimatorSettings) {
                                         classes += "cursor-pointer hover:bg-indigo-50 ";
                                     } else {
                                         classes += "cursor-not-allowed ";
                                     }
-                                    if (isUnavailable) classes += "bg-red-500 text-white font-bold shadow-md";
+                                    if (isUnavailable) classes += "bg-red-500 text-white font-bold shadow-sm";
                                     else classes += "text-gray-700 bg-gray-50/50 hover:bg-gray-100";
 
                                     return (
@@ -636,8 +775,12 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                                             key={day} 
                                             className={classes} 
                                             onClick={() => canEditCurrentAnimatorSettings && handleDateClick(dateStr)}
+                                            title={isUnavailable ? (reason ? `${dateStr} : Indisponible (${reason})` : `${dateStr} : Indisponible`) : dateStr}
                                         >
-                                            {day}
+                                            <span>{day}</span>
+                                            {isUnavailable && reason && (
+                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-300 absolute bottom-1 right-1 shadow-xs" title={`Motif: ${reason}`} />
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -688,62 +831,132 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                             <p className="text-sm text-gray-500 italic text-center p-6 bg-gray-50 rounded-xl border border-dashed">
                                 Veuillez sélectionner un animateur pour voir et gérer ses indisponibilités.
                             </p>
-                        ) : selectedAnimatorSettings.unavailableDates.length === 0 ? (
+                        ) : selectedDates.length === 0 ? (
                             <p className="text-sm text-gray-500 italic text-center p-6 bg-gray-50 rounded-xl border border-dashed">
                                 Aucune date d'indisponibilité enregistrée pour "{selectedAnimatorName}".
                             </p>
                         ) : (
                             <div>
-                                <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
-                                    <h4 className="font-bold text-gray-800 text-sm">
-                                        Dates indisponibles ({selectedAnimatorSettings.unavailableDates.length}) :
-                                    </h4>
+                                <div className="flex flex-wrap justify-between items-center gap-2 mb-4 pb-2 border-b border-gray-100">
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="font-bold text-gray-800 text-sm">
+                                            Dates indisponibles ({selectedDates.length}) :
+                                        </h4>
+                                        {canEditCurrentAnimatorSettings && selectedDates.length > 0 && (
+                                            <button 
+                                                type="button"
+                                                onClick={toggleSelectAllDates}
+                                                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline ml-1 cursor-pointer"
+                                            >
+                                                {checkedDates.size === selectedDates.length ? "Tout désélectionner" : "Tout cocher"}
+                                            </button>
+                                        )}
+                                    </div>
                                     {canEditCurrentAnimatorSettings && checkedDates.size > 0 && (
-                                        <button 
-                                            onClick={deleteCheckedDates}
-                                            className="bg-red-100 text-red-700 px-3 py-1 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors flex items-center gap-1"
-                                        >
-                                            <TrashIcon className="w-3 h-3" />
-                                            Supprimer la sélection ({checkedDates.size})
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                type="button"
+                                                onClick={() => handleOpenEditReasonModal(Array.from(checkedDates))}
+                                                className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                                                title="Définir un motif pour toutes les dates cochées"
+                                            >
+                                                <PencilIcon className="w-3.5 h-3.5 text-indigo-600" />
+                                                <span>Motif ({checkedDates.size})</span>
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={deleteCheckedDates}
+                                                className="bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                                                title="Supprimer les dates cochées"
+                                            >
+                                                <TrashIcon className="w-3.5 h-3.5 text-red-600" />
+                                                <span>Supprimer ({checkedDates.size})</span>
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
 
-                                <div className="space-y-6 max-h-[290px] overflow-y-auto pr-1 custom-scrollbar">
+                                <div className="space-y-5 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
                                     {groupedUnavailabilities.map(group => (
                                         <div key={group.label} className="space-y-2">
-                                            <h5 className="text-xs font-black text-gray-400 uppercase tracking-widest bg-gray-50 py-1 px-2 rounded">
-                                                {group.label}
-                                            </h5>
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-                                                {group.dates.map(d => (
-                                                    <div key={d} className="flex items-center justify-between p-1.5 bg-white border border-gray-100 rounded-lg hover:border-indigo-200 transition-colors group">
-                                                        <div className="flex items-center gap-1.5 min-w-0">
-                                                            {canEditCurrentAnimatorSettings ? (
-                                                                <input 
-                                                                    type="checkbox" 
-                                                                    checked={checkedDates.has(d)}
-                                                                    onChange={() => toggleCheckDate(d)}
-                                                                    className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
-                                                                />
-                                                            ) : (
-                                                                <span className="w-1 h-1 rounded-full bg-red-500 shrink-0" />
+                                            <div className="flex items-center justify-between bg-gray-50/80 py-1 px-2.5 rounded-lg border border-gray-100">
+                                                <h5 className="text-[11px] font-black text-gray-500 uppercase tracking-wider">
+                                                    {group.label}
+                                                </h5>
+                                                <span className="text-[10px] font-bold text-gray-400">
+                                                    {group.dates.length} date{group.dates.length > 1 ? 's' : ''}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {group.dates.map(d => {
+                                                    const reason = unavailableReasons[d];
+                                                    const isChecked = checkedDates.has(d);
+                                                    const formattedDate = new Date(d.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+                                                    const fullDate = new Date(d.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+                                                    return (
+                                                        <div 
+                                                            key={d} 
+                                                            className={`flex items-center justify-between p-2 rounded-xl border transition-all ${
+                                                                isChecked 
+                                                                    ? 'bg-indigo-50/70 border-indigo-200 shadow-xs' 
+                                                                    : 'bg-white border-gray-100 hover:border-indigo-100 hover:shadow-xs'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                {canEditCurrentAnimatorSettings ? (
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={isChecked}
+                                                                        onChange={() => toggleCheckDate(d)}
+                                                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+                                                                        title="Sélectionner"
+                                                                    />
+                                                                ) : (
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                                                                )}
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-xs font-bold text-gray-800 truncate capitalize" title={fullDate}>
+                                                                        {formattedDate}
+                                                                    </p>
+                                                                    {reason ? (
+                                                                        <p 
+                                                                            className="text-[10px] font-medium text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80 truncate mt-0.5 max-w-full inline-block"
+                                                                            title={`Motif : ${reason}`}
+                                                                        >
+                                                                            <span className="mr-0.5">💬</span> {reason}
+                                                                        </p>
+                                                                    ) : (
+                                                                        <p className="text-[10px] text-gray-400 italic mt-0.5">
+                                                                            Aucun motif
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {canEditCurrentAnimatorSettings && (
+                                                                <div className="flex items-center gap-0.5 shrink-0 ml-1.5">
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => handleOpenEditReasonModal([d])} 
+                                                                        className="text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+                                                                        title={reason ? "Modifier le motif" : "Ajouter un motif"}
+                                                                    >
+                                                                        <PencilIcon className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => removeUnavailability(d)} 
+                                                                        className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+                                                                        title="Supprimer cette indisponibilité"
+                                                                    >
+                                                                        <TrashIcon className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </div>
                                                             )}
-                                                            <span className="text-[11px] font-semibold text-gray-700 truncate" title={new Date(d.replace(/-/g, '/')).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}>
-                                                                {new Date(d.replace(/-/g, '/')).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                            </span>
                                                         </div>
-                                                        {canEditCurrentAnimatorSettings && (
-                                                            <button 
-                                                                onClick={() => removeUnavailability(d)} 
-                                                                className="text-gray-300 hover:text-red-500 p-0.5 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-                                                                title="Supprimer"
-                                                            >
-                                                                <TrashIcon className="w-3.5 h-3.5" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     ))}
@@ -753,6 +966,111 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({ showNotification, se
                     </div>
                 </div>
             </div>
+
+            {/* Modal de motif d'indisponibilité (unitaire ou groupé) */}
+            {editingReasonDates && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-4">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
+                                    <PencilIcon className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <h4 className="text-base font-bold text-gray-900">
+                                        {editingReasonDates.length === 1 
+                                            ? "Motif d'indisponibilité" 
+                                            : `Motif pour ${editingReasonDates.length} dates`}
+                                    </h4>
+                                    <p className="text-xs text-gray-500 capitalize">
+                                        {editingReasonDates.length === 1 
+                                            ? new Date(editingReasonDates[0].replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+                                            : `${editingReasonDates.length} dates sélectionnées`}
+                                    </p>
+                                </div>
+                            </div>
+                            <button 
+                                type="button" 
+                                onClick={() => setEditingReasonDates(null)}
+                                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                            >
+                                <XIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveReason} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                                    Motif (facultatif)
+                                </label>
+                                <input 
+                                    type="text"
+                                    autoFocus
+                                    value={reasonInput}
+                                    onChange={(e) => setReasonInput(e.target.value)}
+                                    placeholder="Ex: Congés, Formation, Rendez-vous médical..."
+                                    className="w-full p-2.5 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                    maxLength={100}
+                                />
+                            </div>
+
+                            {/* Suggestions rapides */}
+                            <div>
+                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
+                                    Suggestions rapides :
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {['Congés', 'Formation', 'Rendez-vous médical', 'Réunion', 'Déplacement', 'Maladie', 'Autre'].map((suggestion) => (
+                                        <button
+                                            key={suggestion}
+                                            type="button"
+                                            onClick={() => setReasonInput(suggestion)}
+                                            className={`text-xs px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                                                reasonInput === suggestion
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                                    : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200 hover:border-gray-300'
+                                            }`}
+                                        >
+                                            {suggestion}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                                <div>
+                                    {editingReasonDates.some(d => !!unavailableReasons[d]) && (
+                                        <button
+                                            type="button"
+                                            onClick={handleClearReason}
+                                            className="text-xs text-red-600 hover:text-red-700 font-semibold hover:underline cursor-pointer"
+                                        >
+                                            Effacer le motif
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditingReasonDates(null)}
+                                        className="px-3.5 py-2 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                                    >
+                                        Annuler
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                        <CheckIcon className="w-3.5 h-3.5" />
+                                        <span>Valider</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
              {editingHoliday && <HolidayEditModal holiday={editingHoliday} onSave={handleUpdateHoliday} onCancel={() => setEditingHoliday(null)} />}
              <ConfirmationModal 
                 isOpen={!!holidayToDelete}
