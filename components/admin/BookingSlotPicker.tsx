@@ -178,6 +178,15 @@ const BookingSlotPicker: React.FC<BookingSlotPickerProps> = ({
         const dayBookings = bookingsByDate[dateString] || [];
         
         if ((animatorSettings.inactiveSlots || []).some(s => Number(s) === Number(time))) return false;
+
+        if ((animatorSettings.unavailableDates || []).includes(dateString)) {
+            const halfDay = animatorSettings.unavailableHalfDays?.[dateString];
+            if (!halfDay) return false;
+            const timeVal = Number(time);
+            if (halfDay === 'morning' && timeVal < 13) return false;
+            if (halfDay === 'afternoon' && timeVal >= 13) return false;
+        }
+
         if (dayBookings.some(b => Number(b.time) === Number(time))) return false;
 
         const timeVal = Number(time);
@@ -219,11 +228,11 @@ const BookingSlotPicker: React.FC<BookingSlotPickerProps> = ({
             const isPast = date < today;
             const isBeforeMinAllowed = date < minAllowedDate;
             const isTooSoon = date < minLeadDate;
-            const isAnimatorUnavailable = animatorSettings.unavailableDates.includes(dateString);
+            const isFullDayUnavailable = (animatorSettings.unavailableDates || []).includes(dateString) && !animatorSettings.unavailableHalfDays?.[dateString];
 
             // On permet la date si elle est sélectionnée (pour voir où elle est) 
             // OU si elle n'est pas antérieure à la date minimum autorisée
-            const isSelectable = isAllowedDay && !isHoliday && !isAnimatorUnavailable && (!isBeforeMinAllowed || dateString === selectedDate);
+            const isSelectable = isAllowedDay && !isHoliday && !isFullDayUnavailable && (!isBeforeMinAllowed || dateString === selectedDate);
 
             days.push({
                 date,
@@ -232,12 +241,12 @@ const BookingSlotPicker: React.FC<BookingSlotPickerProps> = ({
                 isHoliday,
                 isPast,
                 isTooSoon,
-                isAnimatorUnavailable,
+                isAnimatorUnavailable: isFullDayUnavailable,
                 isSelectable
             });
         }
         return days;
-    }, [year, month, settings.allowedDays, settings.bookingLeadTime, settings.holidays, animatorSettings.unavailableDates, minAllowedDate]);
+    }, [year, month, settings.allowedDays, settings.bookingLeadTime, settings.holidays, animatorSettings.unavailableDates, animatorSettings.unavailableHalfDays, minAllowedDate, selectedDate]);
 
     const timeSlots = settings.availableTimeSlots || [9, 10, 14, 15];
 

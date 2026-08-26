@@ -46,6 +46,7 @@ export interface AnimatorSettings {
   inactiveSlots: number[];
   unavailableDates: string[];
   unavailableReasons?: Record<string, string>;
+  unavailableHalfDays?: Record<string, 'morning' | 'afternoon'>;
   monthlyBookingLimit?: number;
 }
 

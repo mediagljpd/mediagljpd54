@@ -29,15 +29,20 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
     });
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [unavailableReasons, setUnavailableReasons] = useState<Record<string, string>>({});
+    const [unavailableHalfDays, setUnavailableHalfDays] = useState<Record<string, 'morning' | 'afternoon'>>({});
     const [inactiveSlots, setInactiveSlots] = useState<number[]>([]);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
     
     const [noLimit, setNoLimit] = useState<boolean>(true);
     const [monthlyBookingLimit, setMonthlyBookingLimit] = useState<number | undefined>(undefined);
     
-    // Modal states for editing reason
+    // Modal states for editing reason and period
     const [editingReasonDates, setEditingReasonDates] = useState<string[] | null>(null);
     const [reasonInput, setReasonInput] = useState<string>('');
+    const [periodInput, setPeriodInput] = useState<'morning' | 'afternoon' | 'full' | 'unchanged'>('full');
+
+    // Context menu state for right-clicking calendar days
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; dateStr: string } | null>(null);
     
     const canEditCurrentAnimatorSettings = useMemo(() => {
         if (currentUser?.role === 'admin') return true;
@@ -57,6 +62,19 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
         }
         return [years[0], years[1]];
     }, [settings.activeYear]);
+
+    const getHolidayForDate = (date: Date, holidays: Holiday[]): Holiday | undefined => {
+        const checkDate = new Date(date);
+        checkDate.setHours(0, 0, 0, 0);
+        return (holidays || []).find(h => {
+            if (!h.startDate || !h.endDate) return false;
+            const startDate = new Date(h.startDate.replace(/-/g, '/'));
+            startDate.setHours(0, 0, 0, 0);
+            const endDate = new Date(h.endDate.replace(/-/g, '/'));
+            endDate.setHours(0, 0, 0, 0);
+            return checkDate >= startDate && checkDate <= endDate;
+        });
+    };
 
     const isHolidayInActiveYear = (h: Holiday, activeYear: string) => {
         if (!activeYear) return false;
@@ -164,6 +182,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
             setInactiveSlots(animSettings.inactiveSlots || []);
             setSelectedDates(animSettings.unavailableDates || []);
             setUnavailableReasons(animSettings.unavailableReasons || {});
+            setUnavailableHalfDays(animSettings.unavailableHalfDays || {});
             const limit = animSettings.monthlyBookingLimit;
             setMonthlyBookingLimit(limit);
             setNoLimit(limit === undefined);
@@ -173,6 +192,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
             setInactiveSlots([]);
             setSelectedDates([]);
             setUnavailableReasons({});
+            setUnavailableHalfDays({});
             setMonthlyBookingLimit(undefined);
             setNoLimit(true);
             setHasUnsavedChanges(false);
@@ -225,15 +245,72 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                 delete next[dateStr];
                 return next;
             });
+            setUnavailableHalfDays(prev => {
+                const next = { ...prev };
+                delete next[dateStr];
+                return next;
+            });
             setCheckedDates(prev => {
                 const next = new Set(prev);
                 next.delete(dateStr);
                 return next;
             });
         } else {
+            // Left click defaults to full day
             setSelectedDates(prev => [...prev, dateStr].sort());
+            setUnavailableHalfDays(prev => {
+                const next = { ...prev };
+                delete next[dateStr];
+                return next;
+            });
         }
         setHasUnsavedChanges(true);
+    };
+
+    const handleDateContextMenu = (e: React.MouseEvent, dateStr: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!canEditCurrentAnimatorSettings || !selectedAnimatorName) return;
+
+        const menuWidth = 240;
+        const menuHeight = 260;
+        const x = Math.min(e.clientX, window.innerWidth - menuWidth - 16);
+        const y = Math.min(e.clientY, window.innerHeight - menuHeight - 16);
+
+        setContextMenu({ x, y, dateStr });
+    };
+
+    const setDatePeriodType = (dateStr: string, period: 'morning' | 'afternoon' | 'full') => {
+        if (!canEditCurrentAnimatorSettings || !selectedAnimatorName) return;
+
+        setSelectedDates(prev => {
+            if (!prev.includes(dateStr)) {
+                return [...prev, dateStr].sort();
+            }
+            return prev;
+        });
+
+        setUnavailableHalfDays(prev => {
+            const next = { ...prev };
+            if (period === 'full') {
+                delete next[dateStr];
+            } else {
+                next[dateStr] = period;
+            }
+            return next;
+        });
+
+        setHasUnsavedChanges(true);
+        setContextMenu(null);
+
+        const dateFormatted = new Date(dateStr.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+        showNotification(
+            period === 'morning'
+                ? `Matinée bloquée pour le ${dateFormatted}.`
+                : period === 'afternoon'
+                ? `Après-midi bloqué pour le ${dateFormatted}.`
+                : `Journée complète bloquée pour le ${dateFormatted}.`
+        );
     };
 
     const toggleCheckDate = (dateStr: string) => {
@@ -257,15 +334,21 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
         if (!canEditCurrentAnimatorSettings || dates.length === 0) return;
         setEditingReasonDates(dates);
         if (dates.length === 1) {
-            setReasonInput(unavailableReasons[dates[0]] || '');
+            const d = dates[0];
+            setReasonInput(unavailableReasons[d] || '');
+            setPeriodInput(unavailableHalfDays[d] || 'full');
         } else {
             const firstReason = unavailableReasons[dates[0]] || '';
-            const allSame = dates.every(d => (unavailableReasons[d] || '') === firstReason);
-            setReasonInput(allSame ? firstReason : '');
+            const allSameReason = dates.every(d => (unavailableReasons[d] || '') === firstReason);
+            setReasonInput(allSameReason ? firstReason : '');
+
+            const firstPeriod = unavailableHalfDays[dates[0]] || 'full';
+            const allSamePeriod = dates.every(d => (unavailableHalfDays[d] || 'full') === firstPeriod);
+            setPeriodInput(allSamePeriod ? firstPeriod : 'unchanged');
         }
     };
 
-    const handleSaveReason = (e?: React.FormEvent) => {
+    const handleSaveReasonAndPeriod = (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!editingReasonDates || editingReasonDates.length === 0) return;
 
@@ -281,11 +364,24 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
             });
             return next;
         });
+
+        if (periodInput !== 'unchanged') {
+            setUnavailableHalfDays(prev => {
+                const next = { ...prev };
+                editingReasonDates.forEach(d => {
+                    if (periodInput === 'full') {
+                        delete next[d];
+                    } else {
+                        next[d] = periodInput;
+                    }
+                });
+                return next;
+            });
+        }
+
         setHasUnsavedChanges(true);
         showNotification(
-            trimmed 
-                ? `Motif enregistré pour ${editingReasonDates.length} date${editingReasonDates.length > 1 ? 's' : ''}.` 
-                : `Motif effacé pour ${editingReasonDates.length} date${editingReasonDates.length > 1 ? 's' : ''}.`
+            `Indisponibilité mise à jour pour ${editingReasonDates.length} date${editingReasonDates.length > 1 ? 's' : ''}.`
         );
         setEditingReasonDates(null);
         setReasonInput('');
@@ -313,6 +409,13 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
         const newUnavailabilities = selectedDates.filter(d => !checkedDates.has(d));
         setSelectedDates(newUnavailabilities);
         setUnavailableReasons(prev => {
+            const next = { ...prev };
+            checkedDates.forEach(d => {
+                delete next[d];
+            });
+            return next;
+        });
+        setUnavailableHalfDays(prev => {
             const next = { ...prev };
             checkedDates.forEach(d => {
                 delete next[d];
@@ -358,6 +461,11 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
             delete next[dateStr];
             return next;
         });
+        setUnavailableHalfDays(prev => {
+            const next = { ...prev };
+            delete next[dateStr];
+            return next;
+        });
         setCheckedDates(prev => {
             const next = new Set(prev);
             next.delete(dateStr);
@@ -389,7 +497,8 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
             ...selectedAnimatorSettings,
             inactiveSlots: inactiveSlots,
             unavailableDates: selectedDates,
-            unavailableReasons: unavailableReasons
+            unavailableReasons: unavailableReasons,
+            unavailableHalfDays: unavailableHalfDays
         };
 
         if (noLimit) {
@@ -422,6 +531,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
             setInactiveSlots(animSettings.inactiveSlots || []);
             setSelectedDates(animSettings.unavailableDates || []);
             setUnavailableReasons(animSettings.unavailableReasons || {});
+            setUnavailableHalfDays(animSettings.unavailableHalfDays || {});
             const limit = animSettings.monthlyBookingLimit;
             setMonthlyBookingLimit(limit);
             setNoLimit(limit === undefined);
@@ -431,6 +541,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
             setInactiveSlots([]);
             setSelectedDates([]);
             setUnavailableReasons({});
+            setUnavailableHalfDays({});
             setMonthlyBookingLimit(undefined);
             setNoLimit(true);
             setHasUnsavedChanges(false);
@@ -752,7 +863,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                                     aria-label="Mois suivant"
                                 >&gt;</button>
                             </div>
-                            <div className="grid grid-cols-7 gap-1 text-center text-sm mb-6">
+                            <div className="grid grid-cols-7 gap-1 text-center text-sm mb-4">
                                 {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => <div key={`${d}-${i}`} className="font-semibold text-xs text-gray-500 py-1">{d}</div>)}
                                 {Array.from({ length: startingDay }).map((_, i) => <div key={`e-${i}`}></div>)}
                                 {Array.from({ length: daysInMonth }).map((_, dayIndex) => {
@@ -760,30 +871,124 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                                     const date = new Date(year, month, day);
                                     const dateStr = toYYYYMMDD(date);
                                     const isUnavailable = selectedDates.includes(dateStr);
+                                    const halfDay = isUnavailable ? unavailableHalfDays[dateStr] : undefined;
                                     const reason = unavailableReasons[dateStr];
-                                    let classes = "relative p-2 rounded-lg transition-all flex flex-col items-center justify-center min-h-[38px] ";
+                                    const holiday = getHolidayForDate(date, settings.holidays || []);
+                                    const isHoliday = !!holiday;
+
+                                    let containerClasses = "relative p-1 rounded-xl transition-all flex flex-col items-center justify-center min-h-[42px] select-none border overflow-hidden ";
                                     if (canEditCurrentAnimatorSettings) {
-                                        classes += "cursor-pointer hover:bg-indigo-50 ";
+                                        containerClasses += "cursor-pointer hover:shadow-sm ";
                                     } else {
-                                        classes += "cursor-not-allowed ";
+                                        containerClasses += "cursor-not-allowed ";
                                     }
-                                    if (isUnavailable) classes += "bg-red-500 text-white font-bold shadow-sm";
-                                    else classes += "text-gray-700 bg-gray-50/50 hover:bg-gray-100";
+
+                                    let periodLabel = isHoliday ? `Disponible (Vacances : ${holiday?.name})` : "Disponible";
+                                    if (isUnavailable) {
+                                        if (halfDay === 'morning') periodLabel = `Matin indisponible (9h, 10h)${isHoliday ? ` • Vacances : ${holiday?.name}` : ''}`;
+                                        else if (halfDay === 'afternoon') periodLabel = `Après-midi indisponible (14h, 15h)${isHoliday ? ` • Vacances : ${holiday?.name}` : ''}`;
+                                        else periodLabel = `Journée complète indisponible${isHoliday ? ` • Vacances : ${holiday?.name}` : ''}`;
+                                    }
+
+                                    const tooltipText = isUnavailable 
+                                        ? `${dateStr} : ${periodLabel}${reason ? ` (Motif: ${reason})` : ''} • Clic gauche: Supprimer / Clic droit: Modifier`
+                                        : `${dateStr} : ${periodLabel} • Clic gauche: Bloquer journée • Clic droit: Bloquer demi-journée`;
+
+                                    if (!isUnavailable) {
+                                        if (isHoliday) {
+                                            // Période de vacances scolaire / férié
+                                            containerClasses += "text-amber-950 bg-amber-100 hover:bg-amber-200/80 border-amber-300 hover:border-amber-400";
+                                        } else {
+                                            containerClasses += "text-gray-700 bg-gray-50/60 hover:bg-indigo-50/60 border-gray-200/80 hover:border-indigo-300";
+                                        }
+                                    } else if (!halfDay) {
+                                        // Journée complète
+                                        containerClasses += "bg-red-500 text-white font-bold border-red-600 shadow-xs";
+                                    } else {
+                                        // Demi-journée
+                                        containerClasses += `${isHoliday ? 'bg-amber-100 border-amber-300' : 'bg-white border-red-300'} text-gray-900 font-bold shadow-xs`;
+                                    }
 
                                     return (
                                         <div 
                                             key={day} 
-                                            className={classes} 
+                                            className={containerClasses} 
                                             onClick={() => canEditCurrentAnimatorSettings && handleDateClick(dateStr)}
-                                            title={isUnavailable ? (reason ? `${dateStr} : Indisponible (${reason})` : `${dateStr} : Indisponible`) : dateStr}
+                                            onContextMenu={(e) => canEditCurrentAnimatorSettings && handleDateContextMenu(e, dateStr)}
+                                            title={tooltipText}
                                         >
-                                            <span>{day}</span>
+                                            {/* Rendu visuel demi-rectangle pour demi-journée */}
+                                            {isUnavailable && halfDay === 'morning' && (
+                                                <div className="absolute inset-x-0 top-0 h-1/2 bg-red-500/90 pointer-events-none" />
+                                            )}
+                                            {isUnavailable && halfDay === 'afternoon' && (
+                                                <div className="absolute inset-x-0 bottom-0 h-1/2 bg-red-500/90 pointer-events-none" />
+                                            )}
+
+                                            {/* Badge demi-journée */}
+                                            {isUnavailable && halfDay === 'morning' && (
+                                                <span className="absolute top-0.5 right-1 z-10 text-[7px] font-black text-white leading-none tracking-tighter drop-shadow-xs">
+                                                    MAT
+                                                </span>
+                                            )}
+                                            {isUnavailable && halfDay === 'afternoon' && (
+                                                <span className="absolute bottom-0.5 right-1 z-10 text-[7px] font-black text-white leading-none tracking-tighter drop-shadow-xs">
+                                                    AM
+                                                </span>
+                                            )}
+
+                                            {/* Numéro du jour */}
+                                            <span className={`relative z-10 text-xs font-bold ${
+                                                !isUnavailable 
+                                                    ? (isHoliday ? 'text-amber-950 font-extrabold' : 'text-gray-800')
+                                                    : !halfDay 
+                                                    ? 'text-white' 
+                                                    : halfDay === 'morning'
+                                                    ? 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)] translate-y-[-2px]'
+                                                    : (isHoliday ? 'text-amber-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)] translate-y-[2px]' : 'text-gray-900 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)] translate-y-[2px]')
+                                            }`}>
+                                                {day}
+                                            </span>
+
+                                            {/* Indicateur de motif */}
                                             {isUnavailable && reason && (
-                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-300 absolute bottom-1 right-1 shadow-xs" title={`Motif: ${reason}`} />
+                                                <span 
+                                                    className="w-2 h-2 rounded-full bg-amber-300 border border-amber-500 absolute top-1 left-1 z-20 shadow-xs" 
+                                                    title={`Motif: ${reason}`} 
+                                                />
                                             )}
                                         </div>
                                     );
                                 })}
+                            </div>
+
+                            {/* Légende du calendrier */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <div className="flex items-center gap-1.5" title="Journée entière bloquée">
+                                        <span className="w-3.5 h-3.5 rounded-md bg-red-500 border border-red-600 shrink-0" />
+                                        <span className="text-[11px] font-medium text-gray-600">Journée</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5" title="Matinée bloquée (9h, 10h)">
+                                        <span className="w-3.5 h-3.5 rounded-md border border-red-300 bg-white relative overflow-hidden shrink-0 shadow-2xs">
+                                            <span className="absolute inset-x-0 top-0 h-1/2 bg-red-500" />
+                                        </span>
+                                        <span className="text-[11px] font-medium text-gray-600">Matin (MAT)</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5" title="Après-midi bloqué (14h, 15h)">
+                                        <span className="w-3.5 h-3.5 rounded-md border border-red-300 bg-white relative overflow-hidden shrink-0 shadow-2xs">
+                                            <span className="absolute inset-x-0 bottom-0 h-1/2 bg-red-500" />
+                                        </span>
+                                        <span className="text-[11px] font-medium text-gray-600">Après-midi (AM)</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5" title="Période de vacances scolaires">
+                                        <span className="w-3.5 h-3.5 rounded-md bg-amber-100 border border-amber-300 shrink-0" />
+                                        <span className="text-[11px] font-medium text-amber-900">Vacances</span>
+                                    </div>
+                                </div>
+                                <div className="text-[10px] text-gray-400 font-medium">
+                                    🖱️ Clic gauche: Journée • Clic droit: Demi-journée
+                                </div>
                             </div>
 
                             {canEditCurrentAnimatorSettings && (
@@ -858,10 +1063,10 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                                                 type="button"
                                                 onClick={() => handleOpenEditReasonModal(Array.from(checkedDates))}
                                                 className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
-                                                title="Définir un motif pour toutes les dates cochées"
+                                                title="Définir un motif ou modifier la période pour toutes les dates cochées"
                                             >
                                                 <PencilIcon className="w-3.5 h-3.5 text-indigo-600" />
-                                                <span>Motif ({checkedDates.size})</span>
+                                                <span>Période / Motif ({checkedDates.size})</span>
                                             </button>
                                             <button 
                                                 type="button"
@@ -890,6 +1095,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                 {group.dates.map(d => {
                                                     const reason = unavailableReasons[d];
+                                                    const halfDay = unavailableHalfDays[d];
                                                     const isChecked = checkedDates.has(d);
                                                     const formattedDate = new Date(d.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
                                                     const fullDate = new Date(d.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -897,7 +1103,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                                                     return (
                                                         <div 
                                                             key={d} 
-                                                            className={`flex items-center justify-between p-2 rounded-xl border transition-all ${
+                                                            className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
                                                                 isChecked 
                                                                     ? 'bg-indigo-50/70 border-indigo-200 shadow-xs' 
                                                                     : 'bg-white border-gray-100 hover:border-indigo-100 hover:shadow-xs'
@@ -916,12 +1122,27 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                                                                     <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
                                                                 )}
                                                                 <div className="min-w-0 flex-1">
-                                                                    <p className="text-xs font-bold text-gray-800 truncate capitalize" title={fullDate}>
-                                                                        {formattedDate}
-                                                                    </p>
+                                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                                        <p className="text-xs font-bold text-gray-800 truncate capitalize" title={fullDate}>
+                                                                            {formattedDate}
+                                                                        </p>
+                                                                        {halfDay === 'morning' ? (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-0.5 shrink-0" title="Matin indisponible (9h, 10h)">
+                                                                                <span>☀️</span> MAT
+                                                                            </span>
+                                                                        ) : halfDay === 'afternoon' ? (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-purple-50 text-purple-800 border border-purple-300 flex items-center gap-0.5 shrink-0" title="Après-midi indisponible (14h, 15h)">
+                                                                                <span>🌙</span> AM
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 flex items-center gap-0.5 shrink-0" title="Journée complète indisponible">
+                                                                                <span>📅</span> Jour
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                     {reason ? (
                                                                         <p 
-                                                                            className="text-[10px] font-medium text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80 truncate mt-0.5 max-w-full inline-block"
+                                                                            className="text-[10px] font-medium text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80 truncate mt-1 max-w-full inline-block"
                                                                             title={`Motif : ${reason}`}
                                                                         >
                                                                             <span className="mr-0.5">💬</span> {reason}
@@ -940,7 +1161,7 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                                                                         type="button"
                                                                         onClick={() => handleOpenEditReasonModal([d])} 
                                                                         className="text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors cursor-pointer"
-                                                                        title={reason ? "Modifier le motif" : "Ajouter un motif"}
+                                                                        title="Modifier la période ou le motif"
                                                                     >
                                                                         <PencilIcon className="w-3.5 h-3.5" />
                                                                     </button>
@@ -967,7 +1188,121 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                 </div>
             </div>
 
-            {/* Modal de motif d'indisponibilité (unitaire ou groupé) */}
+            {/* Menu contextuel lors du clic droit sur un jour du calendrier */}
+            {contextMenu && (
+                <>
+                    <div 
+                        className="fixed inset-0 z-[90] bg-transparent" 
+                        onClick={() => setContextMenu(null)}
+                        onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+                    />
+                    <div 
+                        className="fixed z-[95] bg-white rounded-2xl shadow-2xl border border-gray-200 py-2 w-60 animate-in fade-in zoom-in-95 duration-150 overflow-hidden"
+                        style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-3.5 py-2 border-b border-gray-100 bg-gray-50/80">
+                            <p className="text-xs font-bold text-gray-900 capitalize">
+                                📅 {new Date(contextMenu.dateStr.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                            <p className="text-[10px] text-gray-500 font-medium mt-0.5">
+                                {selectedDates.includes(contextMenu.dateStr) ? (
+                                    unavailableHalfDays[contextMenu.dateStr] === 'morning' ? (
+                                        <span className="text-amber-700 font-semibold">Actuellement : Matin (MAT)</span>
+                                    ) : unavailableHalfDays[contextMenu.dateStr] === 'afternoon' ? (
+                                        <span className="text-purple-700 font-semibold">Actuellement : Après-midi (AM)</span>
+                                    ) : (
+                                        <span className="text-red-700 font-semibold">Actuellement : Journée entière</span>
+                                    )
+                                ) : (
+                                    <span className="text-emerald-600 font-semibold">Actuellement : Disponible</span>
+                                )}
+                            </p>
+                        </div>
+
+                        <div className="p-1 space-y-0.5 text-xs">
+                            <button
+                                type="button"
+                                onClick={() => setDatePeriodType(contextMenu.dateStr, 'morning')}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-left cursor-pointer ${
+                                    selectedDates.includes(contextMenu.dateStr) && unavailableHalfDays[contextMenu.dateStr] === 'morning'
+                                        ? 'bg-amber-50 text-amber-900 font-bold'
+                                        : 'hover:bg-gray-100 text-gray-700'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <span>☀️</span>
+                                    <span>Matin (9h, 10h)</span>
+                                </span>
+                                <span className="text-[10px] font-black text-amber-700 bg-amber-100 px-1 py-0.2 rounded">MAT</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setDatePeriodType(contextMenu.dateStr, 'afternoon')}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-left cursor-pointer ${
+                                    selectedDates.includes(contextMenu.dateStr) && unavailableHalfDays[contextMenu.dateStr] === 'afternoon'
+                                        ? 'bg-purple-50 text-purple-900 font-bold'
+                                        : 'hover:bg-gray-100 text-gray-700'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <span>🌙</span>
+                                    <span>Après-midi (14h, 15h)</span>
+                                </span>
+                                <span className="text-[10px] font-black text-purple-700 bg-purple-100 px-1 py-0.2 rounded">AM</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setDatePeriodType(contextMenu.dateStr, 'full')}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-left cursor-pointer ${
+                                    selectedDates.includes(contextMenu.dateStr) && !unavailableHalfDays[contextMenu.dateStr]
+                                        ? 'bg-red-50 text-red-900 font-bold'
+                                        : 'hover:bg-gray-100 text-gray-700'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <span>📅</span>
+                                    <span>Journée entière</span>
+                                </span>
+                                <span className="text-[10px] font-black text-red-700 bg-red-100 px-1 py-0.2 rounded">JOUR</span>
+                            </button>
+
+                            {selectedDates.includes(contextMenu.dateStr) && (
+                                <>
+                                    <div className="my-1 border-t border-gray-100" />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const d = contextMenu.dateStr;
+                                            setContextMenu(null);
+                                            handleOpenEditReasonModal([d]);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-indigo-50 text-indigo-700 font-medium transition-colors text-left cursor-pointer"
+                                    >
+                                        <PencilIcon className="w-3.5 h-3.5" />
+                                        <span>Définir / modifier motif...</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            removeUnavailability(contextMenu.dateStr);
+                                            setContextMenu(null);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-red-50 text-red-600 font-medium transition-colors text-left cursor-pointer"
+                                    >
+                                        <TrashIcon className="w-3.5 h-3.5" />
+                                        <span>Rendre disponible (Supprimer)</span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {/* Modal de motif & période d'indisponibilité (unitaire ou groupé) */}
             {editingReasonDates && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
@@ -979,8 +1314,8 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                                 <div>
                                     <h4 className="text-base font-bold text-gray-900">
                                         {editingReasonDates.length === 1 
-                                            ? "Motif d'indisponibilité" 
-                                            : `Motif pour ${editingReasonDates.length} dates`}
+                                            ? "Paramètres d'indisponibilité" 
+                                            : `Modifier ${editingReasonDates.length} dates`}
                                     </h4>
                                     <p className="text-xs text-gray-500 capitalize">
                                         {editingReasonDates.length === 1 
@@ -998,7 +1333,63 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                             </button>
                         </div>
 
-                        <form onSubmit={handleSaveReason} className="space-y-4">
+                        <form onSubmit={handleSaveReasonAndPeriod} className="space-y-4">
+                            {/* Choix de la période (Journée entière, Matin, Après-midi) */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                                    Période d'absence
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPeriodInput('full')}
+                                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                                            periodInput === 'full'
+                                                ? 'bg-red-500 text-white border-red-600 shadow-sm'
+                                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        <span className="text-sm">📅</span>
+                                        <span>Journée</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPeriodInput('morning')}
+                                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                                            periodInput === 'morning'
+                                                ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        <span className="text-sm">☀️</span>
+                                        <span>Matin (MAT)</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPeriodInput('afternoon')}
+                                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                                            periodInput === 'afternoon'
+                                                ? 'bg-purple-600 text-white border-purple-700 shadow-sm'
+                                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        <span className="text-sm">🌙</span>
+                                        <span>Après-midi (AM)</span>
+                                    </button>
+                                </div>
+                                {editingReasonDates.length > 1 && (
+                                    <div className="mt-1.5 text-right">
+                                        <button
+                                            type="button"
+                                            onClick={() => setPeriodInput('unchanged')}
+                                            className={`text-[11px] font-semibold underline ${periodInput === 'unchanged' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                                        >
+                                            Ne pas modifier les périodes actuelles
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
                                     Motif (facultatif)

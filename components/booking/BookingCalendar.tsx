@@ -126,6 +126,15 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
         const dayBookings = bookingsByDate[dateString] || [];
         
         if ((animatorSettings.inactiveSlots || []).some(s => Number(s) === Number(time))) return false;
+
+        if ((animatorSettings.unavailableDates || []).includes(dateString)) {
+            const halfDay = animatorSettings.unavailableHalfDays?.[dateString];
+            if (!halfDay) return false;
+            const timeVal = Number(time);
+            if (halfDay === 'morning' && timeVal < 13) return false;
+            if (halfDay === 'afternoon' && timeVal >= 13) return false;
+        }
+
         if (dayBookings.some(b => Number(b.time) === Number(time))) return false;
 
         const timeVal = Number(time);
@@ -166,19 +175,20 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
                 if (isHoliday) continue;
 
                 const isTooSoon = date < minLeadDate;
-                const isAnimatorUnavailable = animatorSettings.unavailableDates.includes(toYYYYMMDD(date));
+                const dateStr = toYYYYMMDD(date);
+                const isFullDayUnavailable = (animatorSettings.unavailableDates || []).includes(dateStr) && !animatorSettings.unavailableHalfDays?.[dateStr];
                 
                 days.push({
                     date,
                     isTooSoon,
-                    isAnimatorUnavailable,
-                    dateString: toYYYYMMDD(date),
+                    isAnimatorUnavailable: isFullDayUnavailable,
+                    dateString: dateStr,
                     fullDateLabel: date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
                 });
             }
         }
         return days;
-    }, [year, month, settings.allowedDays, settings.bookingLeadTime, settings.holidays, animatorSettings.unavailableDates]);
+    }, [year, month, settings.allowedDays, settings.bookingLeadTime, settings.holidays, animatorSettings.unavailableDates, animatorSettings.unavailableHalfDays]);
 
     const timeSlots = settings.availableTimeSlots || [9, 10, 14, 15];
 
