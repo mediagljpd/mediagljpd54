@@ -35,15 +35,23 @@ export const dataService = {
     
     try {
         await runTransaction(db, async (transaction) => {
-            // 1. Vérifier si la réservation existe déjà (mise à jour)
+            // 1. ALL READS FIRST (Firestore requires all reads before any writes)
             const bookingSnap = await transaction.get(bookingRef);
             const isUpdate = bookingSnap.exists();
             const oldBooking = isUpdate ? (bookingSnap.data() as Booking) : null;
             
-            // 2. Récupérer ou reconstruire les verrous du jour
             const dayLocksSnap = await transaction.get(dayLocksRef);
-            let existingDayBookings: any[] = [];
             
+            const isDateChanged = isUpdate && oldBooking && oldBooking.date !== booking.date;
+            let oldDayLocksRef: any = null;
+            let oldDayLocksSnap: any = null;
+            if (isDateChanged && oldBooking) {
+                oldDayLocksRef = doc(db, "dayLocks", oldBooking.date);
+                oldDayLocksSnap = await transaction.get(oldDayLocksRef);
+            }
+            
+            // 2. Récupérer ou reconstruire les verrous du jour cible
+            let existingDayBookings: any[] = [];
             if (dayLocksSnap.exists()) {
                 existingDayBookings = dayLocksSnap.data().bookings || [];
             } else if (currentBookings && animations) {
@@ -51,7 +59,6 @@ export const dataService = {
                 animations.forEach(a => {
                     if (a.animator) animMap.set(a.id, a.animator);
                 });
-                // Reconstruction automatique
                 existingDayBookings = currentBookings
                     .filter(b => b.date === booking.date)
                     .map(b => ({
@@ -62,7 +69,7 @@ export const dataService = {
                     }));
             }
             
-            // 3. Exclure la réservation actuelle en cas de mise à jour pour éviter l'auto-conflit
+            // 3. Exclure la réservation actuelle en cas de mise à jour pour éviter l'auto-conflit sur la même date
             let filteredDayBookings = existingDayBookings;
             if (isUpdate) {
                 filteredDayBookings = existingDayBookings.filter(b => b.id !== booking.id);
@@ -94,7 +101,8 @@ export const dataService = {
                 }
             }
             
-            // 5. Mettre à jour les verrous de la date cible
+            // 5. ALL WRITES
+            // 5a. Mettre à jour les verrous de la date cible
             const newLockItem = {
                 id: booking.id,
                 time: Number(booking.time),
@@ -104,23 +112,20 @@ export const dataService = {
             const updatedDayBookings = [...filteredDayBookings, newLockItem];
             transaction.set(dayLocksRef, { bookings: updatedDayBookings }, { merge: true });
             
-            // 6. Nettoyer les verrous de l'ancienne date si la date a été modifiée
-            if (isUpdate && oldBooking && oldBooking.date !== booking.date) {
-                const oldDayLocksRef = doc(db, "dayLocks", oldBooking.date);
-                const oldDayLocksSnap = await transaction.get(oldDayLocksRef);
-                if (oldDayLocksSnap.exists()) {
-                    const oldExisting = oldDayLocksSnap.data().bookings || [];
-                    const updatedOldExisting = oldExisting.filter(b => b.id !== booking.id);
-                    transaction.set(oldDayLocksRef, { bookings: updatedOldExisting }, { merge: true });
-                }
+            // 5b. Nettoyer les verrous de l'ancienne date si la date a été modifiée
+            if (isDateChanged && oldDayLocksRef && oldDayLocksSnap && oldDayLocksSnap.exists()) {
+                const oldExisting = oldDayLocksSnap.data().bookings || [];
+                const updatedOldExisting = oldExisting.filter((b: any) => b.id !== booking.id);
+                transaction.set(oldDayLocksRef, { bookings: updatedOldExisting }, { merge: true });
             }
             
-            // 7. Enregistrer le document de réservation
+            // 5c. Enregistrer le document de réservation
             transaction.set(bookingRef, booking, { merge: true });
         });
     } catch (e: any) {
         console.error("Erreur de transaction dans saveBooking:", e);
         handleFirestoreError(e, 'write', `bookings/${booking.id}`);
+        throw e;
     }
   },
 

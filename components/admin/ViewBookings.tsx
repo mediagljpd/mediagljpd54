@@ -1732,11 +1732,16 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 </div>
             )}
 
-            {editingBooking && <BookingEditForm booking={editingBooking} animations={animations} bookings={bookings} onSave={(b) => { 
-                const anim = animations.find(a => a.id === b.animationId);
-                saveBooking(b, anim?.animator); 
-                setEditingBooking(null); 
-                showNotification('Modifiée !'); 
+            {editingBooking && <BookingEditForm booking={editingBooking} animations={animations} bookings={bookings} onSave={async (b) => { 
+                try {
+                    const anim = animations.find(a => a.id === b.animationId);
+                    await saveBooking(b, anim?.animator); 
+                    setEditingBooking(null); 
+                    showNotification('Réservation modifiée avec succès !'); 
+                } catch (err: any) {
+                    console.error("Erreur lors de la modification de la réservation:", err);
+                    showNotification(err?.message || "Erreur lors de l'enregistrement de la modification.", "error");
+                }
             }} onCancel={() => setEditingBooking(null)} />}
 
             <ConfirmationModal 
