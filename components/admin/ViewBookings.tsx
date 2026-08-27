@@ -987,8 +987,8 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             <div className="min-h-0">
                 {viewMode === 'list' ? (
                     <>
-                        {/* Barre de recherche sticky au-dessus de la liste des réservations */}
-                        <div className="sticky top-0 z-20 pb-3 pt-1 -mt-1 bg-gray-100/95 backdrop-blur-md">
+                        {/* Barre de recherche et barre d'actions groupées sticky au-dessus de la liste des réservations */}
+                        <div className="sticky top-0 z-20 pb-3 pt-1 -mt-1 bg-gray-100/95 backdrop-blur-md flex flex-col gap-2.5">
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white px-4 py-2.5 rounded-2xl border border-gray-200/90 shadow-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
                                 <div className="relative flex-grow flex items-center">
                                     <SearchIcon className="h-5 w-5 text-gray-400 shrink-0 mr-3" />
@@ -1025,48 +1025,52 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                     )}
                                 </div>
                             </div>
-                        </div>
-                        {selectedBookingIds.size > 0 && (
-                            <div className="bg-indigo-900 text-white p-4 mb-4 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-4">
-                                <span className="font-black text-sm uppercase tracking-widest">{selectedBookingIds.size} sélectionné(s)</span>
-                                <div className="flex flex-wrap gap-2">
-                                    {settings.enableBookingStatus && (
-                                        <>
-                                            <button 
-                                                onClick={handleBulkValidate} 
-                                                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-xs font-black uppercase rounded-lg transition-colors shadow-sm"
-                                                title="Valider toutes les réservations sélectionnées"
-                                            >
-                                                <CheckIcon className="w-4 h-4" /> Valider
-                                            </button>
-                                            <button 
-                                                onClick={handleBulkSetPending} 
-                                                className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 text-xs font-black uppercase rounded-lg transition-colors shadow-sm"
-                                                title="Passer en 'À confirmer' toutes les réservations sélectionnées"
-                                            >
-                                                <ClockIcon className="w-4 h-4" /> À confirmer
-                                            </button>
-                                        </>
-                                    )}
-                                    <button 
-                                        onClick={handleSendReminders} 
-                                        disabled={isSendingReminders}
-                                        className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-5 py-2 text-xs font-black uppercase rounded-lg transition-colors"
-                                    >
-                                        <BellIcon className="w-4 h-4" /> {isSendingReminders ? 'Envoi...' : 'Rappel'}
-                                    </button>
-                                    <button onClick={() => setIsSendListModalOpen(true)} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2 text-xs font-black uppercase rounded-lg transition-colors">
-                                        <SendIcon className="w-4 h-4" /> Envoi Liste
-                                    </button>
-                                    <button onClick={() => setIsBusSheetModalOpen(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 text-xs font-black uppercase rounded-lg transition-colors">
-                                        <PdfIcon className="w-4 h-4" /> Fiches bus
-                                    </button>
-                                    <button onClick={handleDeleteSelected} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-5 py-2 text-xs font-black uppercase rounded-lg transition-colors">
-                                        <TrashIcon className="w-4 h-4" /> Supprimer
-                                    </button>
+
+                            {selectedBookingIds.size > 0 && (
+                                <div className="bg-indigo-900 text-white p-3 sm:p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-4 border border-indigo-700/50">
+                                    <span className="font-black text-sm uppercase tracking-widest flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                                        {selectedBookingIds.size} sélectionné(s)
+                                    </span>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {settings.enableBookingStatus && (
+                                            <>
+                                                <button 
+                                                    onClick={handleBulkValidate} 
+                                                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-lg transition-colors shadow-sm cursor-pointer"
+                                                    title="Valider toutes les réservations sélectionnées"
+                                                >
+                                                    <CheckIcon className="w-4 h-4" /> Valider
+                                                </button>
+                                                <button 
+                                                    onClick={handleBulkSetPending} 
+                                                    className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-lg transition-colors shadow-sm cursor-pointer"
+                                                    title="Passer en 'À confirmer' toutes les réservations sélectionnées"
+                                                >
+                                                    <ClockIcon className="w-4 h-4" /> À confirmer
+                                                </button>
+                                            </>
+                                        )}
+                                        <button 
+                                            onClick={handleSendReminders} 
+                                            disabled={isSendingReminders}
+                                            className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-lg transition-colors cursor-pointer"
+                                        >
+                                            <BellIcon className="w-4 h-4" /> {isSendingReminders ? 'Envoi...' : 'Rappel'}
+                                        </button>
+                                        <button onClick={() => setIsSendListModalOpen(true)} className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-lg transition-colors cursor-pointer">
+                                            <SendIcon className="w-4 h-4" /> Envoi Liste
+                                        </button>
+                                        <button onClick={() => setIsBusSheetModalOpen(true)} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-lg transition-colors cursor-pointer">
+                                            <PdfIcon className="w-4 h-4" /> Fiches bus
+                                        </button>
+                                        <button onClick={handleDeleteSelected} className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-lg transition-colors cursor-pointer">
+                                            <TrashIcon className="w-4 h-4" /> Supprimer
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
                         <div className="bg-white shadow-sm border border-gray-100 rounded-2xl overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-200">
                                 <thead className="bg-gray-50/50">
