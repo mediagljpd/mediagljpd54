@@ -232,6 +232,8 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const viewingBooking = useMemo(() => bookings.find(b => b.id === viewingBookingId) || null, [bookings, viewingBookingId]);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+    const [showBulkValidateConfirm, setShowBulkValidateConfirm] = useState(false);
+    const [showBulkPendingConfirm, setShowBulkPendingConfirm] = useState(false);
     const [isSendListModalOpen, setIsSendListModalOpen] = useState(false);
     const [recipientListEmail, setRecipientListEmail] = useState('');
     const [selectedRecipientAnimator, setSelectedRecipientAnimator] = useState('');
@@ -593,9 +595,19 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         }
     };
 
-    const handleBulkValidate = async () => {
+    const handleBulkValidate = () => {
+        const count = bookings.filter(b => selectedBookingIds.has(b.id)).length;
+        if (count === 0) {
+            showNotification("Aucune réservation sélectionnée.");
+            return;
+        }
+        setShowBulkValidateConfirm(true);
+    };
+
+    const confirmBulkValidate = async () => {
         const selectedBookings = bookings.filter(b => selectedBookingIds.has(b.id));
         if (selectedBookings.length === 0) return;
+        setShowBulkValidateConfirm(false);
         try {
             let emailCount = 0;
             for (const b of selectedBookings) {
@@ -623,9 +635,19 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         }
     };
 
-    const handleBulkSetPending = async () => {
+    const handleBulkSetPending = () => {
+        const count = bookings.filter(b => selectedBookingIds.has(b.id)).length;
+        if (count === 0) {
+            showNotification("Aucune réservation sélectionnée.");
+            return;
+        }
+        setShowBulkPendingConfirm(true);
+    };
+
+    const confirmBulkSetPending = async () => {
         const selectedBookings = bookings.filter(b => selectedBookingIds.has(b.id));
         if (selectedBookings.length === 0) return;
+        setShowBulkPendingConfirm(false);
         try {
             await Promise.all(selectedBookings.map(b => {
                 const anim = animations.find(a => a.id === b.animationId || a.title === b.animationTitle);
@@ -1818,6 +1840,26 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 isDanger={true}
                 onConfirm={confirmBulkDelete}
                 onCancel={() => setShowBulkDeleteConfirm(false)}
+            />
+
+            <ConfirmationModal 
+                isOpen={showBulkValidateConfirm}
+                title="Valider les réservations"
+                message={`Voulez-vous vraiment valider les ${selectedBookingIds.size} réservation(s) sélectionnée(s) ?${settings.emailAnimatorOnValidationEnabled !== false ? " Si configuré, les animateurs concernés recevront un e-mail de notification." : ""}`}
+                confirmLabel="Valider tout"
+                isDanger={false}
+                onConfirm={confirmBulkValidate}
+                onCancel={() => setShowBulkValidateConfirm(false)}
+            />
+
+            <ConfirmationModal 
+                isOpen={showBulkPendingConfirm}
+                title="Passer en 'À confirmer'"
+                message={`Voulez-vous vraiment passer les ${selectedBookingIds.size} réservation(s) sélectionnée(s) au statut "À confirmer" ?`}
+                confirmLabel="Confirmer"
+                isDanger={false}
+                onConfirm={confirmBulkSetPending}
+                onCancel={() => setShowBulkPendingConfirm(false)}
             />
 
             <ConfirmationModal 
