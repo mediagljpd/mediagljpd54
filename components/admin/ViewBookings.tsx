@@ -919,20 +919,6 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                         </select>
                     </div>
 
-                    {viewMode === 'list' && (
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <SearchIcon className="h-5 w-5 text-gray-400" />
-                            </div>
-                            <input
-                                type="text"
-                                placeholder="Rechercher..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="block w-48 sm:w-64 pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                            />
-                        </div>
-                    )}
                     <div className="inline-flex rounded-md shadow-sm">
                         <button onClick={() => setViewMode('list')} className={`inline-flex items-center px-4 py-2 text-sm font-medium border rounded-l-lg transition-colors ${viewMode === 'list' ? 'bg-blue-600 text-white border-blue-600 z-10' : 'bg-white text-gray-900 border-gray-200 hover:bg-gray-100'}`}>
                             <ListIcon className="w-4 h-4 mr-2" /> Liste
@@ -1001,6 +987,45 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
             <div className="min-h-0">
                 {viewMode === 'list' ? (
                     <>
+                        {/* Barre de recherche sticky au-dessus de la liste des réservations */}
+                        <div className="sticky top-0 z-20 pb-3 pt-1 -mt-1 bg-gray-100/95 backdrop-blur-md">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white px-4 py-2.5 rounded-2xl border border-gray-200/90 shadow-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                                <div className="relative flex-grow flex items-center">
+                                    <SearchIcon className="h-5 w-5 text-gray-400 shrink-0 mr-3" />
+                                    <input
+                                        type="text"
+                                        placeholder="Rechercher par enseignant, école, commune, animation, niveau, animateur..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="block w-full text-sm bg-transparent placeholder-gray-400 text-gray-900 focus:outline-none"
+                                    />
+                                    {searchTerm && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearchTerm('')}
+                                            className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors ml-2"
+                                            title="Effacer la recherche"
+                                        >
+                                            <XIcon className="h-4 w-4" />
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex items-center justify-between sm:justify-end gap-2.5 sm:pl-3 border-t sm:border-t-0 sm:border-l pt-2 sm:pt-0 border-gray-200 shrink-0">
+                                    <span className="text-xs font-bold text-gray-600 whitespace-nowrap">
+                                        {sortedBookings.length} {sortedBookings.length > 1 ? 'réservations' : 'réservation'}
+                                    </span>
+                                    {searchTerm && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearchTerm('')}
+                                            className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                                        >
+                                            Effacer filtre
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                         {selectedBookingIds.size > 0 && (
                             <div className="bg-indigo-900 text-white p-4 mb-4 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-4">
                                 <span className="font-black text-sm uppercase tracking-widest">{selectedBookingIds.size} sélectionné(s)</span>
@@ -1059,77 +1084,104 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-100">
-                                    {sortedBookings.map(b => (
-                                        <tr key={b.id} className={`group hover:bg-gray-50/50 transition-colors cursor-pointer ${selectedBookingIds.has(b.id) ? 'bg-blue-50/50' : ''}`} onClick={() => setViewingBookingId(b.id)}>
-                                            <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
-                                                <input type="checkbox" checked={selectedBookingIds.has(b.id)} onChange={() => handleSelectOneTable(b.id)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                            </td>
-                                            <td className="px-6 py-4 align-top">
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-black text-gray-900">{new Date(b.date.replace(/-/g, '/')).toLocaleDateString('fr-FR')} à {b.time}h</span>
-                                                    <span className="text-sm font-bold text-blue-600 mt-1 truncate" title={b.animationTitle}>{b.animationTitle}</span>
-                                                    {b.animator && b.animator !== 'N/A' && <span className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-wider">{b.animator}</span>}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 align-top">
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-bold text-gray-800 truncate">{b.teacherName} <span className="text-gray-400 font-normal">({b.classLevel})</span></span>
-                                                    <span className="text-xs text-gray-500 mt-0.5 truncate">{b.schoolName}</span>
-                                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tight mt-1">{b.commune}</span>
-                                                </div>
-                                            </td>
-                                            {settings.enableBookingStatus && (
-                                                <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
-                                                    <div className="flex flex-col items-start gap-1">
-                                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
-                                                            b.status === 'validated' 
-                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                                                                : 'bg-amber-50 text-amber-700 border-amber-200'
-                                                        }`}>
-                                                            {b.status === 'validated' ? (
-                                                                <>
-                                                                    <CheckIcon className="w-3 h-3 text-emerald-600" />
-                                                                    <span>Validé</span>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <ClockIcon className="w-3 h-3 text-amber-600" />
-                                                                    <span>À confirmer</span>
-                                                                </>
-                                                            )}
-                                                        </span>
-                                                        <button 
-                                                            onClick={() => setStatusManagementBooking({ ...b, status: b.status || 'pending' })} 
-                                                            className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase mt-1 hover:underline text-left"
-                                                        >
-                                                            Gestion du statut
-                                                        </button>
+                                    {sortedBookings.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={settings.enableBookingStatus ? 6 : 5} className="px-6 py-12 text-center">
+                                                <div className="flex flex-col items-center justify-center gap-2">
+                                                    <div className="p-3 bg-gray-100 rounded-full text-gray-400 mb-1">
+                                                        <SearchIcon className="w-6 h-6" />
                                                     </div>
-                                                </td>
-                                            )}
-                                            <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
-                                                <div className="flex flex-col items-start gap-1">
-                                                    {b.noBusRequired ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-gray-100 text-gray-500 border border-gray-200">Pas de bus</span>
-                                                    ) : (
-                                                        <>
-                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${b.busStatus === 'validated' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
-                                                                {b.busStatus === 'validated' ? 'Validé' : 'En attente'}
-                                                            </span>
-                                                            <span className="text-xs font-bold text-gray-600">{b.busCost || 0} €</span>
-                                                        </>
+                                                    <p className="text-base font-bold text-gray-800">Aucune réservation trouvée</p>
+                                                    <p className="text-xs text-gray-500 max-w-sm">
+                                                        {searchTerm 
+                                                            ? `Aucun résultat pour "${searchTerm}". Essayez de modifier votre recherche ou vos filtres.`
+                                                            : "Aucune réservation ne correspond aux filtres sélectionnés."}
+                                                    </p>
+                                                    {searchTerm && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSearchTerm('')}
+                                                            className="mt-2 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors"
+                                                        >
+                                                            Effacer la recherche
+                                                        </button>
                                                     )}
-                                                    <button onClick={() => setBusManagementBooking({ ...b, busStatus: b.busStatus || 'pending' })} className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase mt-1 hover:underline text-left">Gestion du bus</button>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 align-top text-right">
-                                                <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                                                    <button onClick={() => setEditingBooking(b)} className="p-2 text-gray-400 hover:text-indigo-600 bg-white hover:bg-indigo-50 rounded-lg border border-gray-100 transition-all shadow-sm"><CogIcon className="w-4 h-4" /></button>
-                                                    <button onClick={() => setDeleteId(b.id)} className="p-2 text-gray-400 hover:text-red-600 bg-white hover:bg-red-50 rounded-lg border border-gray-100 transition-all shadow-sm"><TrashIcon className="w-4 h-4" /></button>
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))}
+                                    ) : (
+                                        sortedBookings.map(b => (
+                                            <tr key={b.id} className={`group hover:bg-gray-50/50 transition-colors cursor-pointer ${selectedBookingIds.has(b.id) ? 'bg-blue-50/50' : ''}`} onClick={() => setViewingBookingId(b.id)}>
+                                                <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
+                                                    <input type="checkbox" checked={selectedBookingIds.has(b.id)} onChange={() => handleSelectOneTable(b.id)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                </td>
+                                                <td className="px-6 py-4 align-top">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-black text-gray-900">{new Date(b.date.replace(/-/g, '/')).toLocaleDateString('fr-FR')} à {b.time}h</span>
+                                                        <span className="text-sm font-bold text-blue-600 mt-1 truncate" title={b.animationTitle}>{b.animationTitle}</span>
+                                                        {b.animator && b.animator !== 'N/A' && <span className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-wider">{b.animator}</span>}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 align-top">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-bold text-gray-800 truncate">{b.teacherName} <span className="text-gray-400 font-normal">({b.classLevel})</span></span>
+                                                        <span className="text-xs text-gray-500 mt-0.5 truncate">{b.schoolName}</span>
+                                                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tight mt-1">{b.commune}</span>
+                                                    </div>
+                                                </td>
+                                                {settings.enableBookingStatus && (
+                                                    <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
+                                                        <div className="flex flex-col items-start gap-1">
+                                                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
+                                                                b.status === 'validated' 
+                                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                            }`}>
+                                                                {b.status === 'validated' ? (
+                                                                    <>
+                                                                        <CheckIcon className="w-3 h-3 text-emerald-600" />
+                                                                        <span>Validé</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <ClockIcon className="w-3 h-3 text-amber-600" />
+                                                                        <span>À confirmer</span>
+                                                                    </>
+                                                                )}
+                                                            </span>
+                                                            <button 
+                                                                onClick={() => setStatusManagementBooking({ ...b, status: b.status || 'pending' })} 
+                                                                className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase mt-1 hover:underline text-left"
+                                                            >
+                                                                Gestion du statut
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                )}
+                                                <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
+                                                    <div className="flex flex-col items-start gap-1">
+                                                        {b.noBusRequired ? (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-gray-100 text-gray-500 border border-gray-200">Pas de bus</span>
+                                                        ) : (
+                                                            <>
+                                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${b.busStatus === 'validated' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
+                                                                    {b.busStatus === 'validated' ? 'Validé' : 'En attente'}
+                                                                </span>
+                                                                <span className="text-xs font-bold text-gray-600">{b.busCost || 0} €</span>
+                                                            </>
+                                                        )}
+                                                        <button onClick={() => setBusManagementBooking({ ...b, busStatus: b.busStatus || 'pending' })} className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase mt-1 hover:underline text-left">Gestion du bus</button>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 align-top text-right">
+                                                    <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                                                        <button onClick={() => setEditingBooking(b)} className="p-2 text-gray-400 hover:text-indigo-600 bg-white hover:bg-indigo-50 rounded-lg border border-gray-100 transition-all shadow-sm"><CogIcon className="w-4 h-4" /></button>
+                                                        <button onClick={() => setDeleteId(b.id)} className="p-2 text-gray-400 hover:text-red-600 bg-white hover:bg-red-50 rounded-lg border border-gray-100 transition-all shadow-sm"><TrashIcon className="w-4 h-4" /></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
                                 </tbody>
                             </table>
                         </div>
