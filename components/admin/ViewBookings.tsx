@@ -48,8 +48,8 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const animators = useMemo(() => settings.animators || [], [settings.animators]);
     const [selectedAnimators, setSelectedAnimators] = useState<Set<string>>(new Set());
     const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set());
-    const [selectedBusStatuses, setSelectedBusStatuses] = useState<Set<string>>(new Set(['pending', 'validated', 'none']));
-    const [selectedBookingStatuses, setSelectedBookingStatuses] = useState<Set<string>>(new Set(['pending', 'validated']));
+    const [selectedBusStatuses, setSelectedBusStatuses] = useState<Set<string>>(new Set());
+    const [selectedBookingStatuses, setSelectedBookingStatuses] = useState<Set<string>>(new Set());
     const filterInitialized = useRef(false);
 
     const animatorMapForFiltering = useMemo(() => {
@@ -91,7 +91,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 return bYear === expectedYear;
             }).length;
 
-            // filteredCount: counts bookings in this month for the active school year matching selectedAnimators, selectedBusStatuses, and selectedBookingStatuses
+            // filteredCount: counts bookings in this month for the active school year matching OTHER active filters
             const filteredCount = bookings.filter(booking => {
                 const bDate = new Date(booking.date.replace(/-/g, '/'));
                 const bYear = bDate.getFullYear();
@@ -102,16 +102,16 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 if (bYear !== expectedYear) return false;
 
                 const bAnimator = animatorMapForFiltering.get(booking.animationId);
-                const passesAnimator = !bAnimator || selectedAnimators.has(bAnimator);
+                const passesAnimator = selectedAnimators.size === 0 || (bAnimator ? selectedAnimators.has(bAnimator) : false);
 
                 let currentStatus = 'none';
                 if (!booking.noBusRequired) {
                     currentStatus = booking.busStatus || 'pending';
                 }
-                const passesBus = selectedBusStatuses.has(currentStatus);
+                const passesBus = selectedBusStatuses.size === 0 || selectedBusStatuses.has(currentStatus);
 
                 const currentBookingStatus = booking.status === 'validated' ? 'validated' : 'pending';
-                const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.has(currentBookingStatus);
+                const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.size === 0 || selectedBookingStatuses.has(currentBookingStatus);
 
                 return passesAnimator && passesBus && passesBookingStatus;
             }).length;
@@ -131,27 +131,37 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const [statusManagementBooking, setStatusManagementBooking] = useState<Booking | null>(null);
 
     // Clés de préférence d'affichage par défaut pour la session personnelle (fallback local)
-    const viewPrefKey = `booking_default_view_${currentUser?.id || currentUser?.username || 'global'}`;
-    const scopePrefKey = `booking_default_scope_${currentUser?.id || currentUser?.username || 'global'}`;
+    const userPrefKey = currentUser?.id || currentUser?.username || 'global';
+    const viewPrefKey = `booking_default_view_${userPrefKey}`;
+    const scopePrefKey = `booking_default_scope_${userPrefKey}`;
 
     const [defaultViewPref, setDefaultViewPref] = useState<'list' | 'calendar'>(() => {
-        const userPref = currentUser?.id ? settings.userPreferences?.[currentUser.id] : null;
+        const userPref = (currentUser?.id && settings.userPreferences?.[currentUser.id]) ||
+                         (currentUser?.username && settings.userPreferences?.[currentUser.username]);
         if (userPref?.defaultViewPref) return userPref.defaultViewPref;
-        const saved = localStorage.getItem(viewPrefKey);
+        const saved = (currentUser?.id ? localStorage.getItem(`booking_default_view_${currentUser.id}`) : null) ||
+                      (currentUser?.username ? localStorage.getItem(`booking_default_view_${currentUser.username}`) : null) ||
+                      localStorage.getItem(viewPrefKey);
         return (saved === 'list' || saved === 'calendar') ? saved : 'list';
     });
 
     const [defaultScopePref, setDefaultScopePref] = useState<'all' | 'mine'>(() => {
-        const userPref = currentUser?.id ? settings.userPreferences?.[currentUser.id] : null;
+        const userPref = (currentUser?.id && settings.userPreferences?.[currentUser.id]) ||
+                         (currentUser?.username && settings.userPreferences?.[currentUser.username]);
         if (userPref?.defaultScopePref) return userPref.defaultScopePref;
-        const saved = localStorage.getItem(scopePrefKey);
+        const saved = (currentUser?.id ? localStorage.getItem(`booking_default_scope_${currentUser.id}`) : null) ||
+                      (currentUser?.username ? localStorage.getItem(`booking_default_scope_${currentUser.username}`) : null) ||
+                      localStorage.getItem(scopePrefKey);
         return (saved === 'all' || saved === 'mine') ? saved : 'all';
     });
 
     const [viewMode, setViewMode] = useState<'list' | 'calendar'>(() => {
-        const userPref = currentUser?.id ? settings.userPreferences?.[currentUser.id] : null;
+        const userPref = (currentUser?.id && settings.userPreferences?.[currentUser.id]) ||
+                         (currentUser?.username && settings.userPreferences?.[currentUser.username]);
         if (userPref?.defaultViewPref) return userPref.defaultViewPref;
-        const saved = localStorage.getItem(`booking_default_view_${currentUser?.id || currentUser?.username || 'global'}`);
+        const saved = (currentUser?.id ? localStorage.getItem(`booking_default_view_${currentUser.id}`) : null) ||
+                      (currentUser?.username ? localStorage.getItem(`booking_default_view_${currentUser.username}`) : null) ||
+                      localStorage.getItem(viewPrefKey);
         return (saved === 'list' || saved === 'calendar') ? saved : 'list';
     });
 
@@ -160,20 +170,23 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const handleDefaultViewChange = async (newView: 'list' | 'calendar') => {
         setDefaultViewPref(newView);
         localStorage.setItem(viewPrefKey, newView);
+        if (currentUser?.id) localStorage.setItem(`booking_default_view_${currentUser.id}`, newView);
+        if (currentUser?.username) localStorage.setItem(`booking_default_view_${currentUser.username}`, newView);
         setViewMode(newView);
 
-        if (currentUser?.id && updateSettings) {
+        if ((currentUser?.id || currentUser?.username) && updateSettings) {
             try {
                 const userPrefs = settings.userPreferences || {};
-                const currentUserPref = userPrefs[currentUser.id] || {};
+                const keysToUpdate = Array.from(new Set([currentUser?.id, currentUser?.username].filter(Boolean) as string[]));
+                const updatedPrefs = { ...userPrefs };
+                for (const key of keysToUpdate) {
+                    updatedPrefs[key] = {
+                        ...(userPrefs[key] || {}),
+                        defaultViewPref: newView
+                    };
+                }
                 await updateSettings({
-                    userPreferences: {
-                        ...userPrefs,
-                        [currentUser.id]: {
-                            ...currentUserPref,
-                            defaultViewPref: newView
-                        }
-                    }
+                    userPreferences: updatedPrefs
                 });
             } catch (err) {
                 console.error("Erreur de sauvegarde de la préférence de vue dans Firestore:", err);
@@ -184,24 +197,28 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const handleDefaultScopeChange = async (newScope: 'all' | 'mine') => {
         setDefaultScopePref(newScope);
         localStorage.setItem(scopePrefKey, newScope);
+        if (currentUser?.id) localStorage.setItem(`booking_default_scope_${currentUser.id}`, newScope);
+        if (currentUser?.username) localStorage.setItem(`booking_default_scope_${currentUser.username}`, newScope);
+        
         if (newScope === 'mine' && currentUser?.animatorName) {
             setSelectedAnimators(new Set([currentUser.animatorName]));
         } else {
-            setSelectedAnimators(new Set(animators.map(a => a.name)));
+            setSelectedAnimators(new Set());
         }
 
-        if (currentUser?.id && updateSettings) {
+        if ((currentUser?.id || currentUser?.username) && updateSettings) {
             try {
                 const userPrefs = settings.userPreferences || {};
-                const currentUserPref = userPrefs[currentUser.id] || {};
+                const keysToUpdate = Array.from(new Set([currentUser?.id, currentUser?.username].filter(Boolean) as string[]));
+                const updatedPrefs = { ...userPrefs };
+                for (const key of keysToUpdate) {
+                    updatedPrefs[key] = {
+                        ...(userPrefs[key] || {}),
+                        defaultScopePref: newScope
+                    };
+                }
                 await updateSettings({
-                    userPreferences: {
-                        ...userPrefs,
-                        [currentUser.id]: {
-                            ...currentUserPref,
-                            defaultScopePref: newScope
-                        }
-                    }
+                    userPreferences: updatedPrefs
                 });
             } catch (err) {
                 console.error("Erreur de sauvegarde de la préférence de portée dans Firestore:", err);
@@ -211,8 +228,9 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
     // Synchronisation dynamique si les paramètres de la base changent ou sont chargés après montage
     useEffect(() => {
-        if (!currentUser?.id) return;
-        const userPref = settings.userPreferences?.[currentUser.id];
+        if (!currentUser) return;
+        const userPref = (currentUser.id && settings.userPreferences?.[currentUser.id]) ||
+                         (currentUser.username && settings.userPreferences?.[currentUser.username]);
         if (userPref) {
             if (userPref.defaultViewPref) {
                 setDefaultViewPref(userPref.defaultViewPref);
@@ -222,7 +240,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 setDefaultScopePref(userPref.defaultScopePref);
             }
         }
-    }, [settings.userPreferences, currentUser?.id]);
+    }, [settings.userPreferences, currentUser]);
 
     const headerCheckboxRef = useRef<HTMLInputElement>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -250,46 +268,28 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         return () => window.removeEventListener('keydown', handleEsc);
     }, [viewingBookingId, busManagementBooking]);
 
-    // Initialisation intelligente des filtres
+    // Initialisation intelligente des filtres en mode additif (sélection active)
     useEffect(() => {
         if (filterInitialized.current || animators.length === 0) return;
 
-        const isLimitedUser = !!(currentUser && currentUser.animatorName);
-        
-        // Uniquement les mois en cours et à venir du cycle scolaire par défaut, calculés par rapport à l'année scolaire active
-        const now = new Date();
-        const currentComp = now.getFullYear() * 12 + now.getMonth();
-        
-        const initialMonthsList = SCHOOL_YEAR_MONTHS.filter(m => {
-            const targetYear = (m.value >= 9 && m.value <= 11) ? startYear : endYear;
-            const targetComp = targetYear * 12 + m.value;
-            return targetComp >= currentComp;
-        }).map(m => m.value);
+        const userPref = (currentUser?.id && settings.userPreferences?.[currentUser.id]) ||
+                         (currentUser?.username && settings.userPreferences?.[currentUser.username]);
+        const userScopeKey = `booking_default_scope_${currentUser?.id || currentUser?.username || 'global'}`;
+        const savedScope = (currentUser?.id ? localStorage.getItem(`booking_default_scope_${currentUser.id}`) : null) ||
+                           (currentUser?.username ? localStorage.getItem(`booking_default_scope_${currentUser.username}`) : null) ||
+                           localStorage.getItem(userScopeKey);
 
-        const initialMonths = initialMonthsList.length > 0 
-            ? initialMonthsList 
-            : SCHOOL_YEAR_MONTHS.map(m => m.value);
-
-        let initialAnims: string[] = [];
-        const userPref = currentUser?.id ? settings.userPreferences?.[currentUser.id] : null;
-        const activeScope = userPref?.defaultScopePref || 
-            (localStorage.getItem(`booking_default_scope_${currentUser?.id || currentUser?.username || 'global'}`) === 'mine' ? 'mine' : 'all');
+        const activeScope = userPref?.defaultScopePref || (savedScope === 'mine' ? 'mine' : 'all');
 
         if (activeScope === 'mine' && currentUser?.animatorName) {
-            initialAnims = [currentUser.animatorName];
-        } else if (activeScope === 'all') {
-            // Explicitly show all bookings
-            initialAnims = animators.map(a => a.name);
-        } else if (isLimitedUser && currentUser?.animatorName) {
-            // Mode restreint default fallback
-            initialAnims = [currentUser.animatorName];
+            setSelectedAnimators(new Set([currentUser.animatorName]));
         } else {
-            // Mode admin ou tout cocher par défaut : Tous les animateurs
-            initialAnims = animators.map(a => a.name);
+            setSelectedAnimators(new Set()); // Vide = Tous les animateurs
         }
 
-        setSelectedAnimators(new Set(initialAnims));
-        setSelectedMonths(new Set(initialMonths));
+        setSelectedMonths(new Set()); // Vide = Tous les mois
+        setSelectedBusStatuses(new Set()); // Vide = Tous les statuts bus
+        setSelectedBookingStatuses(new Set()); // Vide = Tous les statuts de réservation
         filterInitialized.current = true;
     }, [animators, currentUser, startYear, endYear, settings]);
 
@@ -307,7 +307,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 return bAnimator?.trim().toLowerCase() === a.name.trim().toLowerCase();
             }).length;
 
-            // filteredCount: bookings for this animator in the active school year matching selectedMonths and selectedBusStatuses
+            // filteredCount: bookings for this animator in the active school year matching OTHER active filters
             const filteredCount = bookings.filter(b => {
                 const bDate = new Date(b.date.replace(/-/g, '/'));
                 const bYear = bDate.getFullYear();
@@ -318,16 +318,16 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 const bAnimator = animatorMapForFiltering.get(b.animationId);
                 if (bAnimator?.trim().toLowerCase() !== a.name.trim().toLowerCase()) return false;
 
-                const passesMonth = selectedMonths.has(bMonth);
+                const passesMonth = selectedMonths.size === 0 || selectedMonths.has(bMonth);
                 
                 let currentStatus = 'none';
                 if (!b.noBusRequired) {
                     currentStatus = b.busStatus || 'pending';
                 }
-                const passesBus = selectedBusStatuses.has(currentStatus);
+                const passesBus = selectedBusStatuses.size === 0 || selectedBusStatuses.has(currentStatus);
 
                 const currentBookingStatus = b.status === 'validated' ? 'validated' : 'pending';
-                const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.has(currentBookingStatus);
+                const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.size === 0 || selectedBookingStatuses.has(currentBookingStatus);
 
                 return passesMonth && passesBus && passesBookingStatus;
             }).length;
@@ -358,7 +358,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 return currentStatus === opt.value;
             }).length;
 
-            // filteredCount: bookings for this bus status in the active school year matching selectedAnimators, selectedMonths and selectedBookingStatuses
+            // filteredCount: bookings for this bus status in the active school year matching OTHER active filters
             const filteredCount = bookings.filter(b => {
                 const bDate = new Date(b.date.replace(/-/g, '/'));
                 const bYear = bDate.getFullYear();
@@ -373,12 +373,12 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 if (currentStatus !== opt.value) return false;
 
                 const bAnimator = animatorMapForFiltering.get(b.animationId);
-                const passesAnimator = !bAnimator || selectedAnimators.has(bAnimator);
+                const passesAnimator = selectedAnimators.size === 0 || (bAnimator ? selectedAnimators.has(bAnimator) : false);
 
-                const passesMonth = selectedMonths.has(bMonth);
+                const passesMonth = selectedMonths.size === 0 || selectedMonths.has(bMonth);
 
                 const currentBookingStatus = b.status === 'validated' ? 'validated' : 'pending';
-                const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.has(currentBookingStatus);
+                const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.size === 0 || selectedBookingStatuses.has(currentBookingStatus);
 
                 return passesAnimator && passesMonth && passesBookingStatus;
             }).length;
@@ -406,7 +406,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 return currentStatus === opt.value;
             }).length;
 
-            // filteredCount: matching animator, month, and bus filters
+            // filteredCount: matching OTHER active filters (animator, month, bus)
             const filteredCount = bookings.filter(b => {
                 const bDate = new Date(b.date.replace(/-/g, '/'));
                 const bYear = bDate.getFullYear();
@@ -418,14 +418,14 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 if (currentStatus !== opt.value) return false;
 
                 const bAnimator = animatorMapForFiltering.get(b.animationId);
-                const passesAnimator = !bAnimator || selectedAnimators.has(bAnimator);
-                const passesMonth = selectedMonths.has(bMonth);
+                const passesAnimator = selectedAnimators.size === 0 || (bAnimator ? selectedAnimators.has(bAnimator) : false);
+                const passesMonth = selectedMonths.size === 0 || selectedMonths.has(bMonth);
 
                 let currentBusStatus = 'none';
                 if (!b.noBusRequired) {
                     currentBusStatus = b.busStatus || 'pending';
                 }
-                const passesBus = selectedBusStatuses.has(currentBusStatus);
+                const passesBus = selectedBusStatuses.size === 0 || selectedBusStatuses.has(currentBusStatus);
 
                 return passesAnimator && passesMonth && passesBus;
             }).length;
@@ -443,22 +443,22 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         return bookings.filter(booking => {
             // 1. Filtre Animateur
             const animator = animatorMapForFiltering.get(booking.animationId);
-            const passesAnimator = !animator || selectedAnimators.has(animator);
+            const passesAnimator = selectedAnimators.size === 0 || (animator ? selectedAnimators.has(animator) : false);
             
             // 2. Filtre Mois
             const bookingDate = new Date(booking.date.replace(/-/g, '/'));
-            const passesMonth = selectedMonths.has(bookingDate.getMonth());
+            const passesMonth = selectedMonths.size === 0 || selectedMonths.has(bookingDate.getMonth());
 
             // 3. Filtre Bus
             let currentStatus = 'none';
             if (!booking.noBusRequired) {
                 currentStatus = booking.busStatus || 'pending';
             }
-            const passesBus = selectedBusStatuses.has(currentStatus);
+            const passesBus = selectedBusStatuses.size === 0 || selectedBusStatuses.has(currentStatus);
 
             // 4. Filtre Statut de réservation
             const currentBookingStatus = booking.status === 'validated' ? 'validated' : 'pending';
-            const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.has(currentBookingStatus);
+            const passesBookingStatus = !settings.enableBookingStatus || selectedBookingStatuses.size === 0 || selectedBookingStatuses.has(currentBookingStatus);
 
             return passesAnimator && passesMonth && passesBus && passesBookingStatus;
         });
@@ -805,104 +805,161 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         );
     };
 
-    // Sous-composant pour les sections de filtre uniformisées
+    const totalActiveFiltersCount = useMemo(() => {
+        return selectedAnimators.size + selectedMonths.size + selectedBusStatuses.size + selectedBookingStatuses.size;
+    }, [selectedAnimators, selectedMonths, selectedBusStatuses, selectedBookingStatuses]);
+
+    const resetAllFilters = () => {
+        setSelectedAnimators(new Set());
+        setSelectedMonths(new Set());
+        setSelectedBusStatuses(new Set());
+        setSelectedBookingStatuses(new Set());
+        setSearchTerm('');
+    };
+
+    // Sous-composant pour les sections de filtre uniformisées et compactes (max 2 lignes)
     const FilterSection: React.FC<{ 
         title: string, 
         items: { name: string, value: any, filteredCount: number, totalCount: number }[], 
         selected: Set<any>, 
         onToggle: (val: any) => void,
-        onSelectAll: () => void,
-        onDeselectAll: () => void,
-        isMonthSection?: boolean
-    }> = ({ title, items, selected, onToggle, onSelectAll, onDeselectAll, isMonthSection }) => (
-        <div className="flex flex-col gap-2 h-full">
-            <div className="flex justify-between items-center mb-1">
-                <strong className="text-xs font-black text-gray-400 uppercase tracking-widest">{title}</strong>
-                <div className="flex gap-2 text-[10px] font-bold uppercase">
-                    <button onClick={onSelectAll} className="text-blue-600 hover:underline cursor-pointer">Tout cocher</button>
-                    <span className="text-gray-300">|</span>
-                    <button onClick={onDeselectAll} className="text-gray-400 hover:underline cursor-pointer">Tout décocher</button>
+        onReset: () => void,
+        onSelectAll?: () => void,
+        variant?: 'animators' | 'vertical' | 'bus' | 'months'
+    }> = ({ title, items, selected, onToggle, onReset, onSelectAll, variant = 'animators' }) => {
+        const isFiltered = selected.size > 0;
+
+        const renderItem = (item: { name: string, value: any, filteredCount: number, totalCount: number }) => {
+            const isChecked = selected.has(item.value);
+            return (
+                <label 
+                    key={item.value} 
+                    className={`inline-flex items-center space-x-1 cursor-pointer text-xs transition-all px-1.5 py-0.5 rounded-md whitespace-nowrap select-none ${
+                        isChecked 
+                            ? 'font-black text-blue-900 bg-blue-100/80 border border-blue-300 shadow-xs' 
+                            : 'font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100/80 border border-transparent'
+                    }`}
+                >
+                    <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => onToggle(item.value)}
+                        className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span className="inline-flex items-center gap-0.5">
+                        <span>{item.name}</span>
+                        <span className="text-[10px]">
+                            {item.filteredCount === item.totalCount ? (
+                                <span className={isChecked ? 'text-blue-700 font-bold' : 'text-gray-400 font-normal'}>({item.totalCount})</span>
+                            ) : (
+                                <span className="text-blue-600 font-bold">
+                                    ({item.filteredCount}<span className="text-gray-400 font-normal">/{item.totalCount}</span>)
+                                </span>
+                            )}
+                        </span>
+                    </span>
+                </label>
+            );
+        };
+
+        const renderContent = () => {
+            if (variant === 'vertical') {
+                // 2 éléments (Statut : 1. À confirmer, 2. Validés)
+                return (
+                    <div className="flex flex-col justify-around h-full py-0.5">
+                        {items.map(renderItem)}
+                    </div>
+                );
+            }
+
+            if (variant === 'bus') {
+                // 3 éléments sur 3 lignes : 1. En attente, 2. Validés, 3. Pas de bus
+                return (
+                    <div className="flex flex-col justify-around h-full py-0.5">
+                        {items.map(renderItem)}
+                    </div>
+                );
+            }
+
+            if (variant === 'months') {
+                // 9 mois sur 3 lignes : 1. OCT, NOV, DEC / 2. JAN, FEV, MAR / 3. AVR, MAI, JUIN
+                return (
+                    <div className="flex flex-col justify-around h-full py-0.5">
+                        <div className="flex flex-wrap items-center gap-x-1.5">
+                            {items.slice(0, 3).map(renderItem)}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-1.5">
+                            {items.slice(3, 6).map(renderItem)}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-1.5">
+                            {items.slice(6, 9).map(renderItem)}
+                        </div>
+                    </div>
+                );
+            }
+
+            // Animateurs : 3 lignes (1. Amélie, Cyrielle / 2. Fatiha, Matthieu / 3. Thomas, Valentine)
+            // Si le nombre d'animateurs varie, répartition par tiers de 2 par ligne
+            return (
+                <div className="flex flex-col justify-around h-full py-0.5">
+                    <div className="flex flex-wrap items-center gap-x-2">
+                        {items.slice(0, 2).map(renderItem)}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2">
+                        {items.slice(2, 4).map(renderItem)}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2">
+                        {items.slice(4).map(renderItem)}
+                    </div>
+                </div>
+            );
+        };
+
+        return (
+            <div className="flex flex-col gap-1.5 h-full">
+                <div className="flex justify-between items-center px-0.5">
+                    <div className="flex items-center gap-1.5">
+                        <strong className="text-xs font-black text-gray-500 uppercase tracking-wider">{title}</strong>
+                        {isFiltered ? (
+                            <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+                                {selected.size}
+                            </span>
+                        ) : (
+                            <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                Tous
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase">
+                        {isFiltered ? (
+                            <button 
+                                type="button" 
+                                onClick={onReset} 
+                                className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-0.5"
+                                title="Afficher tous les éléments de cette catégorie"
+                            >
+                                <XIcon className="w-3 h-3" />
+                                <span>Tout afficher</span>
+                            </button>
+                        ) : onSelectAll ? (
+                            <button 
+                                type="button" 
+                                onClick={onSelectAll} 
+                                className="text-gray-400 hover:text-blue-600 hover:underline cursor-pointer text-[10px]"
+                            >
+                                Tout cocher
+                            </button>
+                        ) : null}
+                    </div>
+                </div>
+                <div className={`p-2.5 rounded-xl border flex-grow h-[105px] transition-colors ${
+                    isFiltered ? 'bg-blue-50/25 border-blue-200' : 'bg-gray-50/80 border-gray-100'
+                }`}>
+                    {renderContent()}
                 </div>
             </div>
-            {isMonthSection ? (
-                <div className="flex flex-col gap-y-2 bg-gray-50 p-3 rounded-xl border border-gray-100 flex-grow h-full justify-center">
-                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                        {items.slice(0, 5).map(item => (
-                            <label key={item.value} className="flex items-center space-x-1.5 cursor-pointer text-xs font-bold text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap">
-                                <input
-                                    type="checkbox"
-                                    checked={selected.has(item.value)}
-                                    onChange={() => onToggle(item.value)}
-                                    className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                />
-                                <span className="flex items-center gap-1">
-                                    <span>{item.name}</span>
-                                    <span className="text-[10px] font-semibold text-gray-400">
-                                        {item.filteredCount === item.totalCount ? (
-                                            `(${item.totalCount})`
-                                        ) : (
-                                            <span className="text-blue-600">
-                                                ({item.filteredCount}<span className="text-gray-400 font-normal"> / {item.totalCount}</span>)
-                                            </span>
-                                        )}
-                                    </span>
-                                </span>
-                            </label>
-                        ))}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                        {items.slice(5).map(item => (
-                            <label key={item.value} className="flex items-center space-x-1.5 cursor-pointer text-xs font-bold text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap">
-                                <input
-                                    type="checkbox"
-                                    checked={selected.has(item.value)}
-                                    onChange={() => onToggle(item.value)}
-                                    className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                />
-                                <span className="flex items-center gap-1">
-                                    <span>{item.name}</span>
-                                    <span className="text-[10px] font-semibold text-gray-400">
-                                        {item.filteredCount === item.totalCount ? (
-                                            `(${item.totalCount})`
-                                        ) : (
-                                            <span className="text-blue-600">
-                                                ({item.filteredCount}<span className="text-gray-400 font-normal"> / {item.totalCount}</span>)
-                                            </span>
-                                        )}
-                                    </span>
-                                </span>
-                            </label>
-                        ))}
-                    </div>
-                </div>
-            ) : (
-                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 bg-gray-50 p-3 rounded-xl border border-gray-100 flex-grow h-full">
-                    {items.map(item => (
-                        <label key={item.value} className="flex items-center space-x-1.5 cursor-pointer text-xs font-bold text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap">
-                            <input
-                                type="checkbox"
-                                checked={selected.has(item.value)}
-                                onChange={() => onToggle(item.value)}
-                                className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                            />
-                            <span className="flex items-center gap-1">
-                                <span>{item.name}</span>
-                                <span className="text-[10px] font-semibold text-gray-400">
-                                    {item.filteredCount === item.totalCount ? (
-                                        `(${item.totalCount})`
-                                    ) : (
-                                        <span className="text-blue-600">
-                                            ({item.filteredCount}<span className="text-gray-400 font-normal"> / {item.totalCount}</span>)
-                                        </span>
-                                    )}
-                                </span>
-                            </span>
-                        </label>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
+        );
+    };
 
     return (
         <div className="flex flex-col">
@@ -957,39 +1014,66 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                 </div>
             </div>
             
-            {/* Zone de filtres harmonisée */}
-            <div className="mb-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <div className={`grid grid-cols-1 md:grid-cols-2 ${settings.enableBookingStatus ? 'lg:grid-cols-12' : 'lg:grid-cols-12'} gap-6 items-stretch`}>
+            {/* Zone de filtres harmonisée (Mode additif) */}
+            <div className="mb-6 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-100">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 mb-4 border-b border-gray-100">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase tracking-wider text-gray-700">Filtres</span>
+                        {totalActiveFiltersCount > 0 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
+                                {totalActiveFiltersCount} critère{totalActiveFiltersCount > 1 ? 's' : ''} actif{totalActiveFiltersCount > 1 ? 's' : ''}
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                Toutes les réservations affichées (aucun filtre restreint)
+                            </span>
+                        )}
+                    </div>
+                    {totalActiveFiltersCount > 0 && (
+                        <button
+                            type="button"
+                            onClick={resetAllFilters}
+                            className="text-xs font-black text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer uppercase tracking-tight"
+                        >
+                            <XIcon className="w-3.5 h-3.5" />
+                            Réinitialiser tous les filtres
+                        </button>
+                    )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3.5 items-stretch">
                     <div className={`${settings.enableBookingStatus ? 'lg:col-span-3' : 'lg:col-span-4'} flex flex-col`}>
                         <FilterSection 
                             title="Animateurs"
                             items={animatorItemsWithCounts}
                             selected={selectedAnimators}
                             onToggle={(v) => toggleItem(selectedAnimators, setSelectedAnimators, v)}
+                            onReset={() => setSelectedAnimators(new Set())}
                             onSelectAll={() => selectAll(animators.map(a => a.name), setSelectedAnimators)}
-                            onDeselectAll={() => deselectAll(setSelectedAnimators)}
+                            variant="animators"
                         />
                     </div>
                     {settings.enableBookingStatus && (
-                        <div className="lg:col-span-3 flex flex-col">
+                        <div className="lg:col-span-2 flex flex-col">
                             <FilterSection 
-                                title="Statut réservation"
+                                title="Statut"
                                 items={bookingStatusItemsWithCounts}
                                 selected={selectedBookingStatuses}
                                 onToggle={(v) => toggleItem(selectedBookingStatuses, setSelectedBookingStatuses, v)}
+                                onReset={() => setSelectedBookingStatuses(new Set())}
                                 onSelectAll={() => selectAll(BOOKING_STATUS_OPTIONS.map(o => o.value), setSelectedBookingStatuses)}
-                                onDeselectAll={() => deselectAll(setSelectedBookingStatuses)}
+                                variant="vertical"
                             />
                         </div>
                     )}
-                    <div className={`${settings.enableBookingStatus ? 'lg:col-span-2' : 'lg:col-span-3'} flex flex-col`}>
+                    <div className={`${settings.enableBookingStatus ? 'lg:col-span-3' : 'lg:col-span-3'} flex flex-col`}>
                         <FilterSection 
-                            title="Gestion du bus"
+                            title="Bus"
                             items={busStatusItemsWithCounts}
                             selected={selectedBusStatuses}
                             onToggle={(v) => toggleItem(selectedBusStatuses, setSelectedBusStatuses, v)}
+                            onReset={() => setSelectedBusStatuses(new Set())}
                             onSelectAll={() => selectAll(BUS_STATUS_OPTIONS.map(o => o.value), setSelectedBusStatuses)}
-                            onDeselectAll={() => deselectAll(setSelectedBusStatuses)}
+                            variant="bus"
                         />
                     </div>
                     <div className={`${settings.enableBookingStatus ? 'lg:col-span-4' : 'lg:col-span-5'} flex flex-col`}>
@@ -998,9 +1082,9 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                             items={monthItemsWithCounts}
                             selected={selectedMonths}
                             onToggle={(v) => toggleItem(selectedMonths, setSelectedMonths, v)}
+                            onReset={() => setSelectedMonths(new Set())}
                             onSelectAll={() => selectAll(SCHOOL_YEAR_MONTHS.map(m => m.value), setSelectedMonths)}
-                            onDeselectAll={() => deselectAll(setSelectedMonths)}
-                            isMonthSection={true}
+                            variant="months"
                         />
                     </div>
                 </div>
@@ -1050,10 +1134,20 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
                             {selectedBookingIds.size > 0 && (
                                 <div className="bg-indigo-900 text-white p-3 sm:p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-4 border border-indigo-700/50">
-                                    <span className="font-black text-sm uppercase tracking-widest flex items-center gap-2">
-                                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                                        {selectedBookingIds.size} sélectionné(s)
-                                    </span>
+                                    <div className="flex flex-col items-start gap-0.5">
+                                        <span className="font-black text-sm uppercase tracking-widest flex items-center gap-2">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                                            {selectedBookingIds.size} sélectionné(s)
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedBookingIds(new Set())}
+                                            className="text-xs font-medium text-indigo-200 hover:text-white underline underline-offset-2 transition-colors cursor-pointer pl-4.5 flex items-center gap-1"
+                                            title="Désélectionner toutes les réservations"
+                                        >
+                                            Réinitialiser la sélection
+                                        </button>
+                                    </div>
                                     <div className="flex flex-wrap items-center gap-2">
                                         {settings.enableBookingStatus && (
                                             <>
