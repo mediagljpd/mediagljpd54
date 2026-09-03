@@ -27,6 +27,7 @@ const BookingEditForm: React.FC<{
     const [formData, setFormData] = useState<Booking>({
         ...booking, 
         email: booking.email || '',
+        busInfo: booking.busInfo || '',
         noBusRequired: booking.noBusRequired || false,
         busCost: booking.busCost || 0,
         busStatus: booking.busStatus || 'pending'
@@ -322,6 +323,30 @@ const BookingEditForm: React.FC<{
                         <div>
                             <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Nombre d'adultes</label>
                             <input type="number" name="adultCount" value={formData.adultCount} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
+                        </div>
+                        <div className="md:col-span-2">
+                            <div className="flex items-center justify-between mb-1">
+                                <label htmlFor="editBusInfo" className="block text-xs font-black text-gray-400 uppercase tracking-widest">
+                                    Consignes pour le bus
+                                </label>
+                                {formData.noBusRequired && (
+                                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                                        Note : Réservation marquée sans bus nécessaire
+                                    </span>
+                                )}
+                            </div>
+                            <textarea 
+                                id="editBusInfo"
+                                name="busInfo" 
+                                rows={3}
+                                value={formData.busInfo || ''} 
+                                onChange={handleChange} 
+                                placeholder="Ex : Où et à quelle heure doit passer le bus (adresse exacte de départ, horaires, consignes particulières de passage)..."
+                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-sm text-gray-800 focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-gray-400"
+                            />
+                            <p className="text-[11px] text-gray-500 mt-1">
+                                Précisez où et à quelle heure doit passer le bus pour la prise en charge de la classe. Ce champ peut être renseigné ou modifié librement par tous les utilisateurs.
+                            </p>
                         </div>
                     </div>
 

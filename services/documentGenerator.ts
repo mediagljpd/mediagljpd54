@@ -48,82 +48,261 @@ const formatBookingForDocument = (booking: Booking): { label: string, value: str
   ];
 };
 
-const getMonthName = (dateString: string): string => {
-    // Using .replace(/-/g, '/') is a good trick to avoid timezone issues where 'YYYY-MM-DD' might be interpreted as UTC midnight.
-    const date = new Date(dateString.replace(/-/g, '/'));
-    return date.toLocaleString('fr-FR', { month: 'long' }).toUpperCase();
+const drawDashedLine = (
+  doc: any,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  dashLength = 2.5,
+  gapLength = 2
+) => {
+  if (typeof doc.setLineDashPattern === 'function') {
+    doc.setLineDashPattern([dashLength, gapLength], 0);
+    doc.line(x1, y1, x2, y2);
+    doc.setLineDashPattern([], 0);
+  } else if (typeof doc.setLineDash === 'function') {
+    doc.setLineDash([dashLength, gapLength], 0);
+    doc.line(x1, y1, x2, y2);
+    doc.setLineDash([], 0);
+  } else {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const distance = Math.hypot(dx, dy);
+    const step = dashLength + gapLength;
+    const dashCount = Math.floor(distance / step);
+    const unitX = distance > 0 ? dx / distance : 0;
+    const unitY = distance > 0 ? dy / distance : 0;
+    for (let i = 0; i <= dashCount; i++) {
+      const sx = x1 + unitX * (i * step);
+      const sy = y1 + unitY * (i * step);
+      const ex = Math.min(Math.max(x1, x2), sx + unitX * dashLength);
+      const ey = Math.min(Math.max(y1, y2), sy + unitY * dashLength);
+      doc.line(sx, sy, ex, ey);
+    }
+  }
+};
+
+const getBookingDayAndMonth = (dateStr?: string): string => {
+  if (!dateStr) return '';
+  let d: Date | null = null;
+  if (/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(dateStr)) {
+    d = new Date(dateStr.replace(/-/g, '/'));
+  } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+    const [day, month, year] = dateStr.split('/');
+    d = new Date(`${year}/${month}/${day}`);
+  } else {
+    d = new Date(dateStr.replace(/-/g, '/'));
+  }
+  if (d && !isNaN(d.getTime())) {
+    const day = d.getDate();
+    const month = d.toLocaleDateString('fr-FR', { month: 'long' }).toUpperCase();
+    return `${day} ${month}`;
+  }
+  return '';
+};
+
+const renderBusCard = (doc: any, booking: Booking, x0: number, y0: number) => {
+  // Dimensions de la fiche à l'intérieur du quadrant (148.5mm x 105mm)
+  const tableWidth = 132;
+  const tableLeft = x0 + (148.5 - tableWidth) / 2; // 8.25mm de marge interne
+  const col1Width = 46; // Colonne des libellés
+  const col2Width = tableWidth - col1Width; // 86mm pour les valeurs
+  const dividerX = tableLeft + col1Width;
+
+  const tableTop = y0 + 18.5;
+  const titleY = y0 + 13.5;
+  const rowHeight = 9.5;
+  const row6Height = 16.5;
+  const totalTableHeight = (rowHeight * 5) + row6Height; // 64mm
+
+  // Titre centré "Accueils classes"
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(12.5);
+  doc.setTextColor(0, 0, 0);
+  doc.text("Accueils classes", tableLeft + (tableWidth / 2), titleY, { align: 'center' });
+
+  // Date concernée par la réservation à droite du texte "Accueils classes" (ex : "10 NOVEMBRE")
+  const dayAndMonth = getBookingDayAndMonth(booking.date);
+  if (dayAndMonth) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text(dayAndMonth, tableLeft + tableWidth, titleY, { align: 'right' });
+  }
+
+  // Bordures du tableau (noir net, 0.3mm)
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.3);
+  doc.rect(tableLeft, tableTop, tableWidth, totalTableHeight);
+
+  // Séparateur vertical entre libellés et valeurs
+  doc.line(dividerX, tableTop, dividerX, tableTop + totalTableHeight);
+
+  // Lignes séparatrices horizontales
+  for (let i = 1; i <= 5; i++) {
+    const lineY = tableTop + (i * rowHeight);
+    doc.line(tableLeft, lineY, tableLeft + tableWidth, lineY);
+  }
+
+  // Libellés (colonne gauche, texte centré)
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(0, 0, 0);
+
+  const labelCenterX = tableLeft + (col1Width / 2);
+
+  // Ligne 1 : Commune
+  doc.text("Commune", labelCenterX, tableTop + 6.2, { align: 'center' });
+
+  // Ligne 2 : Nom de l'école
+  doc.text("Nom de l'école", labelCenterX, tableTop + rowHeight + 6.2, { align: 'center' });
+
+  // Ligne 3 : Nombre d'enfants
+  doc.text("Nombre d'enfants", labelCenterX, tableTop + (rowHeight * 2) + 6.2, { align: 'center' });
+
+  // Ligne 4 : Nombre d'adultes
+  doc.text("Nombre d'adultes", labelCenterX, tableTop + (rowHeight * 3) + 6.2, { align: 'center' });
+
+  // Ligne 5 : Date et heure
+  doc.text("Date et heure", labelCenterX, tableTop + (rowHeight * 4) + 6.2, { align: 'center' });
+
+  // Ligne 6 : Où et à quelle heure doit passer le bus ? (sur 2 lignes centrées)
+  doc.setFontSize(9);
+  const row6Top = tableTop + (rowHeight * 5);
+  doc.text("Où et à quelle heure", labelCenterX, row6Top + 6.5, { align: 'center' });
+  doc.text("doit passer le bus ?", labelCenterX, row6Top + 11.2, { align: 'center' });
+
+  // Valeurs (colonne droite, alignées à gauche avec padding de 3.5mm)
+  const valX = dividerX + 3.5;
+  const maxValWidth = col2Width - 7; // 79mm
+
+  // Valeur 1 : Commune
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  const communeLines = doc.splitTextToSize(booking.commune || '', maxValWidth);
+  doc.text(communeLines[0] || '', valX, tableTop + 6.2);
+
+  // Valeur 2 : Nom de l'école
+  const schoolLines = doc.splitTextToSize(booking.schoolName || '', maxValWidth);
+  if (schoolLines.length > 1) {
+    doc.setFontSize(8.5);
+    doc.text(schoolLines[0], valX, tableTop + rowHeight + 4.2);
+    doc.text(schoolLines[1], valX, tableTop + rowHeight + 7.8);
+  } else {
+    doc.setFontSize(9.5);
+    doc.text(schoolLines[0] || '', valX, tableTop + rowHeight + 6.2);
+  }
+
+  // Valeur 3 : Nombre d'enfants
+  doc.setFontSize(9.5);
+  const studentCountStr = (booking.studentCount !== undefined && booking.studentCount !== null) ? String(booking.studentCount) : '';
+  doc.text(studentCountStr, valX, tableTop + (rowHeight * 2) + 6.2);
+
+  // Valeur 4 : Nombre d'adultes
+  const adultCountStr = (booking.adultCount !== undefined && booking.adultCount !== null) ? String(booking.adultCount) : '';
+  doc.text(adultCountStr, valX, tableTop + (rowHeight * 3) + 6.2);
+
+  // Valeur 5 : Date et heure
+  let formattedDate = '';
+  if (booking.date) {
+    const d = new Date(booking.date.replace(/-/g, '/'));
+    if (!isNaN(d.getTime())) {
+      const dayName = d.toLocaleDateString('fr-FR', { weekday: 'long' });
+      const capDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+      formattedDate = `${capDay} ${d.toLocaleDateString('fr-FR')}`;
+    } else {
+      formattedDate = booking.date;
+    }
+  }
+  const rawTime = booking.time !== undefined && booking.time !== null ? String(booking.time) : '';
+  const timeStr = rawTime 
+    ? (rawTime.includes('h') || rawTime.includes(':') ? rawTime : `${rawTime}h00`)
+    : '';
+  const dateTimeStr = timeStr ? `${formattedDate} à ${timeStr}` : formattedDate;
+  doc.text(dateTimeStr, valX, tableTop + (rowHeight * 4) + 6.2);
+
+  // Valeur 6 : Où et à quelle heure doit passer le bus ?
+  const busInfoText = booking.busInfo?.trim() || '-';
+  const busLines = doc.splitTextToSize(busInfoText, maxValWidth);
+
+  if (busLines.length === 1) {
+    doc.setFontSize(9.5);
+    doc.text(busLines[0], valX, row6Top + 9.2);
+  } else if (busLines.length === 2) {
+    doc.setFontSize(9);
+    doc.text(busLines[0], valX, row6Top + 6.8);
+    doc.text(busLines[1], valX, row6Top + 11.5);
+  } else if (busLines.length === 3) {
+    doc.setFontSize(8.5);
+    doc.text(busLines[0], valX, row6Top + 5.2);
+    doc.text(busLines[1], valX, row6Top + 9.2);
+    doc.text(busLines[2], valX, row6Top + 13.2);
+  } else {
+    doc.setFontSize(7.5);
+    busLines.slice(0, 4).forEach((line: string, i: number) => {
+      doc.text(line, valX, row6Top + 4.2 + (i * 3.6));
+    });
+  }
 };
 
 export const generateBusPdf = async (bookings: Booking[]): Promise<void> => {
   try {
     await waitForLibraries(['jspdf']);
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    const pageHeight = doc.internal.pageSize.height;
-    const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
     
-    // Divide the page into 3 blocks
-    const blockHeight = (pageHeight - margin) / 3;
-
-    bookings.forEach((booking, index) => {
-      const pageIndex = Math.floor(index / 3);
-      const indexOnPage = index % 3;
-
-      if (indexOnPage === 0 && pageIndex > 0) {
-        doc.addPage();
-      }
-      
-      let y = margin + (indexOnPage * blockHeight);
-
-      // Draw separator and add space if it's not the first block on the page
-      if (indexOnPage > 0) {
-          doc.setDrawColor(180, 180, 180);
-          doc.line(margin, y - 5, pageWidth - margin, y - 5);
-          y += 5;
-      }
-
-      const monthName = getMonthName(booking.date);
-
-      // Title
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'normal');
-      const titleText = "Fiche de commande de bus - ";
-      doc.text(titleText, margin, y);
-      const titleWidth = doc.getTextWidth(titleText);
-      doc.setFont('helvetica', 'bold');
-      doc.text(monthName, margin + titleWidth, y);
-      y += 14;
-      
-      // Content
-      doc.setFontSize(11);
-      const lines = formatBookingForDocument(booking);
-      
-      lines.forEach(({ label, value }) => {
-          // Stop drawing if we exceed the block height for this entry
-          if (y > margin + ((indexOnPage + 1) * blockHeight) - 10) return;
-          
-          const labelText = `${label} : `;
-          doc.setFont('helvetica', 'bold');
-          const labelWidth = doc.getTextWidth(labelText);
-
-          const availableWidth = pageWidth - margin * 2 - labelWidth;
-          const splitValue = doc.splitTextToSize(value, availableWidth);
-          
-          doc.text(labelText, margin, y);
-          
-          doc.setFont('helvetica', 'normal');
-          doc.text(splitValue, margin + labelWidth, y);
-
-          // Increment y position based on how many lines the value took up
-          y += (splitValue.length * 5) + 4;
-      });
+    // Format A4 Paysage (297mm x 210mm)
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
     });
+
+    const pageWidth = 297;
+    const pageHeight = 210;
+    const halfWidth = pageWidth / 2;   // 148.5mm
+    const halfHeight = pageHeight / 2; // 105mm
+
+    const CARDS_PER_PAGE = 4;
+    const totalPages = Math.max(1, Math.ceil(bookings.length / CARDS_PER_PAGE));
+
+    for (let page = 0; page < totalPages; page++) {
+      if (page > 0) {
+        doc.addPage('a4', 'landscape');
+      }
+
+      // Lignes séparatrices en pointillés pour le découpage des 4 fiches
+      doc.setDrawColor(160, 160, 160);
+      doc.setLineWidth(0.25);
+
+      // Ligne médiane horizontale
+      drawDashedLine(doc, 0, halfHeight, pageWidth, halfHeight, 3, 2);
+
+      // Ligne médiane verticale
+      drawDashedLine(doc, halfWidth, 0, halfWidth, pageHeight, 3, 2);
+
+      // Rendu des 4 fiches de la page courante
+      for (let indexOnPage = 0; indexOnPage < CARDS_PER_PAGE; indexOnPage++) {
+        const bookingIndex = page * CARDS_PER_PAGE + indexOnPage;
+        if (bookingIndex >= bookings.length) break;
+
+        const booking = bookings[bookingIndex];
+
+        // Détermination des coordonnées du quadrant
+        // 0: Haut-Gauche, 1: Haut-Droite, 2: Bas-Gauche, 3: Bas-Droite
+        const col = indexOnPage % 2;
+        const row = Math.floor(indexOnPage / 2);
+
+        const x0 = col * halfWidth;
+        const y0 = row * halfHeight;
+
+        renderBusCard(doc, booking, x0, y0);
+      }
+    }
 
     doc.save("fiches-bus.pdf");
   } catch (error) {
     console.error("PDF Generation Error:", error);
-    throw error; // Re-throw to be caught by the UI component
+    throw error;
   }
 };
 

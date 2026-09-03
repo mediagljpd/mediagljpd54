@@ -48,3 +48,15 @@ export const formatPhoneNumber = (phoneStr: string): string => {
 
     return phoneStr; 
 };
+
+/**
+ * Formats an amount in euros, displaying cents if present.
+ * Example: 15 -> "15 €", 15.5 -> "15,50 €", 15.75 -> "15,75 €"
+ */
+export const formatEuroAmount = (amount?: number | null): string => {
+    if (amount === undefined || amount === null || isNaN(amount) || amount === 0) return '0 €';
+    return amount.toLocaleString('fr-FR', {
+        minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+        maximumFractionDigits: 2
+    }) + ' €';
+};

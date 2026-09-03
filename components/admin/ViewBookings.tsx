@@ -4,7 +4,7 @@ import { AppContext } from '../../AppContext';
 import { Booking } from '../../types';
 import { AdminSubComponentProps } from './types';
 import { generateBusPdf } from '../../services/documentGenerator';
-import { formatPhoneNumber } from '../../utils/formatters';
+import { formatPhoneNumber, formatEuroAmount } from '../../utils/formatters';
 import { emailService } from '../../services/emailService';
 import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, SendIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon, XIcon, BellIcon, ClockIcon, UserGroupIcon } from '../Icons';
 
@@ -128,7 +128,19 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const [sortConfig, setSortConfig] = useState<{ key: SortableKey, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
     const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
     const [busManagementBooking, setBusManagementBooking] = useState<Booking | null>(null);
+    const [busCostInput, setBusCostInput] = useState<string>('0');
     const [statusManagementBooking, setStatusManagementBooking] = useState<Booking | null>(null);
+
+    useEffect(() => {
+        if (busManagementBooking) {
+            const cost = busManagementBooking.busCost;
+            if (cost !== undefined && cost !== null && !isNaN(cost)) {
+                setBusCostInput(String(cost).replace('.', ','));
+            } else {
+                setBusCostInput('0');
+            }
+        }
+    }, [busManagementBooking?.id]);
 
     // Clés de préférence d'affichage par défaut pour la session personnelle (fallback local)
     const userPrefKey = currentUser?.id || currentUser?.username || 'global';
@@ -777,16 +789,31 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
     const handleSaveBusManagement = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!busManagementBooking) return;
+
         if (!isBusManager) {
-            showNotification("Vous n'avez pas les droits pour modifier le transport.", "error");
-            setBusManagementBooking(null);
+            // Seules les consignes pour le bus sont modifiables sans restriction
+            const original = bookings.find(b => b.id === busManagementBooking.id);
+            if (original) {
+                const updatedBooking: Booking = {
+                    ...original,
+                    busInfo: busManagementBooking.busInfo || ''
+                };
+                saveBooking(updatedBooking);
+                setBusManagementBooking(null);
+                showNotification('Consignes pour le bus enregistrées !');
+            } else {
+                setBusManagementBooking(null);
+            }
             return;
         }
-        if (busManagementBooking) {
-            saveBooking(busManagementBooking);
-            setBusManagementBooking(null);
-            showNotification('Gestion du bus mise à jour !');
-        }
+
+        const parsedCost = parseFloat(busCostInput.replace(',', '.'));
+        const finalCost = isNaN(parsedCost) ? 0 : Math.round(parsedCost * 100) / 100;
+
+        saveBooking({ ...busManagementBooking, busCost: finalCost });
+        setBusManagementBooking(null);
+        showNotification('Gestion du bus mise à jour !');
     };
 
     const SortableHeader: React.FC<{ columnKey: SortableKey; title: string; }> = ({ columnKey, title }) => {
@@ -1287,7 +1314,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${b.busStatus === 'validated' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
                                                                     {b.busStatus === 'validated' ? 'Validé' : 'En attente'}
                                                                 </span>
-                                                                <span className="text-xs font-bold text-gray-600">{b.busCost || 0} €</span>
+                                                                <span className="text-xs font-bold text-gray-600">{formatEuroAmount(b.busCost)}</span>
                                                             </>
                                                         )}
                                                         <button onClick={() => setBusManagementBooking({ ...b, busStatus: b.busStatus || 'pending' })} className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase mt-1 hover:underline text-left">Gestion du bus</button>
@@ -1426,7 +1453,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                                 </div>
                                                 <div>
                                                     <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Coût</p>
-                                                    <p className="font-bold text-blue-900">{viewingBooking.busCost || 0} €</p>
+                                                    <p className="font-bold text-blue-900">{formatEuroAmount(viewingBooking.busCost)}</p>
                                                 </div>
                                             </>
                                         )}
@@ -1609,7 +1636,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                         </button>
                         <div className="flex justify-between items-start mb-2 pr-6">
                             <h2 className="text-2xl font-black text-gray-800">Gestion du transport</h2>
-                            {!isBusManager && <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-1 rounded-lg uppercase tracking-tight">Lecture seule</span>}
+                            {!isBusManager && <span className="text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-lg uppercase tracking-tight">Accès transport restreint</span>}
                         </div>
                         <p className="text-sm text-gray-500 mb-6 font-medium">Validation de la prise en charge pour <strong>{busManagementBooking.teacherName}</strong> ({busManagementBooking.schoolName}, {busManagementBooking.commune}).</p>
                         
@@ -1662,30 +1689,67 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                             <input 
                                                 id="busCost" 
                                                 type="text" 
-                                                inputMode="numeric"
-                                                pattern="[0-9]*"
+                                                inputMode="decimal"
+                                                placeholder="0,00"
                                                 disabled={!isBusManager}
-                                                value={busManagementBooking.busCost || 0} 
+                                                value={busCostInput} 
                                                 onChange={(e) => {
-                                                    const val = e.target.value.replace(/\D/g, '');
-                                                    setBusManagementBooking({...busManagementBooking, busCost: parseInt(val) || 0})
+                                                    let raw = e.target.value;
+                                                    // Autoriser uniquement les chiffres, virgule et point
+                                                    raw = raw.replace(/[^0-9.,]/g, '');
+                                                    // N'autoriser qu'un seul séparateur décimal
+                                                    const parts = raw.split(/[.,]/);
+                                                    if (parts.length > 2) {
+                                                        raw = parts[0] + ',' + parts.slice(1).join('');
+                                                    }
+                                                    // Limiter à 2 chiffres après le séparateur décimal
+                                                    if (parts.length === 2 && parts[1].length > 2) {
+                                                        const sep = raw.includes(',') ? ',' : '.';
+                                                        raw = parts[0] + sep + parts[1].slice(0, 2);
+                                                    }
+                                                    setBusCostInput(raw);
+                                                    const parsed = parseFloat(raw.replace(',', '.'));
+                                                    setBusManagementBooking(prev => prev ? ({
+                                                        ...prev, 
+                                                        busCost: isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100
+                                                    }) : null);
                                                 }} 
+                                                onBlur={() => {
+                                                    if (busCostInput.trim() === '') {
+                                                        setBusCostInput('0');
+                                                        setBusManagementBooking(prev => prev ? ({ ...prev, busCost: 0 }) : null);
+                                                    } else {
+                                                        const parsed = parseFloat(busCostInput.replace(',', '.'));
+                                                        if (!isNaN(parsed)) {
+                                                            const rounded = Math.round(parsed * 100) / 100;
+                                                            setBusCostInput(String(rounded).replace('.', ','));
+                                                            setBusManagementBooking(prev => prev ? ({ ...prev, busCost: rounded }) : null);
+                                                        }
+                                                    }
+                                                }}
                                                 className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold text-gray-800 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed" 
                                             />
                                             <div className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">€</div>
                                         </div>
+                                        <p className="text-[11px] text-gray-400">Vous pouvez renseigner des centimes séparés par une virgule ou un point (ex : 125,50 €).</p>
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label htmlFor="busInfo" className="block text-xs font-black text-gray-400 uppercase tracking-widest font-sans">Infos / Consigne de passage</label>
+                                        <div className="flex items-center justify-between">
+                                            <label htmlFor="busInfo" className="block text-xs font-black text-gray-400 uppercase tracking-widest font-sans">Infos / Consigne de passage</label>
+                                            {!isBusManager && (
+                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                                                    Modifiable sans restriction
+                                                </span>
+                                            )}
+                                        </div>
                                         <textarea 
                                             id="busInfo"
                                             name="busInfo"
-                                            disabled={!isBusManager}
                                             value={busManagementBooking.busInfo || ''}
                                             onChange={(e) => setBusManagementBooking({...busManagementBooking, busInfo: e.target.value})}
                                             placeholder="Ex: Horaires de bus, point de ralliement, correspondances, consignes particulières de transport..."
-                                            className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-medium text-gray-800 focus:border-blue-500 outline-none min-h-[100px] disabled:bg-gray-100 disabled:cursor-not-allowed placeholder:text-gray-300 placeholder:text-sm text-sm"
+                                            className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-medium text-gray-800 focus:border-blue-500 outline-none min-h-[100px] placeholder:text-gray-300 placeholder:text-sm text-sm"
                                         />
                                     </div>
                                 </div>
@@ -1699,11 +1763,11 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
 
                             <div className="flex gap-3 pt-4 border-t border-gray-100 sticky bottom-0 bg-white">
                                 <button type="button" onClick={() => setBusManagementBooking(null)} className="flex-grow py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-100 transition-colors">
-                                    {isBusManager ? 'Annuler' : 'Fermer'}
+                                    Annuler
                                 </button>
-                                {isBusManager && (
-                                    <button type="submit" className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg shadow-blue-100">Confirmer</button>
-                                )}
+                                <button type="submit" className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg shadow-blue-100">
+                                    {isBusManager ? 'Confirmer' : 'Enregistrer les consignes'}
+                                </button>
                             </div>
                         </form>
                     </div>

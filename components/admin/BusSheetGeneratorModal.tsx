@@ -58,7 +58,7 @@ const BusSheetGeneratorModal: React.FC<{
                         disabled={isGenerating}
                         className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-green-300 flex items-center justify-center min-w-[120px]"
                     >
-                        {isGenerating ? 'Génération...' : 'Confirmer et Générer'}
+                        {isGenerating ? 'Génération...' : 'Confirmer'}
                     </button>
                 </div>
             </div>
