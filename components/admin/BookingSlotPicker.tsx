@@ -2,7 +2,7 @@
 import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { AppContext } from '../../AppContext';
 import { Animation, Holiday, Booking, AnimatorSettings } from '../../types';
-import { toYYYYMMDD } from '../../utils/date';
+import { toYYYYMMDD, getPostHolidayFirstDayStrings } from '../../utils/date';
 
 interface BookingSlotPickerProps {
     animation: Animation;
@@ -163,12 +163,19 @@ const BookingSlotPicker: React.FC<BookingSlotPickerProps> = ({
         return animatorSettings.monthlyBookingLimit !== undefined && currentMonthBookingCount >= animatorSettings.monthlyBookingLimit;
     }, [animatorSettings.monthlyBookingLimit, currentMonthBookingCount]);
 
+    const postHolidayFirstDays = useMemo(() => {
+        return getPostHolidayFirstDayStrings(settings.holidays, settings.allowedDays);
+    }, [settings.holidays, settings.allowedDays]);
+
     const isSlotAvailable = (date: Date, time: number): boolean => {
         const dateString = toYYYYMMDD(date);
         
         // Si c'est le créneau ACTUELLEMENT sélectionné dans le formulaire (même s'il n'est pas encore sauvegardé),
         // on l'affiche comme sélectionné, pas comme indisponible de base.
         if (dateString === selectedDate && time === selectedTime) return true;
+
+        // Règle post-vacances : le tout premier créneau (9h) après des vacances scolaires est indisponible
+        if (Number(time) === 9 && postHolidayFirstDays.has(dateString)) return false;
 
         // Ne pas proposer de créneaux avant la date minimale autorisée par le cycle ou aujourd'hui
         if (date < minAllowedDate) return false;

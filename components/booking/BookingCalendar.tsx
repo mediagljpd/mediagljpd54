@@ -2,7 +2,7 @@
 import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { AppContext } from '../../AppContext';
 import { Animation, Holiday, Booking, AnimatorSettings } from '../../types';
-import { toYYYYMMDD } from '../../utils/date';
+import { toYYYYMMDD, getPostHolidayFirstDayStrings } from '../../utils/date';
 
 const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date, time: number) => void }> = ({ animation, onBookSlot }) => {
     const { bookings, settings, animations } = useContext(AppContext);
@@ -119,10 +119,20 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
         return animatorSettings.monthlyBookingLimit !== undefined && currentMonthBookingCount >= animatorSettings.monthlyBookingLimit;
     }, [animatorSettings.monthlyBookingLimit, currentMonthBookingCount]);
 
+    const postHolidayFirstDays = useMemo(() => {
+        return getPostHolidayFirstDayStrings(settings.holidays, settings.allowedDays);
+    }, [settings.holidays, settings.allowedDays]);
+
     const isSlotAvailable = (date: Date, time: number): boolean => {
         if (isLimitReached) return false;
         
         const dateString = toYYYYMMDD(date);
+        
+        // Règle post-vacances : le premier créneau (9h) suivant la fin d'une période de vacances est indisponible
+        if (Number(time) === 9 && postHolidayFirstDays.has(dateString)) {
+            return false;
+        }
+
         const dayBookings = bookingsByDate[dateString] || [];
         
         if ((animatorSettings.inactiveSlots || []).some(s => Number(s) === Number(time))) return false;

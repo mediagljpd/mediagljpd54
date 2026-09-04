@@ -1463,6 +1463,10 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                                             <div className="w-6 h-6 rounded-full bg-indigo-500/30 flex items-center justify-center shrink-0">5</div>
                                                             <p><strong>Animateurs :</strong> Si un animateur est mobilisé par une animation le matin ou l'après-midi, il ne peut pas être sollicité pour une autre animation sur cette même journée.</p>
                                                         </div>
+                                                        <div className="flex gap-3">
+                                                            <div className="w-6 h-6 rounded-full bg-indigo-500/30 flex items-center justify-center shrink-0">6</div>
+                                                            <p><strong>Reprise après vacances :</strong> Le tout premier créneau du matin (<span className="text-indigo-200 font-bold">9h</span>) suivant immédiatement le dernier jour d'une période de vacances scolaires est automatiquement bloqué et indisponible pour toutes les animations.</p>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>

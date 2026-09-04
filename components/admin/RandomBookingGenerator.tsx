@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useContext, useEffect } from 'react';
 import { AppContext } from '../../AppContext';
 import { Animation, Booking } from '../../types';
-import { toYYYYMMDD } from '../../utils/date';
+import { toYYYYMMDD, getPostHolidayFirstDayStrings } from '../../utils/date';
 import { formatPhoneNumber } from '../../utils/formatters';
 import { XIcon } from '../Icons';
 
@@ -153,6 +153,7 @@ const RandomBookingGenerator: React.FC<{
         const animatorSettings = settings.animatorSettings || {};
         const allowedDays = settings.allowedDays || [2, 4];
         const baseTimeSlots = settings.availableTimeSlots || [9, 10, 14, 15];
+        const postHolidayFirstDays = getPostHolidayFirstDayStrings(settings.holidays, allowedDays);
     
         for (const { month, year } of schoolYearMonths) {
             const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -196,6 +197,9 @@ const RandomBookingGenerator: React.FC<{
                         if (animSettings.inactiveSlots.includes(time)) continue;
                         if (dayBookedTimes.has(time)) continue;
                         
+                        // Règle post-vacances : 9h indisponible lors de la rentrée/reprise
+                        if (Number(time) === 9 && postHolidayFirstDays.has(dateStr)) continue;
+
                         const isAfternoon = time === 14 || time === 15;
                         if (isAfternoon && isAfternoonBookedOnDay) continue;
 

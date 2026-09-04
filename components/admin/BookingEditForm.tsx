@@ -2,6 +2,7 @@
 import React, { useState, useContext, useEffect, useMemo } from 'react';
 import { Booking, Animation } from '../../types';
 import { formatPhoneNumber } from '../../utils/formatters';
+import { isPostHolidayFirstMorningSlot } from '../../utils/date';
 import { AppContext } from '../../AppContext';
 import BookingSlotPicker from './BookingSlotPicker';
 
@@ -56,13 +57,22 @@ const BookingEditForm: React.FC<{
     }, [currentAnimation, settings.animatorSettings]);
 
     const animatorAvailability = useMemo(() => {
+        const dateString = formData.date;
+        const timeVal = formData.time;
+
+        // Règle post-vacances : premier créneau de 9h après les vacances scolaires
+        const isSlotChanged = formData.date !== booking.date || Number(formData.time) !== Number(booking.time);
+        if (isSlotChanged && isPostHolidayFirstMorningSlot(dateString, timeVal, settings.holidays, settings.allowedDays)) {
+            return {
+                available: false,
+                reason: "Le créneau de 9h lors de la reprise après des vacances scolaires est indisponible pour toute animation."
+            };
+        }
+
         const animatorName = currentAnimation?.animator?.trim();
         if (!animatorName) {
             return { available: true, reason: "" };
         }
-
-        const dateString = formData.date;
-        const timeVal = formData.time;
 
         // 1. Check if the date is marked as unavailable for this animator
         if ((animatorSettings.unavailableDates || []).includes(dateString)) {
