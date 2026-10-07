@@ -6,7 +6,7 @@ import { AdminSubComponentProps } from './types';
 import { generateBusPdf } from '../../services/documentGenerator';
 import { formatPhoneNumber, formatEuroAmount } from '../../utils/formatters';
 import { emailService } from '../../services/emailService';
-import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, SendIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon, XIcon, BellIcon, ClockIcon, UserGroupIcon } from '../Icons';
+import { SortAscIcon, SortDescIcon, SortIcon, SearchIcon, SparklesIcon, PdfIcon, SendIcon, ListIcon, CalendarDaysIcon, TrashIcon, CogIcon, CheckIcon, XIcon, BellIcon, ClockIcon, UserGroupIcon, DocumentTextIcon } from '../Icons';
 
 import BookingEditForm from './BookingEditForm';
 import BookingsCalendar from './BookingsCalendar';
@@ -39,7 +39,9 @@ const BOOKING_STATUS_OPTIONS = [
 
 const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
     const { bookings, animations, removeBooking, updateBookings, settings, saveBooking, currentUser, updateSettings } = useContext(AppContext);
-    const isBusManager = currentUser?.role === 'admin' || !!currentUser?.permissions?.canManageBus;
+    const isBusManager = currentUser?.role === 'admin' || 
+                         !!currentUser?.permissions?.canManageBus || 
+                         currentUser?.username?.trim().toLowerCase() === 'aude';
     
     type AugmentedBooking = Booking & { animator?: string };
     type SortableKey = 'date' | 'teacherName';
@@ -268,6 +270,7 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
     const [recipientListEmail, setRecipientListEmail] = useState('');
     const [selectedRecipientAnimator, setSelectedRecipientAnimator] = useState('');
     const [isSendingList, setIsSendingList] = useState(false);
+    const [isGeneratingBdc, setIsGeneratingBdc] = useState(false);
 
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
@@ -787,6 +790,38 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
         }
     };
 
+    const handleGenerateBdcDocx = async () => {
+        const selectedList = bookings.filter(b => selectedBookingIds.has(b.id));
+        if (selectedList.length === 0) {
+            showNotification("Veuillez sélectionner au moins une réservation.", "error");
+            return;
+        }
+
+        const busBookings = selectedList.filter(b => !b.noBusRequired);
+        if (busBookings.length === 0) {
+            showNotification("Aucune réservation avec besoin de bus sélectionnée (option 'Pas de bus nécessaire' cochée).", "error");
+            return;
+        }
+
+        setIsGeneratingBdc(true);
+        try {
+            const { generateBdcWordDocument } = await import('../../services/bdcGenerator');
+            const result = await generateBdcWordDocument(busBookings, settings.bdcTemplate, settings.activeYear);
+            if (result.success) {
+                const ignoredCount = selectedList.length - busBookings.length;
+                const extraMsg = ignoredCount > 0 ? ` (${ignoredCount} réservation(s) sans bus ignorée(s))` : '';
+                showNotification(`${result.count} bon(s) de commande de bus généré(s) au format Word (.docx) avec succès !${extraMsg}`);
+            } else {
+                showNotification(result.error || "Erreur lors de la génération des bons de commande.", "error");
+            }
+        } catch (error: any) {
+            console.error("Erreur génération BDC Word :", error);
+            showNotification("Erreur lors de la génération du document Word.", "error");
+        } finally {
+            setIsGeneratingBdc(false);
+        }
+    };
+
     const handleSaveBusManagement = (e: React.FormEvent) => {
         e.preventDefault();
         if (!busManagementBooking) return;
@@ -1207,6 +1242,16 @@ const ViewBookings: React.FC<AdminSubComponentProps> = ({ showNotification }) =>
                                         <button onClick={() => setIsBusSheetModalOpen(true)} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-lg transition-colors cursor-pointer">
                                             <PdfIcon className="w-4 h-4" /> Fiches bus
                                         </button>
+                                        {isBusManager && (
+                                            <button 
+                                                onClick={handleGenerateBdcDocx} 
+                                                disabled={isGeneratingBdc}
+                                                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-lg transition-colors cursor-pointer shadow-sm"
+                                                title="Générer les bons de commande de bus au format Word (.docx) (1 BDC par page)"
+                                            >
+                                                <DocumentTextIcon className="w-4 h-4" /> {isGeneratingBdc ? 'Génération...' : 'BDC BUS'}
+                                            </button>
+                                        )}
                                         <button onClick={handleDeleteSelected} className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white px-3.5 py-1.5 text-xs font-black uppercase rounded-lg transition-colors cursor-pointer">
                                             <TrashIcon className="w-4 h-4" /> Supprimer
                                         </button>

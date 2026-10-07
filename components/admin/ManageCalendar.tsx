@@ -63,23 +63,66 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
         return [years[0], years[1]];
     }, [settings.activeYear]);
 
+    const getCleanHolidayName = (name: string): string => {
+        return name.replace(/\s*\(\d{4}-\d{4}\)$/, '').trim();
+    };
+
+    const VACATION_ORDER = [
+        'Vacances de la Toussaint',
+        'Vacances de Noël',
+        "Vacances d'hiver",
+        'Vacances de Printemps'
+    ];
+
+    const PUBLIC_HOLIDAYS_ORDER = [
+        'Toussaint',
+        'Armistice',
+        'Travail',
+        'Ascension',
+        'Victoire'
+    ];
+
+    const formatHolidayDate = (startDate?: string, endDate?: string): string => {
+        if (!startDate && !endDate) return '';
+        const s = startDate || endDate;
+        const e = endDate || startDate;
+        if (s === e) {
+            return new Date(s!.replace(/-/g, '/')).toLocaleDateString('fr-FR');
+        }
+        const d1 = new Date(s!.replace(/-/g, '/'));
+        const d2 = new Date(e!.replace(/-/g, '/'));
+        return `${d1.toLocaleDateString('fr-FR')} - ${d2.toLocaleDateString('fr-FR')}`;
+    };
+
     const getHolidayForDate = (date: Date, holidays: Holiday[]): Holiday | undefined => {
         const checkDate = new Date(date);
         checkDate.setHours(0, 0, 0, 0);
+        const checkTime = checkDate.getTime();
         return (holidays || []).find(h => {
-            if (!h.startDate || !h.endDate) return false;
-            const startDate = new Date(h.startDate.replace(/-/g, '/'));
+            if (!h.startDate && !h.endDate) return false;
+            const startStr = h.startDate || h.endDate;
+            const endStr = h.endDate || h.startDate;
+            const startDate = new Date(startStr.replace(/-/g, '/'));
             startDate.setHours(0, 0, 0, 0);
-            const endDate = new Date(h.endDate.replace(/-/g, '/'));
+            const endDate = new Date(endStr.replace(/-/g, '/'));
             endDate.setHours(0, 0, 0, 0);
-            return checkDate >= startDate && checkDate <= endDate;
+            return checkTime >= startDate.getTime() && checkTime <= endDate.getTime();
         });
     };
 
-    const isHolidayInActiveYear = (h: Holiday, activeYear: string) => {
+    const isHolidayInActiveYear = (h: Holiday, activeYear: string): boolean => {
         if (!activeYear) return false;
         if (h.name.includes(activeYear)) return true;
-        if (!h.startDate || !h.endDate) return false;
+
+        // Si le nom contient un autre tag d'année scolaire (ex: "(2024-2025)")
+        const yearMatch = h.name.match(/\((\d{4}-\d{4})\)/);
+        if (yearMatch && yearMatch[1] !== activeYear) return false;
+
+        // Si aucune date renseignée et pas d'autre année spécifiée
+        if (!h.startDate && !h.endDate) {
+            const clean = getCleanHolidayName(h.name);
+            return VACATION_ORDER.includes(clean) || PUBLIC_HOLIDAYS_ORDER.includes(clean);
+        }
         
         try {
             const years = activeYear.split('-').map(Number);
@@ -89,8 +132,10 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
             const startLimit = new Date(sY, 9, 1); // 1er Octobre startYear
             const endLimit = new Date(eY, 5, 30); // 30 Juin endYear
             
-            const hStart = new Date(h.startDate.replace(/-/g, '/'));
-            const hEnd = new Date(h.endDate.replace(/-/g, '/'));
+            const startStr = h.startDate || h.endDate;
+            const endStr = h.endDate || h.startDate;
+            const hStart = new Date(startStr.replace(/-/g, '/'));
+            const hEnd = new Date(endStr.replace(/-/g, '/'));
             
             return (hStart >= startLimit && hStart <= endLimit) || 
                    (hEnd >= startLimit && hEnd <= endLimit);
@@ -102,6 +147,46 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
     const activeHolidays = useMemo(() => {
         return (settings.holidays || []).filter(h => isHolidayInActiveYear(h, settings.activeYear));
     }, [settings.holidays, settings.activeYear]);
+
+    const { vacationHolidays, publicHolidays, customHolidays } = useMemo(() => {
+        const vacations: Holiday[] = [];
+        const publicHols: Holiday[] = [];
+        const customHols: Holiday[] = [];
+
+        // 1. Les 4 périodes de vacances dans l'ordre chronologique scolaire exact
+        VACATION_ORDER.forEach(name => {
+            const found = activeHolidays.find(h => getCleanHolidayName(h.name) === name);
+            if (found) {
+                vacations.push(found);
+            } else {
+                vacations.push({ name: `${name} (${settings.activeYear})`, startDate: '', endDate: '' });
+            }
+        });
+
+        // 2. Les 5 jours fériés dans l'ordre exact demandé
+        PUBLIC_HOLIDAYS_ORDER.forEach(name => {
+            const found = activeHolidays.find(h => getCleanHolidayName(h.name) === name);
+            if (found) {
+                publicHols.push(found);
+            } else {
+                publicHols.push({ name: `${name} (${settings.activeYear})`, startDate: '', endDate: '' });
+            }
+        });
+
+        // 3. Autres périodes personnalisées éventuelles
+        activeHolidays.forEach(h => {
+            const clean = getCleanHolidayName(h.name);
+            if (!VACATION_ORDER.includes(clean) && !PUBLIC_HOLIDAYS_ORDER.includes(clean)) {
+                customHols.push(h);
+            }
+        });
+
+        return {
+            vacationHolidays: vacations,
+            publicHolidays: publicHols,
+            customHolidays: customHols
+        };
+    }, [activeHolidays, settings.activeYear]);
 
     const [currentDate, setCurrentDate] = useState(() => {
         const now = new Date();
@@ -153,20 +238,45 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
         const activeYear = settings.activeYear;
         if (!activeYear) return;
 
-        const defaultNames = [
+        const defaultVacationNames = [
             `Vacances de la Toussaint (${activeYear})`,
             `Vacances de Noël (${activeYear})`,
             `Vacances d'hiver (${activeYear})`,
             `Vacances de Printemps (${activeYear})`
         ];
 
-        const currentHolidays = settings.holidays || [];
-        const missingNames = defaultNames.filter(name => !currentHolidays.some(h => h.name === name));
+        const defaultPublicHolidayNames = [
+            `Toussaint (${activeYear})`,
+            `Armistice (${activeYear})`,
+            `Travail (${activeYear})`,
+            `Ascension (${activeYear})`,
+            `Victoire (${activeYear})`
+        ];
 
-        if (missingNames.length > 0) {
+        const currentHolidays = settings.holidays || [];
+
+        const missingVacationNames = defaultVacationNames.filter(defName => {
+            const clean = getCleanHolidayName(defName);
+            return !currentHolidays.some(h => 
+                (h.name === defName || getCleanHolidayName(h.name) === clean) && 
+                isHolidayInActiveYear(h, activeYear)
+            );
+        });
+
+        const missingPublicHolidayNames = defaultPublicHolidayNames.filter(defName => {
+            const clean = getCleanHolidayName(defName);
+            return !currentHolidays.some(h => 
+                (h.name === defName || getCleanHolidayName(h.name) === clean) && 
+                isHolidayInActiveYear(h, activeYear)
+            );
+        });
+
+        const allMissing = [...missingVacationNames, ...missingPublicHolidayNames];
+
+        if (allMissing.length > 0) {
             const newHolidays = [
                 ...currentHolidays,
-                ...missingNames.map(name => ({
+                ...allMissing.map(name => ({
                     name,
                     startDate: '',
                     endDate: ''
@@ -571,29 +681,44 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
 
     const handleAddHoliday = (e: React.FormEvent) => {
         e.preventDefault();
-        if(newHoliday.name && newHoliday.startDate && newHoliday.endDate) {
-            updateSettings({ holidays: [...settings.holidays, newHoliday] });
+        if (newHoliday.name && newHoliday.startDate) {
+            const end = newHoliday.endDate || newHoliday.startDate;
+            const nameWithYear = settings.activeYear && !newHoliday.name.includes(settings.activeYear)
+                ? `${newHoliday.name.trim()} (${settings.activeYear})`
+                : newHoliday.name.trim();
+
+            updateSettings({ holidays: [...(settings.holidays || []), { ...newHoliday, name: nameWithYear, endDate: end }] });
             setNewHoliday({ name: '', startDate: '', endDate: ''});
-            showNotification('Période de vacances ajoutée.');
+            showNotification('Période ou jour férié ajouté.');
         }
-    }
+    };
 
     const handleUpdateHoliday = (updatedHoliday: Holiday) => {
         const originalHolidayName = editingHoliday!.name;
-        const newHolidays = settings.holidays.map(h => h.name === originalHolidayName ? updatedHoliday : h);
+        let found = false;
+        const newHolidays = (settings.holidays || []).map(h => {
+            if (h.name === originalHolidayName) {
+                found = true;
+                return updatedHoliday;
+            }
+            return h;
+        });
+        if (!found) {
+            newHolidays.push(updatedHoliday);
+        }
         updateSettings({ holidays: newHolidays });
         setEditingHoliday(null);
-        showNotification("Période de vacances mise à jour.");
+        showNotification("Période ou jour férié mis à jour.");
     };
     
     const handleDeleteHoliday = (holidayNameToDelete: string) => {
         setHolidayToDelete(holidayNameToDelete);
-    }
+    };
 
     const confirmDeleteHoliday = () => {
         if (!holidayToDelete) return;
-        updateSettings({ holidays: settings.holidays.filter(h => h.name !== holidayToDelete) });
-        showNotification('Période de vacances supprimée.');
+        updateSettings({ holidays: (settings.holidays || []).filter(h => h.name !== holidayToDelete) });
+        showNotification('Suppression effectuée.');
         setHolidayToDelete(null);
     };
 
@@ -760,66 +885,215 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                 {/* Section Vacances (située à droite, en haut) */}
                 <div className="bg-white p-6 rounded-lg shadow flex flex-col justify-between">
                     <div>
-                        <h3 className="text-xl font-semibold mb-4">Gérer les périodes de vacances</h3>
+                        <h3 className="text-xl font-semibold mb-4 text-gray-900">Gérer les périodes de vacances et les jours fériés</h3>
                         {canManageVacations ? (
                             <>
-                                <form onSubmit={handleAddHoliday} className="space-y-3 p-4 border rounded-lg bg-gray-50 mb-4">
-                                    <input type="text" placeholder="Nom (ex: Vacances d'été)" value={newHoliday.name} onChange={e => setNewHoliday({...newHoliday, name: e.target.value})} className="w-full p-2 border rounded text-sm font-medium" required/>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input type="date" value={newHoliday.startDate} onChange={e => setNewHoliday({...newHoliday, startDate: e.target.value})} className="p-2 border rounded text-sm" required title="Date de début"/>
-                                        <input type="date" value={newHoliday.endDate} onChange={e => setNewHoliday({...newHoliday, endDate: e.target.value})} className="p-2 border rounded text-sm" required title="Date de fin"/>
+                                <form onSubmit={handleAddHoliday} className="space-y-3 p-3.5 border rounded-xl bg-gray-50/80 mb-4 shadow-2xs">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-gray-700">Ajouter une période ou un jour férié personnalisé</span>
                                     </div>
-                                    <button type="submit" className="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 text-sm font-semibold transition-colors">Ajouter la période</button>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Nom (ex: Vacances d'été, Pont...)" 
+                                        value={newHoliday.name} 
+                                        onChange={e => setNewHoliday({...newHoliday, name: e.target.value})} 
+                                        className="w-full p-2 border rounded-lg text-sm bg-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                        required
+                                    />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input 
+                                            type="date" 
+                                            value={newHoliday.startDate} 
+                                            onChange={e => setNewHoliday({...newHoliday, startDate: e.target.value, endDate: newHoliday.endDate || e.target.value})} 
+                                            className="p-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                            required 
+                                            title="Date de début"
+                                        />
+                                        <input 
+                                            type="date" 
+                                            value={newHoliday.endDate} 
+                                            onChange={e => setNewHoliday({...newHoliday, endDate: e.target.value})} 
+                                            className="p-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                            title="Date de fin"
+                                        />
+                                    </div>
+                                    <button 
+                                        type="submit" 
+                                        className="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 text-sm font-semibold transition-colors shadow-2xs cursor-pointer"
+                                    >
+                                        Ajouter la période
+                                    </button>
                                 </form>
                                 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[140px] overflow-y-auto pr-1 custom-scrollbar">
-                                    {activeHolidays.map(h => (
-                                        <div key={h.name} className="flex justify-between items-center p-2 bg-yellow-100/70 border border-yellow-200 rounded-lg shadow-sm">
-                                            <div className="min-w-0">
-                                                <p className="font-semibold text-xs text-yellow-900 truncate" title={h.name}>{h.name}</p>
-                                                <p className="text-[10px] text-gray-600 mt-0.5 whitespace-nowrap">
-                                                    {h.startDate && h.endDate ? (
-                                                        `${new Date(h.startDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')} - ${new Date(h.endDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')}`
-                                                    ) : (
-                                                        <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>
-                                                    )}
-                                                </p>
-                                            </div>
-                                            <div className="flex items-center shrink-0 ml-1">
-                                                <button onClick={() => setEditingHoliday(h)} className="text-gray-500 hover:text-indigo-600 p-0.5" aria-label={`Modifier ${h.name}`}>
-                                                    <PencilIcon className="w-3.5 h-3.5" />
-                                                </button>
-                                                <button onClick={() => handleDeleteHoliday(h.name)} className="text-red-600 hover:text-red-800 p-0.5" aria-label={`Supprimer ${h.name}`}>
-                                                    <TrashIcon className="w-3.5 h-3.5" />
-                                                </button>
-                                            </div>
+                                <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1 custom-scrollbar">
+                                    {/* 1. Les 4 périodes de vacances existantes (2 colonnes -> 2 lignes de 2) */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        {vacationHolidays.map(h => {
+                                            const cleanName = getCleanHolidayName(h.name);
+                                            const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                            return (
+                                                <div 
+                                                    key={h.name} 
+                                                    className="flex justify-between items-center p-2.5 bg-yellow-100/70 border border-yellow-200 rounded-lg shadow-2xs hover:border-yellow-300 transition-all"
+                                                >
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="font-semibold text-xs text-yellow-900 truncate" title={cleanName}>
+                                                            {cleanName}
+                                                        </p>
+                                                        <p className="text-[10px] text-gray-600 mt-0.5 whitespace-nowrap">
+                                                            {dateText ? (
+                                                                dateText
+                                                            ) : (
+                                                                <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center shrink-0 ml-1.5 gap-0.5">
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setEditingHoliday(h)} 
+                                                            className="text-gray-500 hover:text-indigo-600 p-1 rounded hover:bg-yellow-200/50 transition-colors cursor-pointer" 
+                                                            aria-label={`Modifier ${cleanName}`}
+                                                            title={`Modifier ${cleanName}`}
+                                                        >
+                                                            <PencilIcon className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => handleDeleteHoliday(h.name)} 
+                                                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-yellow-200/50 transition-colors cursor-pointer" 
+                                                            aria-label={`Supprimer ${cleanName}`}
+                                                            title={`Supprimer ${cleanName}`}
+                                                        >
+                                                            <TrashIcon className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* 2. Les 5 jours fériés apparaissant TOUS sur une seule ligne sous les vacances d'hiver et de printemps */}
+                                    <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+                                        {publicHolidays.map(h => {
+                                            const cleanName = getCleanHolidayName(h.name);
+                                            const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                            const hasDates = !!dateText;
+                                            return (
+                                                <div 
+                                                    key={h.name}
+                                                    onClick={() => setEditingHoliday(h)}
+                                                    className={`p-1.5 sm:p-2 rounded-lg border text-center transition-all flex flex-col justify-between min-h-[58px] cursor-pointer hover:shadow-md hover:border-indigo-400 ${
+                                                        hasDates 
+                                                            ? 'bg-sky-50/80 border-sky-200 text-sky-950 hover:bg-sky-100/70' 
+                                                            : 'bg-amber-50/80 border-amber-200 text-amber-950 hover:bg-amber-100/70'
+                                                    }`}
+                                                    title={`Cliquer pour modifier la date de ${cleanName}`}
+                                                >
+                                                    <div className="flex items-center justify-between gap-0.5">
+                                                        <span className="font-bold text-[11px] sm:text-xs text-gray-800 truncate flex-1 text-center" title={cleanName}>
+                                                            {cleanName}
+                                                        </span>
+                                                        <span className="text-gray-400 hover:text-indigo-600 p-0.5 shrink-0">
+                                                            <PencilIcon className="w-3 h-3" />
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[10px] mt-1 whitespace-nowrap overflow-hidden text-ellipsis">
+                                                        {hasDates ? (
+                                                            <span className="text-gray-700 font-semibold">{dateText}</span>
+                                                        ) : (
+                                                            <span className="text-amber-600 italic font-medium">Non renseigné ⚠️</span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* 3. Autres périodes personnalisées si existantes */}
+                                    {customHolidays.length > 0 && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 border-t border-gray-100">
+                                            {customHolidays.map(h => {
+                                                const cleanName = getCleanHolidayName(h.name);
+                                                const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                                return (
+                                                    <div key={h.name} className="flex justify-between items-center p-2 bg-gray-50 border border-gray-200 rounded-lg shadow-2xs">
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="font-semibold text-xs text-gray-800 truncate" title={cleanName}>{cleanName}</p>
+                                                            <p className="text-[10px] text-gray-500 mt-0.5 whitespace-nowrap">
+                                                                {dateText || <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center shrink-0 ml-1.5 gap-0.5">
+                                                            <button onClick={() => setEditingHoliday(h)} className="text-gray-500 hover:text-indigo-600 p-1 cursor-pointer" title={`Modifier ${cleanName}`}>
+                                                                <PencilIcon className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button onClick={() => handleDeleteHoliday(h.name)} className="text-red-600 hover:text-red-800 p-1 cursor-pointer" title={`Supprimer ${cleanName}`}>
+                                                                <TrashIcon className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
                             </>
                         ) : (
                             <>
                                 <div className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs font-semibold">
-                                    ℹ️ Mode lecture seule: Vous pouvez consulter les périodes de vacances scolaires ci-dessous, mais vous n'avez pas l'autorisation de les modifier.
+                                    ℹ️ Mode lecture seule: Vous pouvez consulter les périodes de vacances scolaires et les jours fériés ci-dessous, mais vous n'avez pas l'autorisation de les modifier.
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[140px] overflow-y-auto pr-1 custom-scrollbar">
-                                    {activeHolidays.length === 0 ? (
-                                        <p className="text-xs text-gray-400 italic text-center p-4 col-span-2">Aucune période de vacances configurée pour cette année scolaire.</p>
-                                    ) : (
-                                        activeHolidays.map(h => (
-                                            <div key={h.name} className="flex justify-between items-center p-2 bg-gray-50 rounded-xl border border-gray-100 shadow-sm">
-                                                <div className="min-w-0">
-                                                    <p className="font-semibold text-gray-800 text-xs truncate" title={h.name}>{h.name}</p>
-                                                    <p className="text-[10px] text-gray-500 mt-1 whitespace-nowrap">
-                                                        {h.startDate && h.endDate ? (
-                                                            `${new Date(h.startDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')} - ${new Date(h.endDate.replace(/-/g, '/')).toLocaleDateString('fr-FR')}`
-                                                        ) : (
-                                                            <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>
-                                                        )}
+                                <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1 custom-scrollbar">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        {vacationHolidays.map(h => {
+                                            const cleanName = getCleanHolidayName(h.name);
+                                            const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                            return (
+                                                <div key={h.name} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg border border-gray-100 shadow-2xs">
+                                                    <div className="min-w-0">
+                                                        <p className="font-semibold text-gray-800 text-xs truncate" title={cleanName}>{cleanName}</p>
+                                                        <p className="text-[10px] text-gray-500 mt-1 whitespace-nowrap">
+                                                            {dateText || <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+                                        {publicHolidays.map(h => {
+                                            const cleanName = getCleanHolidayName(h.name);
+                                            const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                            return (
+                                                <div key={h.name} className="p-1.5 sm:p-2 rounded-lg border border-gray-100 bg-gray-50 text-center min-h-[58px] flex flex-col justify-between">
+                                                    <span className="font-bold text-[11px] sm:text-xs text-gray-800 truncate" title={cleanName}>
+                                                        {cleanName}
+                                                    </span>
+                                                    <p className="text-[10px] mt-1 whitespace-nowrap overflow-hidden text-ellipsis text-gray-600">
+                                                        {dateText || <span className="text-amber-600 italic">Non renseigné ⚠️</span>}
                                                     </p>
                                                 </div>
-                                            </div>
-                                        ))
+                                            );
+                                        })}
+                                    </div>
+                                    {customHolidays.length > 0 && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 border-t border-gray-100">
+                                            {customHolidays.map(h => {
+                                                const cleanName = getCleanHolidayName(h.name);
+                                                const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                                return (
+                                                    <div key={h.name} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg border border-gray-100 shadow-2xs">
+                                                        <div className="min-w-0">
+                                                            <p className="font-semibold text-gray-800 text-xs truncate" title={cleanName}>{cleanName}</p>
+                                                            <p className="text-[10px] text-gray-500 mt-0.5 whitespace-nowrap">
+                                                                {dateText || <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     )}
                                 </div>
                             </>
@@ -883,11 +1157,16 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                                         containerClasses += "cursor-not-allowed ";
                                     }
 
-                                    let periodLabel = isHoliday ? `Disponible (Vacances : ${holiday?.name})` : "Disponible";
+                                    const isPublicHoliday = holiday ? PUBLIC_HOLIDAYS_ORDER.includes(getCleanHolidayName(holiday.name)) : false;
+                                    const holidayDisplayLabel = holiday 
+                                        ? (isPublicHoliday ? `Jour férié : ${getCleanHolidayName(holiday.name)}` : `Vacances : ${getCleanHolidayName(holiday.name)}`)
+                                        : '';
+
+                                    let periodLabel = isHoliday ? `Disponible (${holidayDisplayLabel})` : "Disponible";
                                     if (isUnavailable) {
-                                        if (halfDay === 'morning') periodLabel = `Matin indisponible (9h, 10h)${isHoliday ? ` • Vacances : ${holiday?.name}` : ''}`;
-                                        else if (halfDay === 'afternoon') periodLabel = `Après-midi indisponible (14h, 15h)${isHoliday ? ` • Vacances : ${holiday?.name}` : ''}`;
-                                        else periodLabel = `Journée complète indisponible${isHoliday ? ` • Vacances : ${holiday?.name}` : ''}`;
+                                        if (halfDay === 'morning') periodLabel = `Matin indisponible (9h, 10h)${isHoliday ? ` • ${holidayDisplayLabel}` : ''}`;
+                                        else if (halfDay === 'afternoon') periodLabel = `Après-midi indisponible (14h, 15h)${isHoliday ? ` • ${holidayDisplayLabel}` : ''}`;
+                                        else periodLabel = `Journée complète indisponible${isHoliday ? ` • ${holidayDisplayLabel}` : ''}`;
                                     }
 
                                     const tooltipText = isUnavailable 
@@ -981,9 +1260,9 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
                                         </span>
                                         <span className="text-[11px] font-medium text-gray-600">Après-midi (AM)</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5" title="Période de vacances scolaires">
+                                    <div className="flex items-center gap-1.5" title="Période de vacances scolaires ou jour férié">
                                         <span className="w-3.5 h-3.5 rounded-md bg-amber-100 border border-amber-300 shrink-0" />
-                                        <span className="text-[11px] font-medium text-amber-900">Vacances</span>
+                                        <span className="text-[11px] font-medium text-amber-900">Vacances / Fériés</span>
                                     </div>
                                 </div>
                                 <div className="text-[10px] text-gray-400 font-medium">
@@ -1465,8 +1744,8 @@ const ManageCalendar: React.FC<AdminSubComponentProps> = ({
              {editingHoliday && <HolidayEditModal holiday={editingHoliday} onSave={handleUpdateHoliday} onCancel={() => setEditingHoliday(null)} />}
              <ConfirmationModal 
                 isOpen={!!holidayToDelete}
-                title="Supprimer les vacances"
-                message={`Êtes-vous sûr de vouloir supprimer la période "${holidayToDelete}" ?`}
+                title="Supprimer la période ou le jour férié"
+                message={`Êtes-vous sûr de vouloir supprimer "${getCleanHolidayName(holidayToDelete || '')}" ?`}
                 confirmLabel="Supprimer"
                 isDanger={true}
                 onConfirm={confirmDeleteHoliday}

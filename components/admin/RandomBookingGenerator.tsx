@@ -130,9 +130,13 @@ const RandomBookingGenerator: React.FC<{
         };
     
         const holidaysSet = new Set<string>();
-        settings.holidays.forEach(h => {
-            let d = new Date(h.startDate.replace(/-/g, '/'));
-            const endDate = new Date(h.endDate.replace(/-/g, '/'));
+        (settings.holidays || []).forEach(h => {
+            if (!h.startDate && !h.endDate) return;
+            const startStr = h.startDate || h.endDate;
+            const endStr = h.endDate || h.startDate;
+            let d = new Date(startStr.replace(/-/g, '/'));
+            const endDate = new Date(endStr.replace(/-/g, '/'));
+            if (isNaN(d.getTime()) || isNaN(endDate.getTime())) return;
             while (d <= endDate) {
                 holidaysSet.add(toYYYYMMDD(d));
                 d.setDate(d.getDate() + 1);

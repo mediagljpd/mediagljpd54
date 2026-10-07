@@ -21,10 +21,12 @@ export const isDateInHoliday = (date: Date | string, holidays?: Holiday[]): bool
   const time = d.getTime();
 
   return holidays.some(h => {
-    if (!h.startDate || !h.endDate) return false;
-    const s = new Date(h.startDate.replace(/-/g, '/'));
+    if (!h.startDate && !h.endDate) return false;
+    const startStr = h.startDate || h.endDate;
+    const endStr = h.endDate || h.startDate;
+    const s = new Date(startStr.replace(/-/g, '/'));
     s.setHours(0, 0, 0, 0);
-    const e = new Date(h.endDate.replace(/-/g, '/'));
+    const e = new Date(endStr.replace(/-/g, '/'));
     e.setHours(0, 0, 0, 0);
     return time >= s.getTime() && time <= e.getTime();
   });
@@ -46,8 +48,11 @@ export const getPostHolidayFirstDayStrings = (
   const validAllowedDays = allowedDays && allowedDays.length > 0 ? allowedDays : [2, 4];
 
   holidays.forEach(h => {
-    if (!h.endDate) return;
-    const end = new Date(h.endDate.replace(/-/g, '/'));
+    if (!h.endDate && !h.startDate) return;
+    // Les jours fériés d'une seule journée ne déclenchent pas la règle post-vacances
+    if (h.startDate && h.endDate && h.startDate === h.endDate) return;
+    const endStr = h.endDate || h.startDate;
+    const end = new Date(endStr.replace(/-/g, '/'));
     end.setHours(0, 0, 0, 0);
     if (isNaN(end.getTime())) return;
 

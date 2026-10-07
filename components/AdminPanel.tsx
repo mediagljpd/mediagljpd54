@@ -4,8 +4,9 @@ import ManageAnimations from './admin/ManageAnimations';
 import ManageCalendar from './admin/ManageCalendar';
 import ViewBookings from './admin/ViewBookings';
 import ManageSettings from './admin/ManageSettings';
+import ManageTransport from './admin/ManageTransport';
 import { AdminView } from './admin/types';
-import { SparklesIcon, CalendarIcon, ListIcon, CogIcon, CheckIcon, XIcon, ShieldCheckIcon, DownloadIcon, ArrowUturnLeftIcon } from './Icons';
+import { SparklesIcon, CalendarIcon, ListIcon, CogIcon, CheckIcon, XIcon, ShieldCheckIcon, DownloadIcon, ArrowUturnLeftIcon, BusIcon } from './Icons';
 import { db, auth } from '../services/firebase';
 import { signOut } from 'firebase/auth';
 import { AppContext } from '../AppContext';
@@ -62,6 +63,10 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         };
     }, [currentUser, settings.lastExportDate]);
 
+    const isBusManager = currentUser?.role === 'admin' || 
+                         !!currentUser?.permissions?.canManageBus || 
+                         currentUser?.username?.trim().toLowerCase() === 'aude';
+
     const renderView = () => {
         const props = { 
             showNotification,
@@ -77,6 +82,9 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             case 'animations': return <ManageAnimations {...props} />;
             case 'calendar': return <ManageCalendar {...props} />;
             case 'bookings': return <ViewBookings {...props} />;
+            case 'transport': 
+                if (!isBusManager) return <ManageAnimations {...props} />;
+                return <ManageTransport {...props} />;
             case 'settings': return <ManageSettings {...props} />;
             default: return <ManageAnimations {...props} />;
         }
@@ -212,6 +220,9 @@ const AdminPanel: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                        <NavLink view="animations" label="Animations" icon={<SparklesIcon className="w-6 h-6" />} />
                        <NavLink view="calendar" label="Calendrier" icon={<CalendarIcon className="w-6 h-6" />} />
                        <NavLink view="bookings" label="Réservations" icon={<ListIcon className="w-6 h-6" />} />
+                       {isBusManager && (
+                           <NavLink view="transport" label="Transport" icon={<BusIcon className="w-6 h-6" />} />
+                       )}
                        <NavLink view="settings" label="Paramètres" icon={<CogIcon className="w-6 h-6" />} />
                     </nav>
                 </div>

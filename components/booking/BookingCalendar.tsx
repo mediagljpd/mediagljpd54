@@ -2,7 +2,7 @@
 import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { AppContext } from '../../AppContext';
 import { Animation, Holiday, Booking, AnimatorSettings } from '../../types';
-import { toYYYYMMDD, getPostHolidayFirstDayStrings } from '../../utils/date';
+import { toYYYYMMDD, getPostHolidayFirstDayStrings, isDateInHoliday } from '../../utils/date';
 
 const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date, time: number) => void }> = ({ animation, onBookSlot }) => {
     const { bookings, settings, animations } = useContext(AppContext);
@@ -73,18 +73,6 @@ const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date,
         setCurrentDate(newDate);
     };
 
-    const isDateInHoliday = (date: Date, holidays: Holiday[]): boolean => {
-        const checkDate = new Date(date);
-        checkDate.setHours(0, 0, 0, 0);
-        return (holidays || []).some(h => {
-            if (!h.startDate || !h.endDate) return false;
-            const startDate = new Date(h.startDate.replace(/-/g, '/'));
-            startDate.setHours(0, 0, 0, 0);
-            const endDate = new Date(h.endDate.replace(/-/g, '/'));
-            endDate.setHours(0, 0, 0, 0);
-            return checkDate >= startDate && checkDate <= endDate;
-        });
-    };
 
     const animationAnimatorMap = useMemo(() => {
         return animations.reduce((acc, anim) => {

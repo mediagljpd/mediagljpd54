@@ -7,7 +7,7 @@ import { AdminSubComponentProps } from './types';
 import { storageService } from '../../services/storageService';
 import { backupService } from '../../services/backupService';
 import ConfirmationModal from '../shared/ConfirmationModal';
-import { PaintBrushIcon, PaletteIcon, CogIcon, BellIcon, ClockIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, InformationCircleIcon, SendIcon, ArrowUturnLeftIcon } from '../Icons';
+import { PaintBrushIcon, PaletteIcon, CogIcon, BellIcon, ClockIcon, CalendarDaysIcon, PlusCircleIcon, PencilIcon, CheckIcon, XIcon, TrashIcon, DatabaseIcon, MapPinIcon, AcademicCapIcon, BuildingLibraryIcon, ListIcon, UserGroupIcon, ViewGridIcon, SortAscIcon, SortDescIcon, DownloadIcon, ShieldCheckIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, InformationCircleIcon, SendIcon, ArrowUturnLeftIcon, ArrowUpIcon, ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowsUpDownIcon, DragHandleIcon, SortIcon } from '../Icons';
 import * as XLSX from 'xlsx';
 import { validatePassword } from '../../utils/validators';
 import PasswordPolicy from './PasswordPolicy';
@@ -368,6 +368,13 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
     // Temp state for new time slot input
     const [newSlotTime, setNewSlotTime] = useState<string>('');
 
+    // States for drag & drop and filter in Data tab
+    const [draggedClassLevelIdx, setDraggedClassLevelIdx] = useState<number | null>(null);
+    const [draggedCommuneId, setDraggedCommuneId] = useState<string | null>(null);
+    const [draggedSchoolId, setDraggedSchoolId] = useState<string | null>(null);
+    const [schoolSearchQuery, setSchoolSearchQuery] = useState<string>('');
+    const [communeSearchQuery, setCommuneSearchQuery] = useState<string>('');
+
     const isInitializedRef = useRef(false);
     const prevSettingsRef = useRef<AppSettings>(settings);
 
@@ -589,12 +596,13 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
         });
     };
 
-    // Class Levels Handlers
+    // Class Levels Handlers (Ajout, suppression, tri et réorganisation)
     const handleAddClassLevel = (level: string) => {
-        if (!level || (formState.classLevels || []).includes(level)) return;
+        const trimmed = (level || '').trim();
+        if (!trimmed || (formState.classLevels || []).includes(trimmed)) return;
         setFormState({
             ...formState,
-            classLevels: [...(formState.classLevels || []), level]
+            classLevels: [...(formState.classLevels || []), trimmed]
         });
     };
 
@@ -605,7 +613,62 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
         });
     };
 
-    // Communes Handlers
+    const handleMoveClassLevel = (index: number, direction: 'left' | 'right') => {
+        const list = [...(formState.classLevels || [])];
+        const targetIndex = direction === 'left' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= list.length) return;
+        const temp = list[index];
+        list[index] = list[targetIndex];
+        list[targetIndex] = temp;
+        setFormState({ ...formState, classLevels: list });
+    };
+
+    const handleSortClassLevels = (mode: 'asc' | 'desc' | 'school') => {
+        const list = [...(formState.classLevels || [])];
+        if (mode === 'asc') {
+            list.sort((a, b) => a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' }));
+        } else if (mode === 'desc') {
+            list.sort((a, b) => b.localeCompare(a, 'fr', { numeric: true, sensitivity: 'base' }));
+        } else if (mode === 'school') {
+            const SCHOOL_LEVEL_PRIORITY: Record<string, number> = {
+                'TPS': 1, 'TOUTEPETITESECTION': 1,
+                'PS': 2, 'PETITESECTION': 2,
+                'MS': 3, 'MOYENNESECTION': 3,
+                'GS': 4, 'GRANDESECTION': 4,
+                'CP': 5, 'COURSPREPARATOIRE': 5,
+                'CE1': 6,
+                'CE2': 7,
+                'CM1': 8,
+                'CM2': 9,
+                '6EME': 10, '6EM': 10, '6E': 10, 'SIXIEME': 10,
+                '5EME': 11, '5EM': 11, '5E': 11, 'CINQUIEME': 11,
+                '4EME': 12, '4EM': 12, '4E': 12, 'QUATRIEME': 12,
+                '3EME': 13, '3EM': 13, '3E': 13, 'TROISIEME': 13,
+                '2NDE': 14, 'SECONDE': 14,
+                '1ERE': 15, 'PREMIERE': 15,
+                'TERM': 16, 'TERMINALE': 16
+            };
+            list.sort((a, b) => {
+                const normA = a.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
+                const normB = b.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, "");
+                const prioA = SCHOOL_LEVEL_PRIORITY[normA] ?? 99;
+                const prioB = SCHOOL_LEVEL_PRIORITY[normB] ?? 99;
+                if (prioA !== prioB) return prioA - prioB;
+                return a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' });
+            });
+        }
+        setFormState({ ...formState, classLevels: list });
+    };
+
+    const handleReorderClassLevelDrop = (draggedIndex: number, targetIndex: number) => {
+        if (draggedIndex === targetIndex) return;
+        const list = [...(formState.classLevels || [])];
+        const [moved] = list.splice(draggedIndex, 1);
+        list.splice(targetIndex, 0, moved);
+        setFormState({ ...formState, classLevels: list });
+    };
+
+    // Communes Handlers (Ajout, modification, suppression, tri et réorganisation)
     const handleAddCommune = () => {
         const newCommune = { id: Date.now().toString(), name: 'Nouvelle Commune', postalCode: '' };
         setFormState({
@@ -629,7 +692,42 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
         });
     };
 
-    // Schools Handlers
+    const handleMoveCommune = (index: number, direction: 'up' | 'down') => {
+        const list = [...(formState.communes || [])];
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= list.length) return;
+        const temp = list[index];
+        list[index] = list[targetIndex];
+        list[targetIndex] = temp;
+        setFormState({ ...formState, communes: list });
+    };
+
+    const handleSortCommunes = (mode: 'name-asc' | 'name-desc' | 'postal-asc' | 'postal-desc') => {
+        const list = [...(formState.communes || [])];
+        if (mode === 'name-asc') {
+            list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { numeric: true, sensitivity: 'base' }));
+        } else if (mode === 'name-desc') {
+            list.sort((a, b) => (b.name || '').localeCompare(a.name || '', 'fr', { numeric: true, sensitivity: 'base' }));
+        } else if (mode === 'postal-asc') {
+            list.sort((a, b) => (a.postalCode || '').localeCompare(b.postalCode || '', 'fr', { numeric: true }));
+        } else if (mode === 'postal-desc') {
+            list.sort((a, b) => (b.postalCode || '').localeCompare(a.postalCode || '', 'fr', { numeric: true }));
+        }
+        setFormState({ ...formState, communes: list });
+    };
+
+    const handleReorderCommuneDrop = (sourceId: string, targetId: string) => {
+        if (sourceId === targetId) return;
+        const list = [...(formState.communes || [])];
+        const sourceIndex = list.findIndex(c => c.id === sourceId);
+        const targetIndex = list.findIndex(c => c.id === targetId);
+        if (sourceIndex === -1 || targetIndex === -1) return;
+        const [moved] = list.splice(sourceIndex, 1);
+        list.splice(targetIndex, 0, moved);
+        setFormState({ ...formState, communes: list });
+    };
+
+    // Schools Handlers (Ajout, modification, suppression, tri et réorganisation)
     const handleAddSchool = (communeId: string) => {
         const newSchool = { id: Date.now().toString(), name: 'Nouvelle École', address: '', communeId };
         setFormState({
@@ -650,6 +748,80 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
             ...formState,
             schools: (formState.schools || []).filter(s => s.id !== id)
         });
+    };
+
+    const handleMoveSchool = (schoolId: string, direction: 'up' | 'down') => {
+        const allSchools = [...(formState.schools || [])];
+        const schoolIndex = allSchools.findIndex(s => s.id === schoolId);
+        if (schoolIndex === -1) return;
+        const school = allSchools[schoolIndex];
+
+        // Écoles de la même commune
+        const communeIndices = allSchools
+            .map((s, idx) => s.communeId === school.communeId ? idx : -1)
+            .filter(idx => idx !== -1);
+
+        const currentPos = communeIndices.indexOf(schoolIndex);
+        const targetPos = direction === 'up' ? currentPos - 1 : currentPos + 1;
+        if (targetPos < 0 || targetPos >= communeIndices.length) return;
+
+        const targetSchoolIndex = communeIndices[targetPos];
+        const temp = allSchools[schoolIndex];
+        allSchools[schoolIndex] = allSchools[targetSchoolIndex];
+        allSchools[targetSchoolIndex] = temp;
+
+        setFormState({ ...formState, schools: allSchools });
+    };
+
+    const handleReorderSchoolDrop = (sourceId: string, targetId: string) => {
+        if (sourceId === targetId) return;
+        const allSchools = [...(formState.schools || [])];
+        const sourceIndex = allSchools.findIndex(s => s.id === sourceId);
+        const targetIndex = allSchools.findIndex(s => s.id === targetId);
+        if (sourceIndex === -1 || targetIndex === -1) return;
+
+        const [moved] = allSchools.splice(sourceIndex, 1);
+        const newTargetIndex = allSchools.findIndex(s => s.id === targetId);
+        allSchools.splice(newTargetIndex >= 0 ? newTargetIndex : targetIndex, 0, moved);
+
+        setFormState({ ...formState, schools: allSchools });
+    };
+
+    const handleSortSchoolsInCommune = (communeId: string, mode: 'asc' | 'desc' = 'asc') => {
+        const allSchools = [...(formState.schools || [])];
+        const communeSchools = allSchools.filter(s => s.communeId === communeId);
+        communeSchools.sort((a, b) => {
+            const cmp = (a.name || '').localeCompare(b.name || '', 'fr', { numeric: true, sensitivity: 'base' });
+            return mode === 'asc' ? cmp : -cmp;
+        });
+
+        let cIdx = 0;
+        const newSchools = allSchools.map(s => {
+            if (s.communeId === communeId) {
+                return communeSchools[cIdx++];
+            }
+            return s;
+        });
+
+        setFormState({ ...formState, schools: newSchools });
+    };
+
+    const handleSortAllSchools = (mode: 'name-asc' | 'commune-then-name' = 'commune-then-name') => {
+        const allSchools = [...(formState.schools || [])];
+        if (mode === 'name-asc') {
+            allSchools.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { numeric: true, sensitivity: 'base' }));
+        } else if (mode === 'commune-then-name') {
+            const communeOrderMap = new Map<string, number>();
+            (formState.communes || []).forEach((c, idx) => communeOrderMap.set(c.id, idx));
+
+            allSchools.sort((a, b) => {
+                const commOrderA = communeOrderMap.has(a.communeId) ? communeOrderMap.get(a.communeId)! : 9999;
+                const commOrderB = communeOrderMap.has(b.communeId) ? communeOrderMap.get(b.communeId)! : 9999;
+                if (commOrderA !== commOrderB) return commOrderA - commOrderB;
+                return (a.name || '').localeCompare(b.name || '', 'fr', { numeric: true, sensitivity: 'base' });
+            });
+        }
+        setFormState({ ...formState, schools: allSchools });
     };
 
     // Info Pages Handlers
@@ -1528,31 +1700,142 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                         </div>
 
                                         {/* Niveaux de classe */}
-                                        <div className="p-6 bg-blue-50/30 rounded-2xl border border-blue-100">
-                                            <h4 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
-                                                <AcademicCapIcon className="w-5 h-5" />
-                                                Niveaux de classe
-                                            </h4>
-                                            <div className="flex flex-wrap gap-2 mb-4">
-                                                {(formState.classLevels || []).map(level => (
-                                                    <div key={level} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-blue-200 rounded-lg shadow-sm">
-                                                        <span className="font-bold text-blue-700">{level}</span>
-                                                        <button 
-                                                            type="button" 
-                                                            onClick={() => handleRemoveClassLevel(level)}
-                                                            className="text-gray-400 hover:text-red-500 transition-colors"
-                                                        >
-                                                            <TrashIcon className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                ))}
+                                        <div className="p-6 bg-blue-50/30 rounded-2xl border border-blue-100 space-y-4">
+                                            <div className="flex flex-wrap justify-between items-center gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="font-bold text-blue-900 flex items-center gap-2">
+                                                        <AcademicCapIcon className="w-5 h-5 text-blue-600" />
+                                                        Niveaux de classe
+                                                    </h4>
+                                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">
+                                                        {(formState.classLevels || []).length} niveaux
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    <span className="text-[11px] font-bold text-gray-500 mr-1 flex items-center gap-1">
+                                                        <SortIcon className="w-3.5 h-3.5" />
+                                                        Tri auto :
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSortClassLevels('school')}
+                                                        className="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold shadow-2xs transition-colors flex items-center gap-1"
+                                                        title="Trier selon le parcours scolaire standard (TPS, PS, MS, GS, CP, CE1, CE2, CM1, CM2, 6e...)"
+                                                    >
+                                                        <AcademicCapIcon className="w-3.5 h-3.5" />
+                                                        Ordre scolaire
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSortClassLevels('asc')}
+                                                        className="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold shadow-2xs transition-colors flex items-center gap-1"
+                                                        title="Trier par ordre alphabétique croissant"
+                                                    >
+                                                        <SortAscIcon className="w-3.5 h-3.5" />
+                                                        A → Z
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSortClassLevels('desc')}
+                                                        className="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold shadow-2xs transition-colors flex items-center gap-1"
+                                                        title="Trier par ordre alphabétique décroissant"
+                                                    >
+                                                        <SortDescIcon className="w-3.5 h-3.5" />
+                                                        Z → A
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div className="flex gap-2 max-w-xs">
+
+                                            <p className="text-xs text-blue-800/80">
+                                                L'ordre ci-dessous est celui affiché aux enseignants lors de la réservation. Réorganisez manuellement par glisser-déposer ou avec les flèches <span className="font-semibold">← / →</span>.
+                                            </p>
+
+                                            <div className="flex flex-wrap gap-2.5 min-h-[46px] p-2 bg-white/70 rounded-xl border border-blue-100">
+                                                {(formState.classLevels || []).length === 0 ? (
+                                                    <p className="text-xs text-gray-400 italic py-1">Aucun niveau de classe défini.</p>
+                                                ) : (
+                                                    (formState.classLevels || []).map((level, idx) => {
+                                                        const isFirst = idx === 0;
+                                                        const isLast = idx === (formState.classLevels || []).length - 1;
+                                                        const isDragging = draggedClassLevelIdx === idx;
+                                                        return (
+                                                            <div
+                                                                key={level}
+                                                                draggable
+                                                                onDragStart={(e) => {
+                                                                    setDraggedClassLevelIdx(idx);
+                                                                    e.dataTransfer.effectAllowed = 'move';
+                                                                }}
+                                                                onDragOver={(e) => e.preventDefault()}
+                                                                onDrop={(e) => {
+                                                                    e.preventDefault();
+                                                                    if (draggedClassLevelIdx !== null) {
+                                                                        handleReorderClassLevelDrop(draggedClassLevelIdx, idx);
+                                                                        setDraggedClassLevelIdx(null);
+                                                                    }
+                                                                }}
+                                                                onDragEnd={() => setDraggedClassLevelIdx(null)}
+                                                                className={`group flex items-center gap-1.5 px-2.5 py-1.5 bg-white border rounded-lg shadow-2xs transition-all select-none ${
+                                                                    isDragging
+                                                                        ? 'opacity-30 ring-2 ring-blue-500 border-blue-500 scale-95'
+                                                                        : 'border-blue-200 hover:border-blue-400 hover:shadow-xs'
+                                                                }`}
+                                                            >
+                                                                <span
+                                                                    className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-blue-600 transition-colors p-0.5"
+                                                                    title="Glisser pour réorganiser"
+                                                                >
+                                                                    <DragHandleIcon className="w-3.5 h-3.5" />
+                                                                </span>
+                                                                <span className="text-[10px] font-mono font-bold text-gray-400">
+                                                                    #{idx + 1}
+                                                                </span>
+                                                                <span className="font-bold text-blue-900 text-sm px-1">
+                                                                    {level}
+                                                                </span>
+                                                                
+                                                                {/* Flèches de déplacement manuel */}
+                                                                <div className="flex items-center ml-1 border-l border-gray-100 pl-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={isFirst}
+                                                                        onClick={() => handleMoveClassLevel(idx, 'left')}
+                                                                        className="p-1 text-gray-400 hover:text-blue-700 disabled:opacity-20 disabled:hover:text-gray-400 transition-colors"
+                                                                        title="Déplacer vers la gauche"
+                                                                    >
+                                                                        <ArrowLeftIcon className="w-3 h-3" />
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={isLast}
+                                                                        onClick={() => handleMoveClassLevel(idx, 'right')}
+                                                                        className="p-1 text-gray-400 hover:text-blue-700 disabled:opacity-20 disabled:hover:text-gray-400 transition-colors"
+                                                                        title="Déplacer vers la droite"
+                                                                    >
+                                                                        <ArrowRightIcon className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+
+                                                                <button 
+                                                                    type="button" 
+                                                                    onClick={() => handleRemoveClassLevel(level)}
+                                                                    className="p-1 text-gray-300 hover:text-red-500 transition-colors ml-0.5"
+                                                                    title="Supprimer ce niveau"
+                                                                >
+                                                                    <TrashIcon className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+
+                                            <div className="flex gap-2 max-w-sm pt-1">
                                                 <input 
                                                     type="text" 
                                                     id="newClassLevel"
-                                                    placeholder="Nouveau niveau (ex: MS)"
-                                                    className="flex-grow px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                                    placeholder="Nouveau niveau (ex: TPS, PS, MS, 6e...)"
+                                                    className="flex-grow px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter') {
                                                             e.preventDefault();
@@ -1565,10 +1848,12 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                                     type="button" 
                                                     onClick={() => {
                                                         const input = document.getElementById('newClassLevel') as HTMLInputElement;
-                                                        handleAddClassLevel(input.value);
-                                                        input.value = '';
+                                                        if (input) {
+                                                            handleAddClassLevel(input.value);
+                                                            input.value = '';
+                                                        }
                                                     }}
-                                                    className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700"
+                                                    className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 shadow-xs transition-colors shrink-0"
                                                 >
                                                     Ajouter
                                                 </button>
@@ -1576,132 +1861,515 @@ const ManageSettings: React.FC<AdminSubComponentProps> = ({
                                         </div>
 
                                         {/* Communes */}
-                                        <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
-                                            <div className="flex justify-between items-center mb-4">
-                                                <h4 className="font-bold text-gray-800 flex items-center gap-2">
-                                                    <MapPinIcon className="w-5 h-5 text-red-500" />
-                                                    Communes
-                                                </h4>
-                                                <div className="flex gap-3 items-center">
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        <label className="cursor-pointer px-4 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors text-xs font-bold flex items-center gap-2">
-                                                            <PlusCircleIcon className="w-4 h-4" />
-                                                            Importer Excel
-                                                            <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportCommunes} />
-                                                        </label>
-                                                        <span className="text-[9px] text-gray-400 italic">Colonne attendue : "Communes"</span>
+                                        <div className="p-6 bg-gray-50 rounded-2xl border border-gray-200 space-y-4">
+                                            <div className="flex flex-wrap justify-between items-center gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                                                        <MapPinIcon className="w-5 h-5 text-red-500" />
+                                                        Communes
+                                                    </h4>
+                                                    <span className="px-2.5 py-0.5 bg-gray-200 text-gray-700 text-xs font-bold rounded-full">
+                                                        {(formState.communes || []).length} communes
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 shadow-2xs">
+                                                        <span className="text-[11px] font-bold text-gray-500 px-1.5 flex items-center gap-1">
+                                                            <SortIcon className="w-3.5 h-3.5" />
+                                                            Trier :
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSortCommunes('name-asc')}
+                                                            className="px-2 py-1 bg-gray-50 hover:bg-blue-50 text-gray-700 hover:text-blue-700 rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                                                            title="Trier les communes par nom de A à Z"
+                                                        >
+                                                            <SortAscIcon className="w-3.5 h-3.5" />
+                                                            Nom A-Z
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSortCommunes('name-desc')}
+                                                            className="px-2 py-1 bg-gray-50 hover:bg-blue-50 text-gray-700 hover:text-blue-700 rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                                                            title="Trier les communes par nom de Z à A"
+                                                        >
+                                                            <SortDescIcon className="w-3.5 h-3.5" />
+                                                            Nom Z-A
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSortCommunes('postal-asc')}
+                                                            className="px-2 py-1 bg-gray-50 hover:bg-blue-50 text-gray-700 hover:text-blue-700 rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                                                            title="Trier les communes par code postal croissant"
+                                                        >
+                                                            <ArrowsUpDownIcon className="w-3.5 h-3.5" />
+                                                            Code Postal
+                                                        </button>
                                                     </div>
+
+                                                    <label className="cursor-pointer px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+                                                        <PlusCircleIcon className="w-4 h-4" />
+                                                        Importer Excel
+                                                        <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportCommunes} />
+                                                    </label>
+
                                                     <button 
                                                         type="button" 
                                                         onClick={handleAddCommune}
-                                                        className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-xs font-bold"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-bold shadow-2xs"
                                                     >
                                                         <PlusCircleIcon className="w-4 h-4" />
-                                                        Ajouter manuellement
+                                                        Ajouter une commune
                                                     </button>
                                                 </div>
                                             </div>
-                                            
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto p-1">
-                                                {(formState.communes || []).map(commune => (
-                                                    <div key={commune.id} className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm relative group">
-                                                        <button 
-                                                            type="button" 
-                                                            onClick={() => handleRemoveCommune(commune.id)}
-                                                            className="absolute top-2 right-2 p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                                                        >
-                                                            <TrashIcon className="w-4 h-4" />
-                                                        </button>
-                                                        <div className="space-y-3">
-                                                            <div>
-                                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Nom de la commune</label>
-                                                                <input 
-                                                                    type="text" 
-                                                                    value={commune.name} 
-                                                                    onChange={(e) => handleUpdateCommune(commune.id, 'name', e.target.value)}
-                                                                    className="w-full px-2 py-1 border rounded text-sm font-semibold"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="text-[10px] font-bold text-gray-400 uppercase">Code Postal</label>
-                                                                <input 
-                                                                    type="text" 
-                                                                    value={commune.postalCode} 
-                                                                    onChange={(e) => handleUpdateCommune(commune.id, 'postalCode', e.target.value)}
-                                                                    className="w-full px-2 py-1 border rounded text-sm font-mono"
-                                                                />
-                                                            </div>
-                                                        </div>
+
+                                            <div className="flex flex-wrap justify-between items-center gap-3">
+                                                <p className="text-xs text-gray-500">
+                                                    L'ordre des communes détermine leur disposition dans le formulaire public. Utilisez les flèches <span className="font-semibold">↑ / ↓</span> ou le glisser-déposer pour changer leur position.
+                                                </p>
+                                                {(formState.communes || []).length > 6 && (
+                                                    <div className="w-64">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Filtrer les communes..."
+                                                            value={communeSearchQuery}
+                                                            onChange={(e) => setCommuneSearchQuery(e.target.value)}
+                                                            className="w-full px-3 py-1 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                                                        />
                                                     </div>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        {/* Écoles */}
-                                        <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
-                                            <div className="flex justify-between items-center mb-4">
-                                                <h4 className="font-bold text-gray-800 flex items-center gap-2">
-                                                    <BuildingLibraryIcon className="w-5 h-5 text-indigo-500" />
-                                                    Écoles
-                                                </h4>
-                                                <div className="flex flex-col items-end gap-1">
-                                                    <label className="cursor-pointer px-4 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors text-xs font-bold flex items-center gap-2">
-                                                        <PlusCircleIcon className="w-4 h-4" />
-                                                        Importer Excel
-                                                        <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportSchools} />
-                                                    </label>
-                                                    <span className="text-[9px] text-gray-400 italic">Colonnes attendues : "Ecoles", "Communes", "Adresses"</span>
-                                                </div>
+                                                )}
                                             </div>
 
-                                            <div className="space-y-6">
-                                                {(formState.communes || []).map(commune => (
-                                                    <div key={commune.id} className="space-y-3">
-                                                        <div className="flex items-center justify-between border-b pb-2">
-                                                            <h5 className="font-bold text-gray-700">{commune.name} ({commune.postalCode})</h5>
-                                                            <button 
-                                                                type="button" 
-                                                                onClick={() => handleAddSchool(commune.id)}
-                                                                className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                                                            >
-                                                                <PlusCircleIcon className="w-3 h-3" />
-                                                                Ajouter une école
-                                                            </button>
-                                                        </div>
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                            {(formState.schools || []).filter(s => s.communeId === commune.id).map(school => (
-                                                                <div key={school.id} className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm relative group">
-                                                                    <button 
-                                                                        type="button" 
-                                                                        onClick={() => handleRemoveSchool(school.id)}
-                                                                        className="absolute top-2 right-2 p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                                                                    >
-                                                                        <TrashIcon className="w-4 h-4" />
-                                                                    </button>
+                                            {communeSearchQuery && (
+                                                <p className="text-xs text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                                                    Filtrage actif. Effacez le filtre pour utiliser la réorganisation par glisser-déposer.
+                                                </p>
+                                            )}
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[460px] overflow-y-auto p-1">
+                                                {(formState.communes || []).length === 0 ? (
+                                                    <div className="col-span-full py-8 text-center text-gray-400 italic bg-white rounded-xl border border-dashed border-gray-300">
+                                                        Aucune commune enregistrée. Cliquez sur "Ajouter une commune" ou importez un fichier Excel.
+                                                    </div>
+                                                ) : (
+                                                    (formState.communes || [])
+                                                        .map((commune, cIdx) => ({ commune, originalIndex: cIdx }))
+                                                        .filter(({ commune }) => {
+                                                            if (!communeSearchQuery.trim()) return true;
+                                                            const query = communeSearchQuery.toLowerCase();
+                                                            return (commune.name || '').toLowerCase().includes(query) || (commune.postalCode || '').includes(query);
+                                                        })
+                                                        .map(({ commune, originalIndex }) => {
+                                                            const totalCommunes = (formState.communes || []).length;
+                                                            const isFirst = originalIndex === 0;
+                                                            const isLast = originalIndex === totalCommunes - 1;
+                                                            const isDragging = draggedCommuneId === commune.id;
+                                                            const schoolCount = (formState.schools || []).filter(s => s.communeId === commune.id).length;
+
+                                                            return (
+                                                                <div 
+                                                                    key={commune.id}
+                                                                    draggable={!communeSearchQuery}
+                                                                    onDragStart={(e) => {
+                                                                        if (communeSearchQuery) return;
+                                                                        setDraggedCommuneId(commune.id);
+                                                                        e.dataTransfer.effectAllowed = 'move';
+                                                                    }}
+                                                                    onDragOver={(e) => e.preventDefault()}
+                                                                    onDrop={(e) => {
+                                                                        e.preventDefault();
+                                                                        if (draggedCommuneId) {
+                                                                            handleReorderCommuneDrop(draggedCommuneId, commune.id);
+                                                                            setDraggedCommuneId(null);
+                                                                        }
+                                                                    }}
+                                                                    onDragEnd={() => setDraggedCommuneId(null)}
+                                                                    className={`p-4 bg-white rounded-xl border shadow-2xs relative group transition-all ${
+                                                                        isDragging
+                                                                            ? 'opacity-30 ring-2 ring-blue-500 border-blue-500 scale-98'
+                                                                            : 'border-gray-200 hover:border-gray-300 hover:shadow-xs'
+                                                                    }`}
+                                                                >
+                                                                    {/* Barre supérieure de la carte avec poignée, numéro d'ordre et boutons de déplacement */}
+                                                                    <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-gray-100">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span 
+                                                                                className={`p-0.5 text-gray-300 hover:text-gray-700 transition-colors ${
+                                                                                    !communeSearchQuery ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
+                                                                                }`}
+                                                                                title={!communeSearchQuery ? "Glisser pour réorganiser l'ordre" : ""}
+                                                                            >
+                                                                                <DragHandleIcon className="w-4 h-4" />
+                                                                            </span>
+                                                                            <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs font-mono font-bold rounded">
+                                                                                #{originalIndex + 1}
+                                                                            </span>
+                                                                            <span className="text-[11px] text-gray-400 font-medium ml-1">
+                                                                                {schoolCount} école{schoolCount > 1 ? 's' : ''}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        <div className="flex items-center gap-1">
+                                                                            {/* Boutons flèches haut / bas */}
+                                                                            <button
+                                                                                type="button"
+                                                                                disabled={isFirst}
+                                                                                onClick={() => handleMoveCommune(originalIndex, 'up')}
+                                                                                className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-20 disabled:hover:text-gray-400 rounded transition-colors"
+                                                                                title="Déplacer vers le haut"
+                                                                            >
+                                                                                <ArrowUpIcon className="w-3.5 h-3.5" />
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                disabled={isLast}
+                                                                                onClick={() => handleMoveCommune(originalIndex, 'down')}
+                                                                                className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-20 disabled:hover:text-gray-400 rounded transition-colors"
+                                                                                title="Déplacer vers le bas"
+                                                                            >
+                                                                                <ArrowDownIcon className="w-3.5 h-3.5" />
+                                                                            </button>
+                                                                            <button 
+                                                                                type="button" 
+                                                                                onClick={() => handleRemoveCommune(commune.id)}
+                                                                                className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors ml-1"
+                                                                                title="Supprimer cette commune et ses écoles rattachées"
+                                                                            >
+                                                                                <TrashIcon className="w-4 h-4" />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+
                                                                     <div className="space-y-3">
                                                                         <div>
-                                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Nom de l'école</label>
+                                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Nom de la commune</label>
                                                                             <input 
                                                                                 type="text" 
-                                                                                value={school.name} 
-                                                                                onChange={(e) => handleUpdateSchool(school.id, 'name', e.target.value)}
-                                                                                className="w-full px-2 py-1 border rounded text-sm font-semibold"
+                                                                                draggable={false}
+                                                                                onDragStart={(e) => e.stopPropagation()}
+                                                                                value={commune.name} 
+                                                                                onChange={(e) => handleUpdateCommune(commune.id, 'name', e.target.value)}
+                                                                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
                                                                             />
                                                                         </div>
                                                                         <div>
-                                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Adresse</label>
-                                                                            <textarea 
-                                                                                value={school.address} 
-                                                                                onChange={(e) => handleUpdateSchool(school.id, 'address', e.target.value)}
-                                                                                className="w-full px-2 py-1 border rounded text-sm h-16"
+                                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Code Postal</label>
+                                                                            <input 
+                                                                                type="text" 
+                                                                                draggable={false}
+                                                                                onDragStart={(e) => e.stopPropagation()}
+                                                                                value={commune.postalCode} 
+                                                                                onChange={(e) => handleUpdateCommune(commune.id, 'postalCode', e.target.value)}
+                                                                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
                                                                             />
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                            ))}
-                                                        </div>
+                                                            );
+                                                        })
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Écoles */}
+                                        <div className="p-6 bg-gray-50 rounded-2xl border border-gray-200 space-y-5">
+                                            <div className="flex flex-wrap justify-between items-center gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                                                        <BuildingLibraryIcon className="w-5 h-5 text-indigo-500" />
+                                                        Écoles
+                                                    </h4>
+                                                    <span className="px-2.5 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">
+                                                        {(formState.schools || []).length} écoles au total
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 shadow-2xs">
+                                                        <span className="text-[11px] font-bold text-gray-500 px-1.5 flex items-center gap-1">
+                                                            <SortIcon className="w-3.5 h-3.5" />
+                                                            Tri global :
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSortAllSchools('commune-then-name')}
+                                                            className="px-2 py-1 bg-gray-50 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                                                            title="Ordonner les écoles selon l'ordre des communes puis nom d'école A-Z"
+                                                        >
+                                                            <SortIcon className="w-3.5 h-3.5" />
+                                                            Commune + Nom A-Z
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSortAllSchools('name-asc')}
+                                                            className="px-2 py-1 bg-gray-50 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                                                            title="Trier toutes les écoles par ordre alphabétique"
+                                                        >
+                                                            <SortAscIcon className="w-3.5 h-3.5" />
+                                                            Toutes les écoles A-Z
+                                                        </button>
                                                     </div>
-                                                ))}
+
+                                                    <label className="cursor-pointer px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+                                                        <PlusCircleIcon className="w-4 h-4" />
+                                                        Importer Excel
+                                                        <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportSchools} />
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-wrap justify-between items-center gap-3">
+                                                <p className="text-xs text-gray-500">
+                                                    Les écoles sont regroupées par commune de rattachement. Vous pouvez trier et réordonner chaque liste d'école avec les boutons <span className="font-semibold">↑ / ↓</span> ou par glisser-déposer.
+                                                </p>
+                                                <div className="w-72">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Rechercher une école, adresse..."
+                                                        value={schoolSearchQuery}
+                                                        onChange={(e) => setSchoolSearchQuery(e.target.value)}
+                                                        className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Liste des communes avec leurs écoles respectives */}
+                                            <div className="space-y-6">
+                                                {(formState.communes || []).length === 0 ? (
+                                                    <div className="py-8 text-center text-gray-400 italic bg-white rounded-xl border border-dashed border-gray-300">
+                                                        Veuillez d'abord ajouter au moins une commune ci-dessus avant de pouvoir rattacher des écoles.
+                                                    </div>
+                                                ) : (
+                                                    (formState.communes || []).map((commune) => {
+                                                        const communeSchools = (formState.schools || []).filter(s => s.communeId === commune.id);
+                                                        const filteredSchools = communeSchools.filter(school => {
+                                                            if (!schoolSearchQuery.trim()) return true;
+                                                            const query = schoolSearchQuery.toLowerCase();
+                                                            return (school.name || '').toLowerCase().includes(query) || (school.address || '').toLowerCase().includes(query);
+                                                        });
+
+                                                        if (schoolSearchQuery && filteredSchools.length === 0) {
+                                                            return null;
+                                                        }
+
+                                                        return (
+                                                            <div key={commune.id} className="p-4 bg-white/80 rounded-xl border border-gray-200 shadow-2xs space-y-3">
+                                                                <div className="flex flex-wrap items-center justify-between pb-2 border-b border-gray-100 gap-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <h5 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                                                                            <MapPinIcon className="w-4 h-4 text-red-500" />
+                                                                            {commune.name} <span className="text-gray-400 font-normal">({commune.postalCode || 'CP non renseigné'})</span>
+                                                                        </h5>
+                                                                        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[11px] font-bold rounded-full">
+                                                                            {communeSchools.length} école{communeSchools.length > 1 ? 's' : ''}
+                                                                        </span>
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-2">
+                                                                        {communeSchools.length > 1 && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleSortSchoolsInCommune(commune.id, 'asc')}
+                                                                                className="px-2 py-1 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-md text-xs font-medium flex items-center gap-1 shadow-2xs transition-colors"
+                                                                                title="Trier uniquement les écoles de cette commune de A à Z"
+                                                                            >
+                                                                                <SortAscIcon className="w-3.5 h-3.5 text-indigo-600" />
+                                                                                Trier A-Z
+                                                                            </button>
+                                                                        )}
+                                                                        <button 
+                                                                            type="button" 
+                                                                            onClick={() => handleAddSchool(commune.id)}
+                                                                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md text-xs font-bold flex items-center gap-1 transition-colors"
+                                                                        >
+                                                                            <PlusCircleIcon className="w-3.5 h-3.5" />
+                                                                            Ajouter une école
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+
+                                                                {communeSchools.length === 0 ? (
+                                                                    <p className="text-xs text-gray-400 italic py-3 text-center">
+                                                                        Aucune école rattachée à {commune.name}. Cliquez sur "Ajouter une école" pour en enregistrer une.
+                                                                    </p>
+                                                                ) : (
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                                                                        {filteredSchools.map((school) => {
+                                                                            const schoolIndexInCommune = communeSchools.findIndex(s => s.id === school.id);
+                                                                            const isFirst = schoolIndexInCommune === 0;
+                                                                            const isLast = schoolIndexInCommune === communeSchools.length - 1;
+                                                                            const isDragging = draggedSchoolId === school.id;
+
+                                                                            return (
+                                                                                <div 
+                                                                                    key={school.id}
+                                                                                    draggable={!schoolSearchQuery}
+                                                                                    onDragStart={(e) => {
+                                                                                        if (schoolSearchQuery) return;
+                                                                                        setDraggedSchoolId(school.id);
+                                                                                        e.dataTransfer.effectAllowed = 'move';
+                                                                                    }}
+                                                                                    onDragOver={(e) => e.preventDefault()}
+                                                                                    onDrop={(e) => {
+                                                                                        e.preventDefault();
+                                                                                        if (draggedSchoolId) {
+                                                                                            handleReorderSchoolDrop(draggedSchoolId, school.id);
+                                                                                            setDraggedSchoolId(null);
+                                                                                        }
+                                                                                    }}
+                                                                                    onDragEnd={() => setDraggedSchoolId(null)}
+                                                                                    className={`p-3.5 bg-white rounded-xl border shadow-2xs relative group transition-all ${
+                                                                                        isDragging 
+                                                                                            ? 'opacity-30 ring-2 ring-indigo-500 border-indigo-500 scale-98' 
+                                                                                            : 'border-gray-200 hover:border-gray-300 hover:shadow-xs'
+                                                                                    }`}
+                                                                                >
+                                                                                    {/* En-tête de carte école avec numéro, flèches haut/bas et supprimer */}
+                                                                                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100">
+                                                                                        <div className="flex items-center gap-1.5">
+                                                                                            <span 
+                                                                                                className={`p-0.5 text-gray-300 hover:text-gray-700 transition-colors ${
+                                                                                                    !schoolSearchQuery ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
+                                                                                                }`}
+                                                                                                title={!schoolSearchQuery ? "Glisser pour réorganiser dans cette commune" : ""}
+                                                                                            >
+                                                                                                <DragHandleIcon className="w-3.5 h-3.5" />
+                                                                                            </span>
+                                                                                            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-mono font-bold rounded">
+                                                                                                #{schoolIndexInCommune + 1}
+                                                                                            </span>
+                                                                                        </div>
+
+                                                                                        <div className="flex items-center gap-1">
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                disabled={isFirst}
+                                                                                                onClick={() => handleMoveSchool(school.id, 'up')}
+                                                                                                className="p-1 text-gray-400 hover:text-indigo-600 disabled:opacity-20 disabled:hover:text-gray-400 rounded transition-colors"
+                                                                                                title="Déplacer l'école vers le haut"
+                                                                                            >
+                                                                                                <ArrowUpIcon className="w-3.5 h-3.5" />
+                                                                                            </button>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                disabled={isLast}
+                                                                                                onClick={() => handleMoveSchool(school.id, 'down')}
+                                                                                                className="p-1 text-gray-400 hover:text-indigo-600 disabled:opacity-20 disabled:hover:text-gray-400 rounded transition-colors"
+                                                                                                title="Déplacer l'école vers le bas"
+                                                                                            >
+                                                                                                <ArrowDownIcon className="w-3.5 h-3.5" />
+                                                                                            </button>
+                                                                                            <button 
+                                                                                                type="button" 
+                                                                                                onClick={() => handleRemoveSchool(school.id)}
+                                                                                                className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors ml-1"
+                                                                                                title="Supprimer cette école"
+                                                                                            >
+                                                                                                <TrashIcon className="w-3.5 h-3.5" />
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <div className="space-y-2.5">
+                                                                                        <div>
+                                                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Nom de l'école</label>
+                                                                                            <input 
+                                                                                                type="text" 
+                                                                                                draggable={false}
+                                                                                                onDragStart={(e) => e.stopPropagation()}
+                                                                                                value={school.name} 
+                                                                                                onChange={(e) => handleUpdateSchool(school.id, 'name', e.target.value)}
+                                                                                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                                                            />
+                                                                                        </div>
+
+                                                                                        <div>
+                                                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Commune de rattachement</label>
+                                                                                            <select
+                                                                                                draggable={false}
+                                                                                                onDragStart={(e) => e.stopPropagation()}
+                                                                                                value={school.communeId}
+                                                                                                onChange={(e) => handleUpdateSchool(school.id, 'communeId', e.target.value)}
+                                                                                                className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                                                            >
+                                                                                                {(formState.communes || []).map(c => (
+                                                                                                    <option key={c.id} value={c.id}>
+                                                                                                        {c.name} ({c.postalCode})
+                                                                                                    </option>
+                                                                                                ))}
+                                                                                            </select>
+                                                                                        </div>
+
+                                                                                        <div>
+                                                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Adresse</label>
+                                                                                            <textarea 
+                                                                                                draggable={false}
+                                                                                                onDragStart={(e) => e.stopPropagation()}
+                                                                                                value={school.address} 
+                                                                                                onChange={(e) => handleUpdateSchool(school.id, 'address', e.target.value)}
+                                                                                                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs h-14 resize-y focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                                                            />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+
+                                                {/* Écoles orphelines (sans commune valide rattachée) */}
+                                                {(() => {
+                                                    const orphanSchools = (formState.schools || []).filter(s => !(formState.communes || []).some(c => c.id === s.communeId));
+                                                    if (orphanSchools.length === 0) return null;
+                                                    return (
+                                                        <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-bold text-amber-900 text-sm">
+                                                                    ⚠️ Écoles sans commune assignée ({orphanSchools.length})
+                                                                </span>
+                                                                <span className="text-xs text-amber-700">
+                                                                    Veuillez leur assigner une commune existante ci-dessous.
+                                                                </span>
+                                                            </div>
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                {orphanSchools.map(school => (
+                                                                    <div key={school.id} className="p-3 bg-white rounded-lg border border-amber-200 shadow-2xs space-y-2">
+                                                                        <div className="flex justify-between items-center">
+                                                                            <span className="font-bold text-gray-800 text-sm">{school.name}</span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleRemoveSchool(school.id)}
+                                                                                className="text-gray-400 hover:text-red-500"
+                                                                                title="Supprimer cette école"
+                                                                            >
+                                                                                <TrashIcon className="w-4 h-4" />
+                                                                            </button>
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Attribuer à une commune :</label>
+                                                                            <select
+                                                                                value={school.communeId}
+                                                                                onChange={(e) => handleUpdateSchool(school.id, 'communeId', e.target.value)}
+                                                                                className="w-full px-2 py-1 border rounded text-xs mt-1"
+                                                                            >
+                                                                                <option value="">Sélectionnez une commune...</option>
+                                                                                {(formState.communes || []).map(c => (
+                                                                                    <option key={c.id} value={c.id}>
+                                                                                        {c.name} ({c.postalCode})
+                                                                                    </option>
+                                                                                ))}
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                         </div>
                                     </div>

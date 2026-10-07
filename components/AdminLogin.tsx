@@ -49,7 +49,8 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBac
           permissions: {
             canModifySettings: true,
             canManageVacations: true,
-            canManageAnimations: true
+            canManageAnimations: true,
+            canManageBus: true
           }
         });
         onLoginSuccess();
