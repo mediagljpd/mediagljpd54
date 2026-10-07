@@ -1,77 +1,68 @@
 
-import { Animation, Booking, AppSettings } from '../types';
-import { db, handleFirestoreError } from './firebase';
-import { 
-  collection, 
-  setDoc, 
-  doc, 
-  deleteDoc
-} from "firebase/firestore";
+/**
+ * SERVICE DE STOCKAGE CLOUDINARY
+ * 
+ * Instructions :
+ * 1. Remplacez la valeur de CLOUDINARY_CLOUD_NAME par votre "Cloud Name" (ex: "djiw7uooc").
+ * 2. Remplacez la valeur de CLOUDINARY_UPLOAD_PRESET par votre "Upload Preset" non signé (ex: "ml_default").
+ */
 
-export const dataService = {
-  saveAnimation: async (animation: Animation) => {
-    if (!db) return;
-    try {
-        await setDoc(doc(db, "animations", animation.id), animation);
-    } catch (e) {
-        handleFirestoreError(e, 'write', `animations/${animation.id}`);
-    }
-  },
+const CLOUDINARY_CLOUD_NAME = "dq0m5r59m"; // <-- REMPLACER ICI
+const CLOUDINARY_UPLOAD_PRESET = "image_storage"; // <-- REMPLACER ICI
 
-  removeAnimation: async (id: string) => {
-    if (!db) return;
-    try {
-        await deleteDoc(doc(db, "animations", id));
-    } catch (e) {
-        handleFirestoreError(e, 'delete', `animations/${id}`);
-    }
-  },
-  
-  saveBooking: async (booking: Booking) => {
-    if (!db) return;
-    try {
-        await setDoc(doc(db, "bookings", booking.id), booking);
-    } catch (e) {
-        handleFirestoreError(e, 'write', `bookings/${booking.id}`);
-    }
-  },
+export const storageService = {
+    /**
+     * Upload un fichier vers Cloudinary et retourne l'URL publique durable
+     */
+    uploadFile: async (file: File, path: string): Promise<string> => {
+        // Validation simple du type
+        if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+            throw new Error("Le fichier doit être une image ou un document PDF.");
+        }
 
-  saveBookings: async (bookings: Booking[]) => {
-    if (!db) return;
-    try {
-        const promises = bookings.map(b => setDoc(doc(db, "bookings", b.id), b));
-        await Promise.all(promises);
-    } catch (e) {
-        handleFirestoreError(e, 'write', 'bookings (batch)');
-    }
-  },
-  
-  removeBooking: async (id: string) => {
-    if (!db) return;
-    try {
-        await deleteDoc(doc(db, "bookings", id));
-    } catch (e) {
-        handleFirestoreError(e, 'delete', `bookings/${id}`);
-    }
-  },
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+        formData.append('folder', path.split('/')[0]); // Organise dans des dossiers (ex: avatars)
 
-  saveSettings: async (settings: AppSettings) => {
-    if (!db) return;
-    try {
-        console.log("Saving settings to Firestore...", settings);
-        await setDoc(doc(db, "settings", "global"), settings);
-        console.log("Settings saved successfully.");
-    } catch (e) {
-        handleFirestoreError(e, 'write', 'settings/global');
+        const resourceType = file.type === 'application/pdf' ? 'raw' : 'image';
+
+        if (file.type === 'application/pdf') {
+            // Generate a unique public ID ending with .pdf to force Cloudinary to serve it with Content-Type: application/pdf
+            const uniqueId = `registration_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.pdf`;
+            formData.append('public_id', uniqueId);
+        }
+
+        try {
+            const response = await fetch(
+                `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`,
+                {
+                    method: 'POST',
+                    body: formData,
+                }
+            );
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("Détails de l'erreur Cloudinary:", errorData);
+                throw new Error(errorData.error?.message || "Échec de l'upload sur Cloudinary");
+            }
+
+            const data = await response.json();
+            
+            // Retourne l'URL sécurisée fournie par Cloudinary
+            return data.secure_url;
+        } catch (error) {
+            console.error("Erreur lors de l'appel API Cloudinary:", error);
+            throw error;
+        }
+    },
+
+    /**
+     * Détache l'image (la suppression physique nécessite une API signée).
+     */
+    deleteFile: async (fileUrl: string): Promise<void> => {
+        console.log("Image détachée du profil.");
+        return Promise.resolve();
     }
-  },
-  
-  addAdmin: async (uid: string, email: string) => {
-    if (!db) return;
-    try {
-        await setDoc(doc(db, "admins", uid), { email, role: 'admin' });
-    } catch (e) {
-        handleFirestoreError(e, 'write', `admins/${uid}`);
-    }
-  }
 };

@@ -1,218 +1,191 @@
 
-import React, { useState, useContext } from 'react';
-import { Booking, Animation } from '../../types';
-import { formatPhoneNumber } from '../../utils/formatters';
-import { AppContext } from '../../AppContext';
+import React, { useState, useContext, useEffect } from 'react';
+import { AppContext } from '../AppContext';
+import { Animation, View, Booking, CustomLegalPage } from '../types';
+import AdminLogin from './AdminLogin';
+import AppFooter from './shared/AppFooter';
+import AnimationSelection from './booking/AnimationSelection';
+import BookingCalendar from './booking/BookingCalendar';
+import BookingForm from './booking/BookingForm';
+import BookingConfirmation from './booking/BookingConfirmation';
+import { formatPhoneNumber } from '../utils/formatters';
+import { emailService } from '../services/emailService';
 
-const BookingEditForm: React.FC<{
-    booking: Booking;
-    animations: Animation[];
-    bookings: Booking[];
-    onSave: (booking: Booking) => void;
-    onCancel: () => void;
-}> = ({ booking, animations, bookings, onSave, onCancel }) => {
-    const { currentUser } = useContext(AppContext);
-    const isAdmin = currentUser?.role === 'admin';
-    const [formData, setFormData] = useState<Booking>({
-        ...booking, 
-        email: booking.email || '',
-        noBusRequired: booking.noBusRequired || false,
-        busCost: booking.busCost || 0,
-        busStatus: booking.busStatus || 'pending'
-    });
-    const timeSlots = [9, 10, 14, 15];
+import LegalPage from './shared/LegalPage';
+import CookieBanner from './shared/CookieBanner';
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        let finalValue: any = value;
-        if (type === 'number') {
-            finalValue = value === '' ? 0 : parseInt(value, 10);
-        } else if (type === 'checkbox') {
-            finalValue = (e.target as HTMLInputElement).checked;
-        } else if (name === 'time') {
-            finalValue = parseInt(value, 10);
-        }
-        setFormData(prev => ({ ...prev, [name]: finalValue }));
+interface BookingSystemProps {
+  view: View;
+  selectedAnimation: Animation | null;
+  onSelectAnimation: (animation: Animation) => void;
+  onBackToHome: () => void;
+  onNavigate: (view: View) => void;
+  onNavigateToAdmin: () => void;
+  onAdminLogin: () => void;
+  selectedInfoPage: CustomLegalPage | null;
+  onSelectInfoPage: (page: CustomLegalPage) => void;
+}
+
+const BookingSystem: React.FC<BookingSystemProps> = ({ 
+  view, 
+  selectedAnimation, 
+  onSelectAnimation, 
+  onBackToHome, 
+  onNavigate,
+  onNavigateToAdmin, 
+  onAdminLogin,
+  selectedInfoPage,
+  onSelectInfoPage,
+}) => {
+  const { saveBooking, settings } = useContext(AppContext);
+  const [bookingDetails, setBookingDetails] = useState<{ date: Date, time: number } | null>(null);
+  const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
+
+  useEffect(() => {
+    emailService.init();
+  }, []);
+
+  const handleBookSlot = (date: Date, time: number) => {
+    setBookingDetails({ date, time });
+  };
+
+  const handleConfirmBooking = async (formData: Omit<Booking, 'id' | 'animationTitle'>) => {
+    if (!selectedAnimation) return;
+
+    const formattedFormData = {
+        ...formData,
+        phoneNumber: formatPhoneNumber(formData.phoneNumber),
     };
 
-    const handleAnimationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const newAnimationId = e.target.value;
-        const selectedAnimation = animations.find(a => a.id === newAnimationId);
-        if (selectedAnimation) {
-            setFormData(prev => ({
-                ...prev,
-                animationId: newAnimationId,
-                animationTitle: selectedAnimation.title,
-            }));
-        }
+    const newBooking: Booking = {
+        ...formattedFormData,
+        id: Date.now().toString(),
+        animationTitle: selectedAnimation.title,
     };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        // Validation conflits... (conservée)
-        const slotConflict = bookings.find(b => 
-            b.id !== formData.id && 
-            b.date === formData.date && 
-            b.time === formData.time
+    
+    // On transmet l'animateur pour le contrôle de concurrence atomique Firestore
+    await saveBooking(newBooking, selectedAnimation.animator);
+    
+    // Envoi des e-mails en arrière-plan
+    emailService.sendBookingConfirmation(newBooking, settings);
+    
+    if (selectedAnimation.animator) {
+        const animator = settings.animators.find(a => 
+            a.name.trim().toLowerCase() === selectedAnimation.animator?.trim().toLowerCase()
         );
-
-        if (slotConflict) {
-            alert(`Conflit de créneau : L'heure de ${formData.time}h est déjà réservée pour l'animation "${slotConflict.animationTitle}".`);
-            return;
+        if (animator && animator.email) {
+            emailService.sendAnimatorNotification(newBooking, animator, settings);
         }
+    }
 
-        const isAfternoon = formData.time === 14 || formData.time === 15;
-        if (isAfternoon) {
-            const otherTime = formData.time === 14 ? 15 : 14;
-            const afternoonConflict = bookings.find(b => 
-                b.id !== formData.id && 
-                b.date === formData.date && 
-                b.time === otherTime
-            );
-            if (afternoonConflict) {
-                alert(`Conflit d'après-midi : Le créneau de ${otherTime}h est déjà occupé par "${afternoonConflict.animationTitle}". Un seul atelier est possible par après-midi.`);
-                return;
-            }
-        }
+    setBookingDetails(null);
+    setConfirmedBooking(newBooking);
+  };
+  
+  const handleCloseConfirmation = () => {
+    setConfirmedBooking(null);
+    onBackToHome();
+  };
 
-        const formattedBooking = {
-            ...formData,
-            phoneNumber: formatPhoneNumber(formData.phoneNumber)
-        };
-        onSave(formattedBooking);
-    };
+  const renderContent = () => {
+    if (view === View.ADMIN_LOGIN) {
+      return <AdminLogin settings={settings} onLoginSuccess={onAdminLogin} onBackToHome={onBackToHome} />;
+    }
+
+    if (view === View.LEGAL_NOTICE) {
+      return <LegalPage title={settings.legalNoticeTitle || "Mentions Légales"} content={settings.legalNotice || ''} onBack={onBackToHome} />;
+    }
+
+    if (view === View.PRIVACY_POLICY) {
+      return <LegalPage title={settings.privacyPolicyTitle || "Politique de Confidentialité"} content={settings.privacyPolicy || ''} onBack={onBackToHome} />;
+    }
+
+    if (view === View.COOKIES_POLICY) {
+      return <LegalPage title={settings.cookiesPolicyTitle || "Gestion des Cookies"} content={settings.cookiesPolicy || ''} onBack={onBackToHome} />;
+    }
+
+    if (view === View.INFO_PAGE && selectedInfoPage) {
+      return <LegalPage title={selectedInfoPage.title} content={selectedInfoPage.content} onBack={onBackToHome} hideTitle={selectedInfoPage.hideTitle} />;
+    }
+
+    if (view === View.CALENDAR && selectedAnimation) {
+      const fontColor = selectedAnimation.fontColor || '#ffffff';
+      const borderColor = fontColor.startsWith('#') && fontColor.length === 7 ? `${fontColor}33` : fontColor;
+
+      return (
+        <div className="p-4 sm:p-8 bg-gray-50 min-h-screen flex flex-col">
+          <div className="flex-grow">
+              <header className="max-w-7xl mx-auto mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                  <button onClick={onBackToHome} className="text-blue-600 hover:underline mb-6 inline-block font-medium">← Retour à la liste</button>
+                  <div 
+                      className="p-6 rounded-lg w-full border flex flex-col md:flex-row gap-6 md:items-center relative overflow-hidden"
+                      style={{ 
+                          backgroundColor: selectedAnimation.color, 
+                          color: fontColor,
+                          borderColor: borderColor
+                      }}
+                  >
+                      {selectedAnimation.imageUrl && (
+                          <div className="absolute -right-4 -top-4 opacity-20 pointer-events-none">
+                              <img src={selectedAnimation.imageUrl} alt="" className="w-48 h-48 object-cover rounded-full rotate-12" />
+                          </div>
+                      )}
+                      
+                      <div className="md:w-1/2 md:border-r md:pr-10 z-10" style={{ borderColor: borderColor }}>
+                          <h1 className="text-3xl font-bold leading-tight flex items-center gap-4">
+                              {selectedAnimation.imageUrl && (
+                                  <div className="w-16 h-16 rounded-xl border-2 border-white/50 shadow-lg overflow-hidden flex-shrink-0">
+                                      <img src={selectedAnimation.imageUrl} alt="" className="w-full h-full object-cover" />
+                                  </div>
+                              )}
+                              {selectedAnimation.title}
+                          </h1>
+                          <p className="opacity-90 mt-2 text-lg font-semibold">{selectedAnimation.classLevel}</p>
+                      </div>
+                      
+                      {selectedAnimation.description && (
+                          <div className="md:w-1/2 md:pl-4 z-10">
+                              <p className="text-lg md:text-xl leading-relaxed opacity-95 italic font-medium">
+                                  {selectedAnimation.description}
+                              </p>
+                          </div>
+                      )}
+                  </div>
+                  <p className="text-gray-600 mt-6 italic font-medium">Sélectionnez une date et un créneau horaire disponibles ci-dessous :</p>
+              </header>
+              <BookingCalendar animation={selectedAnimation} onBookSlot={handleBookSlot} />
+              {bookingDetails && <BookingForm animation={selectedAnimation} date={bookingDetails.date} time={bookingDetails.time} onConfirm={handleConfirmBooking} onCancel={() => setBookingDetails(null)} />}
+              {confirmedBooking && <BookingConfirmation booking={confirmedBooking} onOk={handleCloseConfirmation} settings={settings} />}
+          </div>
+          <AppFooter onNavigate={onNavigate} />
+        </div>
+      );
+    }
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={onCancel}>
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">Modifier la réservation</h2>
-                    <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                </div>
-
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* Infos de base */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Animation</label>
-                            <select name="animationId" value={formData.animationId} onChange={handleAnimationChange} className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold">
-                                {animations.map(anim => <option key={anim.id} value={anim.id}>{anim.title}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                           <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Date</label>
-                           <input type="date" name="date" value={formData.date} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
-                        </div>
-                        <div>
-                             <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Heure</label>
-                             <select name="time" value={formData.time} onChange={handleChange} className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold">
-                                {timeSlots.map(slot => <option key={slot} value={slot}>{slot}h00</option>)}
-                             </select>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Enseignant</label>
-                            <input type="text" name="teacherName" value={formData.teacherName} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Niveau</label>
-                            <input type="text" name="classLevel" value={formData.classLevel} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Email Enseignant</label>
-                            <input type="email" name="email" value={formData.email} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Téléphone Enseignant</label>
-                            <input type="text" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Nombre d'élèves</label>
-                            <input type="number" name="studentCount" value={formData.studentCount} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Nombre d'adultes</label>
-                            <input type="number" name="adultCount" value={formData.adultCount} onChange={handleChange} required className="w-full p-2.5 bg-gray-50 border rounded-xl font-bold"/>
-                        </div>
-                    </div>
-
-                    {/* Section Bus Admin */}
-                    <div className={`p-5 bg-blue-50 border border-blue-100 rounded-2xl space-y-4 ${!isAdmin ? 'opacity-70 grayscale-[0.5]' : ''}`}>
-                        <div className="flex justify-between items-center">
-                            <h4 className="text-sm font-black text-blue-900 uppercase tracking-widest">Administration du transport</h4>
-                            {!isAdmin && <span className="text-[10px] font-black bg-blue-200 text-blue-800 px-2 py-0.5 rounded uppercase tracking-tighter">Consultation uniquement</span>}
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <label className={`flex items-center gap-2 ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-                                <input 
-                                    type="checkbox" 
-                                    name="noBusRequired" 
-                                    checked={formData.noBusRequired} 
-                                    onChange={handleChange} 
-                                    disabled={!isAdmin}
-                                    className="w-4 h-4 rounded text-blue-600"
-                                />
-                                <span className="text-sm font-bold text-blue-800 italic">Pas de bus nécessaire</span>
-                            </label>
-                        </div>
-                        {!formData.noBusRequired && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in duration-200">
-                                <div>
-                                    <label className="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Statut prise en charge</label>
-                                    <select 
-                                        name="busStatus" 
-                                        value={formData.busStatus} 
-                                        onChange={handleChange} 
-                                        disabled={!isAdmin}
-                                        className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-bold text-blue-900 disabled:bg-gray-100"
-                                    >
-                                        <option value="pending">En attente</option>
-                                        <option value="validated">Validé</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Coût (€)</label>
-                                    <input 
-                                        type="text" 
-                                        inputMode="numeric"
-                                        pattern="[0-9]*"
-                                        name="busCost" 
-                                        value={formData.busCost} 
-                                        onChange={(e) => {
-                                            const val = e.target.value.replace(/\D/g, '');
-                                            setFormData(prev => ({ ...prev, busCost: parseInt(val) || 0 }));
-                                        }} 
-                                        disabled={!isAdmin}
-                                        className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-bold text-blue-900 disabled:bg-gray-100"
-                                    />
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Infos de passage</label>
-                                    <textarea 
-                                        name="busInfo" 
-                                        value={formData.busInfo} 
-                                        onChange={handleChange} 
-                                        disabled={!isAdmin}
-                                        className="w-full p-2.5 bg-white border border-blue-200 rounded-xl font-medium h-20 disabled:bg-gray-100"
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                        <button type="button" onClick={onCancel} className="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors">Annuler</button>
-                        <button type="submit" className="px-10 py-2.5 bg-blue-600 text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-blue-700 shadow-lg shadow-blue-100 transform active:scale-95 transition-all">Sauvegarder</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+       <div style={{ backgroundColor: settings.homepageBgColor }} className="min-h-screen flex flex-col">
+          <AnimationSelection 
+            onSelectAnimation={onSelectAnimation} 
+            onNavigateToAdmin={onNavigateToAdmin}
+            onNavigateToInfoPage={(id) => {
+              const page = (settings.infoPages || []).find(p => p.id === id);
+              if (page) {
+                  onSelectInfoPage(page);
+                  onNavigate(View.INFO_PAGE);
+              }
+            }}
+          />
+          <AppFooter onNavigate={onNavigate} />
+      </div>
     );
+  };
+
+  return (
+    <>
+      {renderContent()}
+      {view !== View.ADMIN_LOGIN && <CookieBanner onNavigate={onNavigate} />}
+    </>
+  );
 };
 
-export default BookingEditForm;
+export default BookingSystem;

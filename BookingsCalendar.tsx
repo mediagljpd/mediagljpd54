@@ -1,179 +1,176 @@
 
-import React, { useState, useContext, useEffect } from 'react';
-import { AppContext } from '../AppContext';
-import { Animation, View, Booking, CustomLegalPage } from '../types';
-import AdminLogin from './AdminLogin';
-import AppFooter from './shared/AppFooter';
-import AnimationSelection from './booking/AnimationSelection';
-import BookingCalendar from './booking/BookingCalendar';
-import BookingForm from './booking/BookingForm';
-import BookingConfirmation from './booking/BookingConfirmation';
-import { formatPhoneNumber } from '../utils/formatters';
-import { emailService } from '../services/emailService';
+import React, { useState, useMemo, useContext, useEffect } from 'react';
+import { Booking, Animation } from '../../types';
+import { AppContext } from '../../AppContext';
+import { toYYYYMMDD } from '../../utils/date';
 
-import LegalPage from './shared/LegalPage';
-import CookieBanner from './shared/CookieBanner';
+const BookingsCalendar: React.FC<{ bookings: Booking[]; animations: Animation[]; onEdit: (booking: Booking) => void }> = ({ bookings, animations, onEdit }) => {
+    const { settings } = useContext(AppContext);
 
-interface BookingSystemProps {
-  view: View;
-  selectedAnimation: Animation | null;
-  onSelectAnimation: (animation: Animation) => void;
-  onBackToHome: () => void;
-  onNavigate: (view: View) => void;
-  onNavigateToAdmin: () => void;
-  onAdminLogin: () => void;
-  selectedInfoPage: CustomLegalPage | null;
-  onSelectInfoPage: (page: CustomLegalPage) => void;
-}
+    const [startYear, endYear] = useMemo(() => {
+        const years = settings.activeYear.split('-').map(Number);
+        if (years.length !== 2 || isNaN(years[0]) || isNaN(years[1])) {
+            const currentYear = new Date().getFullYear();
+            return [currentYear, currentYear + 1]; // Fallback
+        }
+        return [years[0], years[1]];
+    }, [settings.activeYear]);
+    
+    const getInitialDate = () => {
+        const today = new Date();
+        const todayYear = today.getFullYear();
+        const todayMonth = today.getMonth();
 
-const BookingSystem: React.FC<BookingSystemProps> = ({ 
-  view, 
-  selectedAnimation, 
-  onSelectAnimation, 
-  onBackToHome, 
-  onNavigate,
-  onNavigateToAdmin, 
-  onAdminLogin,
-  selectedInfoPage,
-  onSelectInfoPage,
-}) => {
-  const { saveBooking, settings } = useContext(AppContext);
-  const [bookingDetails, setBookingDetails] = useState<{ date: Date, time: number } | null>(null);
-  const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
-
-  useEffect(() => {
-    emailService.init();
-  }, []);
-
-  const handleBookSlot = (date: Date, time: number) => {
-    setBookingDetails({ date, time });
-  };
-
-  const handleConfirmBooking = async (formData: Omit<Booking, 'id' | 'animationTitle'>) => {
-    if (!selectedAnimation) return;
-
-    const formattedFormData = {
-        ...formData,
-        phoneNumber: formatPhoneNumber(formData.phoneNumber),
+        if (
+            (todayYear === startYear && todayMonth >= 9) || 
+            (todayYear === endYear && todayMonth <= 5)
+        ) {
+            return today;
+        }
+        return new Date(startYear, 9, 1);
     };
 
-    const newBooking: Booking = {
-        ...formattedFormData,
-        id: Date.now().toString(),
-        animationTitle: selectedAnimation.title,
+    const [currentDate, setCurrentDate] = useState(getInitialDate);
+
+    useEffect(() => {
+        setCurrentDate(getInitialDate());
+         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [startYear, endYear]);
+
+    const animationColorMap = useMemo(() => {
+        return animations.reduce((acc, anim) => {
+            acc[anim.id] = { bg: anim.color, text: anim.fontColor };
+            return acc;
+        }, {} as Record<string, { bg: string, text: string }>);
+    }, [animations]);
+
+    const bookingsByDate = useMemo(() => {
+        return bookings.reduce((acc, booking) => {
+            const date = booking.date;
+            if (!acc[date]) {
+                acc[date] = [];
+            }
+            acc[date].push(booking);
+            return acc;
+        }, {} as Record<string, Booking[]>);
+    }, [bookings]);
+
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+    
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const startingDay = (firstDayOfMonth === 0 || firstDayOfMonth === 1) ? 0 : firstDayOfMonth - 2;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const changeMonth = (offset: number) => {
+        const newDate = new Date(currentDate);
+        newDate.setDate(1); 
+        newDate.setMonth(currentDate.getMonth() + offset);
+
+        if (newDate.getFullYear() === startYear && newDate.getMonth() < 9) return;
+        if (newDate.getFullYear() === endYear && newDate.getMonth() > 5) return;
+        if (newDate.getFullYear() < startYear || newDate.getFullYear() > endYear) return;
+
+        setCurrentDate(newDate);
     };
     
-    try {
-        await saveBooking(newBooking);
-        
-        // Envoi des e-mails en arrière-plan
-        emailService.sendBookingConfirmation(newBooking);
-        
-        if (selectedAnimation.animator) {
-            const animator = settings.animators.find(a => a.name === selectedAnimation.animator);
-            if (animator && animator.email) {
-                emailService.sendAnimatorNotification(newBooking, animator);
-            }
-        }
-
-        setBookingDetails(null);
-        setConfirmedBooking(newBooking);
-    } catch (error) {
-        alert("Une erreur est survenue lors de la réservation. Veuillez réessayer.");
-    }
-  };
-  
-  const handleCloseConfirmation = () => {
-    setConfirmedBooking(null);
-    onBackToHome();
-  };
-
-  const renderContent = () => {
-    if (view === View.ADMIN_LOGIN) {
-      return <AdminLogin settings={settings} onLoginSuccess={onAdminLogin} onBackToHome={onBackToHome} />;
-    }
-
-    if (view === View.LEGAL_NOTICE) {
-      return <LegalPage title="Mentions Légales" content={settings.legalNotice || ''} onBack={onBackToHome} />;
-    }
-
-    if (view === View.PRIVACY_POLICY) {
-      return <LegalPage title="Politique de Confidentialité" content={settings.privacyPolicy || ''} onBack={onBackToHome} />;
-    }
-
-    if (view === View.COOKIES_POLICY) {
-      return <LegalPage title="Gestion des Cookies" content={settings.cookiesPolicy || ''} onBack={onBackToHome} />;
-    }
-
-    if (view === View.INFO_PAGE && selectedInfoPage) {
-      return <LegalPage title={selectedInfoPage.title} content={selectedInfoPage.content} onBack={onBackToHome} />;
-    }
-
-    if (view === View.CALENDAR && selectedAnimation) {
-      const fontColor = selectedAnimation.fontColor || '#ffffff';
-      const borderColor = fontColor.startsWith('#') && fontColor.length === 7 ? `${fontColor}33` : fontColor;
-
-      return (
-        <div className="p-4 sm:p-8 bg-gray-50 min-h-screen flex flex-col">
-          <div className="flex-grow">
-              <header className="max-w-7xl mx-auto mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <button onClick={onBackToHome} className="text-blue-600 hover:underline mb-6 inline-block font-medium">← Retour à la liste</button>
-                  <div 
-                      className="p-6 rounded-lg w-full border flex flex-col md:flex-row gap-6 md:items-center"
-                      style={{ 
-                          backgroundColor: selectedAnimation.color, 
-                          color: fontColor,
-                          borderColor: borderColor
-                      }}
-                  >
-                      <div className="md:w-1/2 md:border-r md:pr-10" style={{ borderColor: borderColor }}>
-                          <h1 className="text-3xl font-bold leading-tight">{selectedAnimation.title}</h1>
-                          <p className="opacity-90 mt-2 text-lg font-semibold">{selectedAnimation.classLevel}</p>
-                      </div>
-                      
-                      {selectedAnimation.description && (
-                          <div className="md:w-1/2 md:pl-4">
-                              <p className="text-lg md:text-xl leading-relaxed opacity-95 italic font-medium">
-                                  {selectedAnimation.description}
-                              </p>
-                          </div>
-                      )}
-                  </div>
-                  <p className="text-gray-600 mt-6 italic font-medium">Sélectionnez une date et un créneau horaire disponibles ci-dessous :</p>
-              </header>
-              <BookingCalendar animation={selectedAnimation} onBookSlot={handleBookSlot} />
-              {bookingDetails && <BookingForm animation={selectedAnimation} date={bookingDetails.date} time={bookingDetails.time} onConfirm={handleConfirmBooking} onCancel={() => setBookingDetails(null)} />}
-              {confirmedBooking && <BookingConfirmation booking={confirmedBooking} onOk={handleCloseConfirmation} />}
-          </div>
-          <AppFooter onNavigate={onNavigate} />
-        </div>
-      );
-    }
+    const todayStr = toYYYYMMDD(new Date());
 
     return (
-       <div style={{ backgroundColor: settings.homepageBgColor }} className="min-h-screen flex flex-col">
-          <AnimationSelection 
-            onSelectAnimation={onSelectAnimation} 
-            onNavigateToAdmin={onNavigateToAdmin}
-            onNavigateToInfoPage={(id) => {
-              const page = (settings.infoPages || []).find(p => p.id === id);
-              if (page) {
-                  onSelectInfoPage(page);
-                  onNavigate(View.INFO_PAGE);
-              }
-            }}
-          />
-          <AppFooter onNavigate={onNavigate} />
-      </div>
-    );
-  };
+        <div className="bg-white rounded-xl shadow border border-gray-200">
+            {/* Header section */}
+            <div className="bg-white z-20 p-4 border-b rounded-t-xl">
+                <div className="flex justify-between items-center mb-6">
+                    <button 
+                        onClick={() => changeMonth(-1)} 
+                        className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-gray-600 disabled:opacity-30"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <div className="text-center">
+                        <h3 className="text-2xl font-bold text-gray-800 tracking-tight">{monthNames[month]} {year}</h3>
+                    </div>
+                    <button 
+                        onClick={() => changeMonth(1)} 
+                        className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-gray-600 disabled:opacity-30"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                </div>
+                
+                <div className="grid grid-cols-5 text-center font-bold text-gray-400 uppercase text-xs tracking-widest">
+                    {['Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'].map(day => 
+                        <div key={day} className="pb-2">{day}</div>
+                    )}
+                </div>
+            </div>
 
-  return (
-    <>
-      {renderContent()}
-      {view !== View.ADMIN_LOGIN && <CookieBanner onNavigate={onNavigate} />}
-    </>
-  );
+            <div className="bg-gray-100">
+                <div className="grid grid-cols-5 gap-px">
+                    {Array.from({ length: startingDay }).map((_, i) => (
+                        <div key={`empty-${i}`} className="bg-gray-50/50 min-h-[140px]"></div>
+                    ))}
+                    
+                    {Array.from({ length: daysInMonth }).map((_, dayIndex) => {
+                        const day = dayIndex + 1;
+                        const date = new Date(year, month, day);
+                        const dow = date.getDay();
+                        
+                        if (dow === 0 || dow === 1) return null;
+
+                        const dateStr = toYYYYMMDD(date);
+                        const dayBookings = (bookingsByDate[dateStr] || []).sort((a,b) => a.time - b.time);
+                        const isToday = dateStr === todayStr;
+
+                        return (
+                            <div 
+                                key={day} 
+                                className={`p-2 flex flex-col relative min-h-[140px] group transition-colors ${
+                                    isToday ? 'bg-blue-50/30' : 'bg-white hover:bg-gray-50'
+                                }`}
+                            >
+                                <span className={`text-sm font-bold self-end px-2 py-1 rounded-full ${
+                                    isToday ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400'
+                                }`}>
+                                    {day}
+                                </span>
+                                
+                                <div className="space-y-2 mt-2">
+                                    {dayBookings.map(booking => {
+                                        const colors = animationColorMap[booking.animationId] || { bg: '#E5E7EB', text: '#111827' };
+                                        return (
+                                            <div 
+                                                key={booking.id}
+                                                onClick={() => onEdit(booking)}
+                                                className="p-2.5 rounded-lg text-[12px] leading-snug cursor-pointer hover:brightness-95 active:scale-[0.98] transition-all shadow-sm border border-black/5"
+                                                style={{ backgroundColor: colors.bg, color: colors.text }}
+                                                title={`${booking.animationTitle} - ${booking.teacherName} (${booking.classLevel})`}
+                                            >
+                                                <p className="font-bold tracking-normal truncate mb-0.5">
+                                                    {booking.time}h • {booking.animationTitle}
+                                                </p>
+                                                <p className="truncate opacity-90 font-medium">
+                                                    {booking.teacherName} ({booking.classLevel})
+                                                </p>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })}
+                    
+                    {Array.from({ length: (5 - ((startingDay + daysInMonth - (Array.from({ length: daysInMonth }).filter((_, i) => {
+                         const d = new Date(year, month, i+1).getDay();
+                         return d === 0 || d === 1;
+                    }).length)) % 5)) % 5 }).map((_, i) => (
+                        <div key={`empty-end-${i}`} className="bg-gray-50/50 min-h-[140px]"></div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 };
 
-export default BookingSystem;
+export default BookingsCalendar;

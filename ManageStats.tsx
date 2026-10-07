@@ -1,264 +1,298 @@
-
-import { storageService } from '../../services/storageService';
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../../AppContext';
-import { Animator } from '../../types';
-import { AdminSubComponentProps } from './types';
-import { PencilIcon, CheckIcon, XIcon, TrashIcon } from '../Icons';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell, LabelList } from 'recharts';
+import * as XLSX from 'xlsx';
+import { DownloadIcon } from '../Icons';
 
-import ConfirmationModal from '../shared/ConfirmationModal';
+const ManageStats: React.FC = () => {
+    const { bookings, animations, settings } = useContext(AppContext);
+    const [selectedAnimator, setSelectedAnimator] = useState<string>('all');
 
-const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
-    const { animations, updateAnimationsOrder, settings, updateSettings, currentUser } = useContext(AppContext);
-    const [newAnimatorName, setNewAnimatorName] = useState('');
-    const [editingAnimator, setEditingAnimator] = useState<{ original: Animator; current: Animator } | null>(null);
-    const [isUploading, setIsUploading] = useState(false);
-    const [animatorToDelete, setAnimatorToDelete] = useState<Animator | null>(null);
-    
-    const canManage = currentUser?.role === 'admin' || currentUser?.permissions.canManageAnimations;
-    const animators = useMemo(() => settings.animators || [], [settings.animators]);
-
-    const handleAddAnimator = () => {
-        const trimmedName = newAnimatorName.trim();
-        if (trimmedName && !animators.some(a => a.name === trimmedName)) {
-            const newAnimators = [...animators, { name: trimmedName, email: '', avatarUrl: '' }].sort((a, b) => a.name.localeCompare(b.name));
-            updateSettings({ ...settings, animators: newAnimators });
-            setNewAnimatorName('');
-            showNotification(`Animateur "${trimmedName}" ajouté.`);
-        } else if (animators.some(a => a.name === trimmedName)) {
-            showNotification(`L'animateur "${trimmedName}" existe déjà.`);
+    const [startYear, endYear] = useMemo(() => {
+        const years = (settings?.activeYear || "").split('-').map(Number);
+        if (years.length !== 2 || isNaN(years[0]) || isNaN(years[1])) {
+            const currentYear = new Date().getFullYear();
+            return [currentYear, currentYear + 1]; // Fallback
         }
-    };
-    
-    const handleUpdateAnimator = () => {
-        if (!editingAnimator) return;
-        const { original, current } = editingAnimator;
-        const newName = current.name.trim();
+        return [years[0], years[1]];
+    }, [settings?.activeYear]);
 
-        if (!newName) {
-            showNotification("Le nom de l'animateur ne peut pas être vide.");
-            return;
-        }
-        if (newName !== original.name && animators.some(a => a.name === newName)) {
-            showNotification(`L'animateur "${newName}" existe déjà.`);
-            return;
-        }
+    const activeBookings = useMemo(() => {
+        return (bookings || []).filter(b => {
+            const bDate = new Date(b.date.replace(/-/g, '/'));
+            const bYear = bDate.getFullYear();
+            const bMonth = bDate.getMonth();
+            return (bYear === startYear && bMonth >= 9) || (bYear === endYear && bMonth <= 5);
+        });
+    }, [bookings, startYear, endYear]);
 
-        const newAnimators = animators.map(anim => (anim.name === original.name ? current : anim)).sort((a, b) => a.name.localeCompare(b.name));
+    const animatorMap = useMemo(() => {
+        const map = new Map<string, string>();
+        (animations || []).forEach(anim => {
+            if (anim.animator) map.set(anim.id, anim.animator);
+        });
+        return map;
+    }, [animations]);
+
+    const filteredBookings = useMemo(() => {
+        return activeBookings.filter(b => {
+            if (selectedAnimator === 'all') return true;
+            const bAnimator = animatorMap.get(b.animationId);
+            return bAnimator?.trim().toLowerCase() === selectedAnimator.trim().toLowerCase();
+        });
+    }, [activeBookings, selectedAnimator, animatorMap]);
+
+    const stats = useMemo(() => {
+        const totalClasses = filteredBookings.length;
+        const totalStudents = filteredBookings.reduce((sum, b) => sum + (b.studentCount || 0), 0);
         
-        if (original.name !== newName) {
-            const newAnimations = animations.map(anim => {
-                if (anim.animator === original.name) {
-                    return { ...anim, animator: newName };
+        const byCommune: Record<string, number> = {};
+        const communeLabels: Record<string, string> = {}; // To keep the most complete version (with postal code)
+        const bySchool: Record<string, number> = {};
+        const byLevel: Record<string, number> = {};
+
+        filteredBookings.forEach(b => {
+            if (b.isOutOfGrandLongwy) {
+                const cleanCommune = 'HORS GRAND LONGWY';
+                byCommune[cleanCommune] = (byCommune[cleanCommune] || 0) + 1;
+                communeLabels[cleanCommune] = 'Hors Grand Longwy';
+            } else if (b.commune) {
+                // Normalize commune name by removing the postal code part for grouping
+                const cleanCommune = b.commune.replace(/\s*\(\d{5}\)$/, '').trim().toUpperCase();
+                byCommune[cleanCommune] = (byCommune[cleanCommune] || 0) + 1;
+                
+                // Keep the version with postal code if available
+                if (!communeLabels[cleanCommune] || (b.commune.includes('(') && !communeLabels[cleanCommune].includes('('))) {
+                    communeLabels[cleanCommune] = b.commune;
                 }
-                return anim;
-            });
-            updateAnimationsOrder(newAnimations);
-
-            const newAnimatorSettings = { ...(settings.animatorSettings || {})};
-            if(newAnimatorSettings[original.name]) {
-                newAnimatorSettings[newName] = newAnimatorSettings[original.name];
-                delete newAnimatorSettings[original.name];
             }
-            updateSettings({ ...settings, animators: newAnimators, animatorSettings: newAnimatorSettings });
-        } else {
-            updateSettings({ ...settings, animators: newAnimators });
-        }
-
-        setEditingAnimator(null);
-        showNotification(`Animateur "${newName}" mis à jour.`);
-    };
-
-    const handleRemoveAnimator = async (animatorToRemove: Animator) => {
-        const isAnimatorUsed = animations.some(anim => anim.animator === animatorToRemove.name);
-        if (isAnimatorUsed) {
-            showNotification(`Impossible de supprimer "${animatorToRemove.name}". Il est assigné à une ou plusieurs animations.`, 'error');
-            return;
-        }
-        setAnimatorToDelete(animatorToRemove);
-    };
-
-    const confirmRemoveAnimator = async () => {
-        if (!animatorToDelete) return;
-        try {
-            const newAnimators = animators.filter(animator => animator.name !== animatorToDelete.name);
-            const newAnimatorSettings = { ...(settings.animatorSettings || {})};
-            if(newAnimatorSettings[animatorToDelete.name]) {
-                delete newAnimatorSettings[animatorToDelete.name];
+            if (b.schoolName) bySchool[b.schoolName] = (bySchool[b.schoolName] || 0) + 1;
+            if (b.classLevel) {
+                // Sépare les niveaux multiples (ex: "CP, CE1") pour les compter individuellement
+                const levels = b.classLevel.split(',').map(l => l.trim()).filter(Boolean);
+                levels.forEach(level => {
+                    byLevel[level] = (byLevel[level] || 0) + 1;
+                });
             }
-            await updateSettings({ ...settings, animators: newAnimators, animatorSettings: newAnimatorSettings });
-            showNotification(`Animateur "${animatorToDelete.name}" supprimé.`);
-        } catch (error) {
-            console.error("Delete animator error:", error);
-            showNotification(`Erreur lors de la suppression de l'animateur.`, 'error');
-        } finally {
-            setAnimatorToDelete(null);
-        }
+        });
+
+        const communeData = Object.entries(byCommune)
+            .map(([cleanName, value]) => ({ 
+                name: communeLabels[cleanName] || cleanName, 
+                value 
+            }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10);
+
+        const levelData = Object.entries(byLevel)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value);
+
+        return {
+            totalClasses,
+            totalStudents,
+            communeData,
+            levelData,
+            schoolCount: Object.keys(bySchool).length
+        };
+    }, [filteredBookings]);
+
+    const handleExportExcel = () => {
+        const exportData = filteredBookings.map(b => ({
+            'Date': b.date,
+            'Heure': `${b.time}h`,
+            'Animation': b.animationTitle,
+            'Commune': b.isOutOfGrandLongwy ? (b.commune ? `Hors Grand Longwy (${b.commune})` : 'Hors Grand Longwy') : b.commune,
+            'École': b.schoolName,
+            'Niveau': b.classLevel,
+            'Élèves': b.studentCount,
+            'Enseignant': b.teacherName,
+            'Email': b.email,
+            'Téléphone': b.phoneNumber
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Statistiques");
+        XLSX.writeFile(wb, `Statistiques_Reservations_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
-    const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0] && editingAnimator) {
-            const file = e.target.files[0];
-            
-            if (file.size > 5 * 1024 * 1024) {
-                alert("L'image est trop volumineuse (max 5 Mo).");
-                return;
-            }
-
-            setIsUploading(true);
-            try {
-                // Upload vers Cloudinary
-                const downloadURL = await storageService.uploadFile(file, `avatars`);
-                
-                setEditingAnimator(prev => prev ? ({
-                    ...prev,
-                    current: { ...prev.current, avatarUrl: downloadURL }
-                }) : null);
-                
-                showNotification("Image mise à jour !");
-            } catch (error) {
-                console.error(error);
-                alert("Erreur lors de l'upload. Avez-vous configuré votre cloud_name et upload_preset dans storageService.ts ?");
-            } finally {
-                setIsUploading(false);
-            }
-        }
-    };
-
-    const handleRemoveAvatar = () => {
-        if (editingAnimator) {
-            setEditingAnimator(prev => prev ? ({
-                ...prev,
-                current: { ...prev.current, avatarUrl: '' }
-            }) : null);
-            showNotification("Avatar supprimé.");
-        }
-    };
+    const COLORS = [
+        '#3B82F6', // Blue
+        '#10B981', // Emerald
+        '#F59E0B', // Amber
+        '#EF4444', // Red
+        '#8B5CF6', // Violet
+        '#EC4899', // Pink
+        '#06B6D4', // Cyan
+        '#F97316', // Orange
+        '#84CC16', // Lime
+        '#6366F1', // Indigo
+        '#D946EF', // Fuchsia
+        '#14B8A6', // Teal
+        '#F43F5E', // Rose
+        '#0EA5E9', // Sky
+    ];
 
     return (
-        <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Gérer les animateurs</h2>
-            {canManage && (
-                <div className="flex gap-2 mb-6">
-                    <input
-                        type="text"
-                        value={newAnimatorName}
-                        onChange={(e) => setNewAnimatorName(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleAddAnimator()}
-                        placeholder="Nom de l'animateur"
-                        className="flex-grow min-w-0 p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                    <button onClick={handleAddAnimator} className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 whitespace-nowrap">Ajouter</button>
+        <div className="space-y-8 animate-in fade-in duration-500">
+            {/* Filter Row */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex flex-col">
+                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Filtres des Statistiques</h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                        Sélectionnez un animateur pour filtrer les interventions de l'année <strong>{settings?.activeYear || ""}</strong>
+                    </p>
                 </div>
-            )}
-            <ul className="space-y-3">
-                {animators.length > 0 ? animators.map(animator => (
-                    <li key={animator.name}>
-                        {editingAnimator?.original.name === animator.name ? (
-                            <div className="w-full bg-indigo-50 p-4 rounded-lg border border-indigo-200 shadow-inner">
-                                <div className="flex gap-4 items-start">
-                                    <div className="flex-shrink-0 text-center">
-                                        <div className="relative group">
-                                            <img 
-                                                src={editingAnimator.current.avatarUrl || `https://ui-avatars.com/api/?name=${editingAnimator.current.name.replace(/\s/g, '+')}&background=random`} 
-                                                alt="Aperçu" 
-                                                className={`w-16 h-20 object-cover rounded-md mb-2 bg-gray-200 shadow-sm border border-indigo-100 ${isUploading ? 'opacity-50' : ''}`}
-                                            />
-                                            {isUploading && (
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex gap-2 justify-center">
-                                            <label 
-                                                htmlFor="avatar-upload" 
-                                                className={`cursor-pointer text-[10px] font-bold ${isUploading ? 'text-gray-400' : 'text-blue-600 hover:underline'}`}
-                                            >
-                                                {isUploading ? 'Envoi...' : 'Modifier'}
-                                            </label>
-                                            {editingAnimator.current.avatarUrl && !isUploading && (
-                                                <button 
-                                                    type="button"
-                                                    onClick={handleRemoveAvatar}
-                                                    className="text-[10px] font-bold text-red-600 hover:underline"
-                                                >
-                                                    Effacer
-                                                </button>
-                                            )}
-                                        </div>
-                                        <input id="avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleAvatarFileChange} disabled={isUploading}/>
-                                    </div>
-                                    <div className="flex-grow space-y-3">
-                                        <input
-                                            type="text"
-                                            value={editingAnimator.current.name}
-                                            onChange={(e) => setEditingAnimator(prev => prev ? ({ ...prev, current: { ...prev.current, name: e.target.value }}) : null)}
-                                            className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none ${!canManage ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
-                                            placeholder="Nom complet"
-                                            autoFocus={canManage}
-                                            disabled={!canManage}
-                                            title={!canManage ? "Seul un administrateur peut modifier le nom d'un animateur" : ""}
-                                        />
-                                        <input
-                                            type="email"
-                                            value={editingAnimator.current.email || ''}
-                                            onChange={(e) => setEditingAnimator(prev => prev ? ({ ...prev, current: { ...prev.current, email: e.target.value }}) : null)}
-                                            className="w-full p-2 border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                                            placeholder="Adresse e-mail"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="flex justify-end gap-3 mt-4 pt-3 border-t border-indigo-100">
-                                    <button onClick={() => setEditingAnimator(null)} className="flex items-center gap-1 px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded" aria-label="Annuler" disabled={isUploading}>
-                                        <XIcon className="w-4 h-4" /> Annuler
-                                    </button>
-                                    <button onClick={handleUpdateAnimator} className="flex items-center gap-1 px-3 py-1 text-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded shadow-sm" aria-label="Sauvegarder" disabled={isUploading}>
-                                        <CheckIcon className="w-4 h-4" /> Enregistrer
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200 h-28 hover:bg-white hover:border-indigo-300 hover:shadow-md transition-all group">
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <img src={animator.avatarUrl || `https://ui-avatars.com/api/?name=${animator.name.replace(/\s/g, '+')}&background=random`} alt={`Avatar de ${animator.name}`} className="w-16 h-20 flex-shrink-0 object-cover rounded-md bg-gray-200 shadow-sm border border-gray-100" />
-                                    <div className="min-w-0">
-                                        <p className="font-bold text-gray-800 text-lg leading-tight truncate">{animator.name}</p>
-                                        <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1 truncate" title={animator.email}>
-                                            <span className="opacity-60 text-[10px] uppercase font-bold tracking-wider">Email:</span>
-                                            {animator.email || 'Non renseigné'}
-                                        </p>
-                                    </div>
-                                </div>
-                                { (canManage || (currentUser?.animatorName === animator.name)) && (
-                                    <div className="flex flex-col gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                                        <button onClick={() => setEditingAnimator({ original: animator, current: { ...animator } })} className="text-gray-400 hover:text-indigo-600 p-1.5 bg-white rounded-full border border-gray-100 shadow-sm hover:border-indigo-200" title="Modifier">
-                                            <PencilIcon className="w-4 h-4" />
-                                        </button>
-                                        {canManage && (
-                                            <button onClick={() => handleRemoveAnimator(animator)} className="text-gray-400 hover:text-red-600 p-1.5 bg-white rounded-full border border-gray-100 shadow-sm hover:border-red-200" title="Supprimer">
-                                                <TrashIcon className="w-4 h-4" />
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </li>
-                )) : <p className="text-gray-500 italic text-center py-4">Aucun animateur ajouté.</p>}
-            </ul>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <label htmlFor="animator-filter" className="text-xs font-black text-gray-400 uppercase tracking-widest shrink-0">Animateur :</label>
+                    <select
+                        id="animator-filter"
+                        value={selectedAnimator}
+                        onChange={(e) => setSelectedAnimator(e.target.value)}
+                        className="w-full md:w-64 px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-sm text-gray-700 transition-all cursor-pointer"
+                    >
+                        <option value="all">Tous les animateurs ({activeBookings.length})</option>
+                        {(settings?.animators || []).map(anim => {
+                            const countForAnim = activeBookings.filter(b => {
+                                const bAnim = animatorMap.get(b.animationId);
+                                return bAnim?.trim().toLowerCase() === anim.name.trim().toLowerCase();
+                            }).length;
+                            return (
+                                <option key={anim.name} value={anim.name}>
+                                    {anim.name} ({countForAnim})
+                                </option>
+                            );
+                        })}
+                    </select>
+                </div>
+            </div>
 
-            <ConfirmationModal 
-                isOpen={!!animatorToDelete}
-                title="Supprimer l'animateur"
-                message={`Êtes-vous sûr de vouloir supprimer l'animateur "${animatorToDelete?.name}" ? Cette action supprimera également ses réglages d'indisponibilité.`}
-                confirmLabel="Supprimer"
-                isDanger={true}
-                onConfirm={confirmRemoveAnimator}
-                onCancel={() => setAnimatorToDelete(null)}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center">
+                    <span className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Classes accueillies</span>
+                    <span className="text-4xl font-black text-blue-600">{stats.totalClasses}</span>
+                </div>
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center">
+                    <span className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Enfants sensibilisés</span>
+                    <span className="text-4xl font-black text-green-600">{stats.totalStudents}</span>
+                </div>
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center">
+                    <span className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Écoles partenaires</span>
+                    <span className="text-4xl font-black text-purple-600">{stats.schoolCount}</span>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[450px]">
+                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">Top 10 des Communes</h3>
+                    <div className="h-80 w-full" style={{ minHeight: '320px' }}>
+                        {stats.communeData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height={320}>
+                                <BarChart data={stats.communeData} layout="vertical" margin={{ left: 40, right: 30, top: 10, bottom: 10 }}>
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f0f0f0" />
+                                    <XAxis type="number" hide />
+                                    <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 10, fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                                    <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} barSize={20}>
+                                        <LabelList dataKey="value" position="right" offset={10} style={{ fontSize: 10, fontWeight: '900', fill: '#3B82F6' }} />
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-gray-400 italic text-sm">Aucune donnée disponible</div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[450px]">
+                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">Répartition par Niveau</h3>
+                    <div className="h-80 w-full" style={{ minHeight: '320px' }}>
+                        {stats.levelData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height={320}>
+                                <PieChart margin={{ top: 20, right: 60, bottom: 20, left: 60 }}>
+                                    <Pie
+                                        data={stats.levelData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={50}
+                                        outerRadius={75}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                        label={({ name, value }) => `${name} (${value})`}
+                                    >
+                                        {stats.levelData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                </PieChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-gray-400 italic text-sm">Aucune donnée disponible</div>
+                        )}
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-4 mt-4">
+                        {stats.levelData.map((entry, index) => (
+                            <div key={entry.name} className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                                <span className="text-[10px] font-bold text-gray-600 uppercase tracking-tight">{entry.name}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Detailed Table Section */}
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-8 py-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
+                    <div>
+                        <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Détails des Réservations</h3>
+                        <p className="text-xs text-gray-500 mt-1">Liste exhaustive des interventions réalisées</p>
+                    </div>
+                    <button 
+                        onClick={handleExportExcel}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl text-xs font-bold hover:bg-green-700 transition-all shadow-lg shadow-green-100"
+                    >
+                        <DownloadIcon className="w-4 h-4" />
+                        Exporter Excel
+                    </button>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-gray-50/50">
+                                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Date</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Commune</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">École</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Niveau</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Élèves</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Animation</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {filteredBookings.length > 0 ? (
+                                [...filteredBookings].sort((a, b) => b.date.localeCompare(a.date)).map((b) => (
+                                    <tr key={b.id} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="px-6 py-4 text-xs font-bold text-gray-700">{b.date}</td>
+                                        <td className="px-6 py-4 text-xs text-gray-600">
+                                            {b.isOutOfGrandLongwy ? (b.commune ? `Hors Grand Longwy (${b.commune})` : 'Hors Grand Longwy') : b.commune}
+                                        </td>
+                                        <td className="px-6 py-4 text-xs text-gray-600">{b.schoolName}</td>
+                                        <td className="px-6 py-4 text-xs font-black text-blue-600">{b.classLevel}</td>
+                                        <td className="px-6 py-4 text-xs text-center font-bold text-gray-700">{b.studentCount}</td>
+                                        <td className="px-6 py-4 text-xs text-gray-500 italic">{b.animationTitle}</td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic text-sm">Aucune réservation enregistrée</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     );
 };
 
-export default ManageAnimators;
+export default ManageStats;

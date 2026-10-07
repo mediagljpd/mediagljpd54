@@ -1,219 +1,285 @@
 
-import React, { useContext, useState } from 'react';
+import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { AppContext } from '../../AppContext';
-import { Animation } from '../../types';
-import { CogIcon, BellIcon, XIcon } from '../Icons';
+import { Animation, Holiday, Booking, AnimatorSettings } from '../../types';
+import { toYYYYMMDD, getPostHolidayFirstDayStrings, isDateInHoliday } from '../../utils/date';
 
-const AnimationCard: React.FC<{ animation: Animation; onSelect: () => void }> = ({ animation, onSelect }) => {
-    const fontColor = animation.fontColor || '#ffffff';
+const BookingCalendar: React.FC<{ animation: Animation, onBookSlot: (date: Date, time: number) => void }> = ({ animation, onBookSlot }) => {
+    const { bookings, settings, animations } = useContext(AppContext);
     
-    const cardStyle = {
-        background: `linear-gradient(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.1)), ${animation.color}`,
-        color: fontColor
-    };
-
-    const getBorderColor = (hex: string) => {
-        if (hex.startsWith('#') && hex.length === 7) {
-            return `${hex}33`;
+    const animatorSettings = useMemo<AnimatorSettings>(() => {
+        const animName = animation.animator?.trim();
+        if (!animName) {
+            return { unavailableDates: [], inactiveSlots: [] };
         }
-        return hex;
+        
+        // Exact match
+        if (settings.animatorSettings?.[animName]) {
+            return settings.animatorSettings[animName];
+        }
+        
+        // Case-insensitive/trimmed fallback
+        const matchingKey = Object.keys(settings.animatorSettings || {}).find(
+            key => key.trim().toLowerCase() === animName.toLowerCase()
+        );
+        
+        if (matchingKey && settings.animatorSettings?.[matchingKey]) {
+            return settings.animatorSettings[matchingKey];
+        }
+
+        return { unavailableDates: [], inactiveSlots: [] };
+    }, [animation.animator, settings.animatorSettings]);
+
+    const [startYear, endYear] = useMemo(() => {
+        const years = settings.activeYear.split('-').map(Number);
+        if (years.length !== 2 || isNaN(years[0]) || isNaN(years[1])) {
+            return [2025, 2026];
+        }
+        return [years[0], years[1]];
+    }, [settings.activeYear]);
+
+    const getInitialDate = () => {
+        const today = new Date();
+        const todayYear = today.getFullYear();
+        const todayMonth = today.getMonth();
+
+        const isInActiveRange = 
+            (todayYear === startYear && todayMonth >= 9) || 
+            (todayYear === endYear && todayMonth <= 5);
+
+        if (isInActiveRange) return today;
+        return new Date(startYear, 9, 1);
     };
 
-    const borderColor = getBorderColor(fontColor);
+    const [currentDate, setCurrentDate] = useState(getInitialDate());
+
+    useEffect(() => {
+        setCurrentDate(getInitialDate());
+    }, [startYear, endYear]);
+
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+
+    const changeMonth = (offset: number) => {
+        const newDate = new Date(currentDate);
+        newDate.setDate(1);
+        newDate.setMonth(currentDate.getMonth() + offset);
+        
+        if (newDate.getFullYear() === startYear && newDate.getMonth() < 9) return;
+        if (newDate.getFullYear() === endYear && newDate.getMonth() > 5) return;
+        if (newDate.getFullYear() < startYear || newDate.getFullYear() > endYear) return;
+
+        setCurrentDate(newDate);
+    };
+
+
+    const animationAnimatorMap = useMemo(() => {
+        return animations.reduce((acc, anim) => {
+            if (anim.animator) acc[anim.id] = anim.animator;
+            return acc;
+        }, {} as Record<string, string>);
+    }, [animations]);
+
+    const bookingsByDate = useMemo(() => {
+        return bookings.reduce((acc, booking) => {
+            if (!acc[booking.date]) acc[booking.date] = [];
+            acc[booking.date].push(booking);
+            return acc;
+        }, {} as Record<string, Booking[]>);
+    }, [bookings]);
+
+    const currentMonthBookingCount = useMemo(() => {
+        const currentAnimator = animation.animator?.trim().toLowerCase();
+        if (!currentAnimator || animatorSettings.monthlyBookingLimit === undefined) return 0;
+
+        return bookings.filter(booking => {
+            const bookingDate = new Date(booking.date.replace(/-/g, '/'));
+            const isSameMonth = bookingDate.getFullYear() === year && bookingDate.getMonth() === month;
+            if (!isSameMonth) return false;
+
+            const bookingAnimator = animationAnimatorMap[booking.animationId]?.trim().toLowerCase();
+            return bookingAnimator === currentAnimator;
+        }).length;
+    }, [bookings, year, month, animation.animator, animatorSettings.monthlyBookingLimit, animationAnimatorMap]);
+
+    const isLimitReached = useMemo(() => {
+        return animatorSettings.monthlyBookingLimit !== undefined && currentMonthBookingCount >= animatorSettings.monthlyBookingLimit;
+    }, [animatorSettings.monthlyBookingLimit, currentMonthBookingCount]);
+
+    const postHolidayFirstDays = useMemo(() => {
+        return getPostHolidayFirstDayStrings(settings.holidays, settings.allowedDays);
+    }, [settings.holidays, settings.allowedDays]);
+
+    const isSlotAvailable = (date: Date, time: number): boolean => {
+        if (isLimitReached) return false;
+        
+        const dateString = toYYYYMMDD(date);
+        
+        // Règle post-vacances : le premier créneau (9h) suivant la fin d'une période de vacances est indisponible
+        if (Number(time) === 9 && postHolidayFirstDays.has(dateString)) {
+            return false;
+        }
+
+        const dayBookings = bookingsByDate[dateString] || [];
+        
+        if ((animatorSettings.inactiveSlots || []).some(s => Number(s) === Number(time))) return false;
+
+        if ((animatorSettings.unavailableDates || []).includes(dateString)) {
+            const halfDay = animatorSettings.unavailableHalfDays?.[dateString];
+            if (!halfDay) return false;
+            const timeVal = Number(time);
+            if (halfDay === 'morning' && timeVal < 13) return false;
+            if (halfDay === 'afternoon' && timeVal >= 13) return false;
+        }
+
+        if (dayBookings.some(b => Number(b.time) === Number(time))) return false;
+
+        const timeVal = Number(time);
+        const isAfternoonSlot = timeVal === 14 || timeVal === 15;
+        if (isAfternoonSlot && dayBookings.some(b => Number(b.time) === 14 || Number(b.time) === 15)) {
+            return false;
+        }
+
+        const currentAnimator = animation.animator?.trim().toLowerCase();
+        if (currentAnimator && currentAnimator !== '') {
+            const animatorHasBookingOnDate = dayBookings.some(booking => {
+                const bookingAnimator = animationAnimatorMap[booking.animationId]?.trim().toLowerCase();
+                return bookingAnimator === currentAnimator;
+            });
+            if (animatorHasBookingOnDate) return false;
+        }
+
+        return true;
+    };
+
+    // Génération des jours d'ouverture pour le mois en cours
+    const availableDaysInMonth = useMemo(() => {
+        const days = [];
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        const allowedWeekDays = settings.allowedDays || [2, 4];
+        const leadTime = settings.bookingLeadTime !== undefined ? settings.bookingLeadTime : 14;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const minLeadDate = new Date(today);
+        minLeadDate.setDate(today.getDate() + leadTime);
+
+        for (let d = 1; d <= lastDay; d++) {
+            const date = new Date(year, month, d);
+            if (allowedWeekDays.includes(date.getDay())) {
+                const isHoliday = isDateInHoliday(date, settings.holidays);
+                
+                // On ne pousse pas le jour s'il s'agit de vacances
+                if (isHoliday) continue;
+
+                const isTooSoon = date < minLeadDate;
+                const dateStr = toYYYYMMDD(date);
+                const isFullDayUnavailable = (animatorSettings.unavailableDates || []).includes(dateStr) && !animatorSettings.unavailableHalfDays?.[dateStr];
+                
+                days.push({
+                    date,
+                    isTooSoon,
+                    isAnimatorUnavailable: isFullDayUnavailable,
+                    dateString: dateStr,
+                    fullDateLabel: date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+                });
+            }
+        }
+        return days;
+    }, [year, month, settings.allowedDays, settings.bookingLeadTime, settings.holidays, animatorSettings.unavailableDates, animatorSettings.unavailableHalfDays]);
+
+    const timeSlots = settings.availableTimeSlots || [9, 10, 14, 15];
 
     return (
-        <div
-            className="rounded-xl shadow-md overflow-hidden cursor-pointer transform hover:scale-[1.02] transition-all duration-300 flex flex-col p-4 border h-[250px] w-full"
-            style={{ ...cardStyle, borderColor: borderColor }}
-            onClick={onSelect}
-            role="button"
-            tabIndex={0}
-            onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && onSelect()}
-            aria-label={`Sélectionner l'animation ${animation.title}`}
-        >
-            <div className="overflow-hidden flex-grow">
-                <div className="mb-2">
-                    <h3 className="text-lg font-bold line-clamp-2 leading-tight" title={animation.title}>
-                        {animation.title}
-                    </h3>
-                    <p 
-                        className="font-semibold mt-1 text-sm opacity-90 truncate border-b pb-1"
-                        style={{ borderColor: borderColor }}
-                    >
-                        {animation.classLevel}
-                    </p>
+        <div className="max-w-7xl mx-auto px-4 pb-12">
+            {/* Sélecteur de mois plus compact */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6 flex items-center justify-between">
+                <button 
+                    onClick={() => changeMonth(-1)}
+                    className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-blue-600 disabled:opacity-20"
+                    disabled={year === startYear && month === 9}
+                >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <div className="text-center">
+                    <h2 className="text-xl sm:text-2xl font-black text-gray-800 uppercase tracking-tight">
+                        {monthNames[month]} <span className="text-blue-600">{year}</span>
+                    </h2>
                 </div>
-
-                {animation.description && (
-                    <p className="text-sm opacity-85 leading-snug line-clamp-5 mt-2">
-                        {animation.description}
-                    </p>
-                )}
+                <button 
+                    onClick={() => changeMonth(1)}
+                    className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-blue-600 disabled:opacity-20"
+                    disabled={year === endYear && month === 5}
+                >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
+                </button>
             </div>
             
-            <div 
-                className="text-right pt-2 border-t mt-2"
-                style={{ borderColor: borderColor }}
-            >
-                <span 
-                    className="inline-block bg-black/10 hover:bg-black/20 font-bold py-1.5 px-3 rounded-md transition-colors text-[10px] uppercase tracking-wide border"
-                    style={{ borderColor: borderColor }}
-                >
-                    Réserver →
-                </span>
+            {/* Liste des jours optimisée : 3 colonnes sur desktop */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {availableDaysInMonth.length > 0 ? (
+                    availableDaysInMonth.map((dayObj) => {
+                        const isDayBlocked = dayObj.isTooSoon || dayObj.isAnimatorUnavailable;
+                        
+                        return (
+                            <div 
+                                key={dayObj.dateString}
+                                className={`bg-white rounded-2xl shadow-sm border transition-all overflow-hidden h-full flex flex-col ${
+                                    isDayBlocked ? 'border-gray-100 opacity-80' : 'border-blue-100 hover:shadow-md'
+                                }`}
+                            >
+                                <div className={`p-4 flex flex-col flex-grow ${isDayBlocked ? 'bg-gray-50/50' : 'bg-white'}`}>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className={`w-11 h-11 rounded-lg flex flex-col items-center justify-center font-black flex-shrink-0 ${
+                                            isDayBlocked ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white shadow-sm'
+                                        }`}>
+                                            <span className="text-[9px] leading-none mb-0.5 uppercase">{dayObj.date.toLocaleDateString('fr-FR', { weekday: 'short' })}</span>
+                                            <span className="text-lg leading-none">{dayObj.date.getDate()}</span>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h3 className={`text-sm font-bold capitalize truncate ${isDayBlocked ? 'text-gray-400' : 'text-gray-900'}`}>
+                                                {dayObj.fullDateLabel}
+                                            </h3>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 mt-auto">
+                                        {timeSlots.map(time => {
+                                            const available = !isDayBlocked && isSlotAvailable(dayObj.date, time);
+                                            return (
+                                                <button
+                                                    key={time}
+                                                    disabled={!available}
+                                                    onClick={() => onBookSlot(dayObj.date, time)}
+                                                    className={`px-2 py-2 rounded-lg font-bold text-xs transition-all transform active:scale-95 border ${
+                                                        available 
+                                                        ? 'bg-white border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white' 
+                                                        : 'bg-gray-50 text-gray-300 cursor-not-allowed border-gray-100'
+                                                    }`}
+                                                >
+                                                    {available ? `${time}h00` : 'Indisponible'}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })
+                ) : (
+                    <div className="col-span-full bg-white rounded-3xl p-12 text-center border-2 border-dashed border-gray-100">
+                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-700">Aucun créneau ce mois-ci</h3>
+                        <p className="text-gray-400 mt-2 max-w-sm mx-auto text-sm font-medium">
+                            Les réservations pour cette période sont indisponibles ou non autorisées.
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
     );
 };
 
-const AnimationSelection: React.FC<{ 
-  onSelectAnimation: (animation: Animation) => void; 
-  onNavigateToAdmin: () => void;
-  onNavigateToInfoPage: (pageId: string) => void;
-}> = ({ onSelectAnimation, onNavigateToAdmin, onNavigateToInfoPage }) => {
-  const { animations, settings } = useContext(AppContext);
-  const [showContact, setShowContact] = useState(false);
-
-  const headerStyle = {
-      backgroundColor: settings.headerBgColor || '#ffffff',
-  };
-
-  const titleStyle = {
-      color: settings.titleColor || '#111827',
-  };
-
-  const subtitleStyle = {
-      color: settings.subtitleColor || '#4b5563',
-  };
-
-  return (
-    <>
-      <header className="shadow-sm sticky top-0 z-40 w-full backdrop-blur-md bg-opacity-95" style={headerStyle}>
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
-              <div className="flex items-center justify-between min-h-24 py-4 gap-4">
-                  {/* Bouton Contact à Gauche */}
-                  <div className="z-10 flex-shrink-0 flex flex-col items-center">
-                      <button
-                          onClick={() => setShowContact(true)}
-                          className="flex items-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-xl shadow-lg hover:bg-blue-700 transition-all transform hover:scale-105 text-sm font-black uppercase tracking-wider"
-                          aria-label="Nous contacter"
-                      >
-                          <BellIcon className="w-5 h-5" />
-                          <span className="hidden md:inline">Nous contacter</span>
-                      </button>
-                      {settings.headerInfoText && (
-                          <p 
-                            className={`mt-1.5 ${settings.headerInfoFontSize || 'text-[10px]'} ${settings.headerInfoFontWeight || 'font-normal'} ${settings.headerInfoFontStyle === 'italic' ? 'italic' : 'normal'} text-center leading-tight animate-in fade-in slide-in-from-top-1 duration-500`}
-                            style={{ 
-                                color: settings.headerInfoColor || '#6b7280',
-                                maxWidth: `${settings.headerInfoWidth || 200}px` 
-                            }}
-                          >
-                              {settings.headerInfoText}
-                          </p>
-                      )}
-                  </div>
-
-                  <div className="flex-1 min-w-0 text-center">
-                      <h1 
-                        className={`${settings.titleFontSize || 'text-2xl'} ${settings.titleFontWeight || 'font-bold'} ${settings.titleFontStyle || 'not-italic'} leading-tight break-words`}
-                        style={titleStyle}
-                      >
-                        {settings.homepageTitle}
-                      </h1>
-                      <p 
-                        className={`${settings.subtitleFontSize || 'text-sm'} ${settings.subtitleFontWeight || 'font-normal'} ${settings.subtitleFontStyle || 'not-italic'} mt-1 hidden lg:block px-4 line-clamp-2`}
-                        style={subtitleStyle}
-                      >
-                        {settings.homepageSubtitle || `Choisissez une animation pour voir les créneaux disponibles pour l'année scolaire ${settings.activeYear}`}
-                      </p>
-                  </div>
-
-                  {/* Bouton Admin à Droite */}
-                  <div className="z-10 flex-shrink-0">
-                      <button
-                          onClick={onNavigateToAdmin}
-                          className="flex items-center gap-2 bg-slate-800 text-white px-3 py-2 rounded-lg shadow hover:bg-slate-700 transition-colors text-[10px] font-bold uppercase tracking-tight"
-                          aria-label="Accéder à l'administration"
-                      >
-                          <CogIcon className="w-4 h-4" />
-                          <span className="hidden sm:inline">Administration</span>
-                      </button>
-                  </div>
-              </div>
-
-              {/* Liens de pages d'info centrés en bas de l'en-tête */}
-              {settings.infoPages && settings.infoPages.length > 0 && (
-                  <div className="flex flex-wrap justify-center items-center gap-x-8 gap-y-2 pb-4 pt-2 border-t border-gray-100/50 mt-1">
-                      {settings.infoPages.map(page => (
-                          <button
-                              key={page.id}
-                              onClick={() => onNavigateToInfoPage(page.id)}
-                              className="text-xs font-black uppercase tracking-widest text-gray-500 hover:text-blue-600 transition-all hover:scale-110 relative group"
-                          >
-                              {page.title}
-                              <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-blue-600 transition-all group-hover:w-full"></span>
-                          </button>
-                      ))}
-                  </div>
-              )}
-          </div>
-      </header>
-
-      {/* Fenêtre modale de contact */}
-      {showContact && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in fade-in duration-300" onClick={() => setShowContact(false)}>
-            <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full relative transform animate-in zoom-in duration-300" onClick={e => e.stopPropagation()}>
-                <button 
-                    onClick={() => setShowContact(false)} 
-                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-2"
-                >
-                    <XIcon className="w-6 h-6" />
-                </button>
-
-                <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 rotate-3">
-                        <BellIcon className="w-8 h-8" />
-                    </div>
-                    <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Nous contacter</h2>
-                    <p className="text-slate-500 text-sm mt-1">Informations de contact</p>
-                </div>
-
-                <div className="space-y-6">
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Numéro de téléphone</p>
-                        <p className="text-lg font-bold text-slate-800">{settings.contactPhone || "Non renseigné"}</p>
-                    </div>
-
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Adresse e-mail</p>
-                        <p className="text-lg font-bold text-blue-600 break-all">{settings.contactEmail || "Non renseignée"}</p>
-                    </div>
-                </div>
-
-                <button 
-                    onClick={() => setShowContact(false)}
-                    className="mt-10 w-full py-4 bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-slate-200"
-                >
-                    Fermer
-                </button>
-            </div>
-        </div>
-      )}
-
-      <div className="flex-grow flex flex-col" style={{ backgroundColor: settings.homepageBgColor || '#f8fafc' }}>
-          <main className="max-w-7xl mx-auto w-full py-8 sm:py-12 px-4 sm:px-6">
-              <div className="flex flex-wrap justify-center gap-6">
-                  {animations.map(anim => (
-                      <div key={anim.id} className="w-full sm:w-[280px] flex-shrink-0">
-                        <AnimationCard animation={anim} onSelect={() => onSelectAnimation(anim)} />
-                      </div>
-                  ))}
-              </div>
-          </main>
-      </div>
-    </>
-  );
-};
-
-export default AnimationSelection;
+export default BookingCalendar;

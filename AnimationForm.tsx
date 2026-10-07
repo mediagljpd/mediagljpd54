@@ -1,176 +1,187 @@
 
-import React, { useState, useMemo, useContext, useEffect } from 'react';
-import { Booking, Animation } from '../../types';
+import React, { useState, useRef, useContext } from 'react';
+import { Animation, Animator } from '../../types';
+import { storageService } from '../../services/storageService';
+import { SparklesIcon } from '../Icons';
 import { AppContext } from '../../AppContext';
-import { toYYYYMMDD } from '../../utils/date';
 
-const BookingsCalendar: React.FC<{ bookings: Booking[]; animations: Animation[]; onEdit: (booking: Booking) => void }> = ({ bookings, animations, onEdit }) => {
-    const { settings } = useContext(AppContext);
+const AnimationForm: React.FC<{ animation: Animation, animators: Animator[], onSave: (anim: Animation) => void, onCancel: () => void }> = ({ animation, animators, onSave, onCancel }) => {
+    const { animations } = useContext(AppContext);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [formState, setFormState] = useState<Animation>({
+        ...animation,
+        fontColor: animation.fontColor || '#ffffff'
+    });
 
-    const [startYear, endYear] = useMemo(() => {
-        const years = settings.activeYear.split('-').map(Number);
-        if (years.length !== 2 || isNaN(years[0]) || isNaN(years[1])) {
-            const currentYear = new Date().getFullYear();
-            return [currentYear, currentYear + 1]; // Fallback
-        }
-        return [years[0], years[1]];
-    }, [settings.activeYear]);
-    
-    const getInitialDate = () => {
-        const today = new Date();
-        const todayYear = today.getFullYear();
-        const todayMonth = today.getMonth();
+    const isExisting = animations.some(a => a.id === animation.id);
 
-        if (
-            (todayYear === startYear && todayMonth >= 9) || 
-            (todayYear === endYear && todayMonth <= 5)
-        ) {
-            return today;
-        }
-        return new Date(startYear, 9, 1);
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        setFormState({ ...formState, [e.target.name]: e.target.value });
     };
 
-    const [currentDate, setCurrentDate] = useState(getInitialDate);
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
 
-    useEffect(() => {
-        setCurrentDate(getInitialDate());
-         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [startYear, endYear]);
+        setIsUploading(true);
+        try {
+            const url = await storageService.uploadFile(file, 'animations');
+            setFormState(prev => ({ ...prev, imageUrl: url }));
+        } catch (error) {
+            alert(error instanceof Error ? error.message : "Erreur lors de l'upload");
+        } finally {
+            setIsUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
 
-    const animationColorMap = useMemo(() => {
-        return animations.reduce((acc, anim) => {
-            acc[anim.id] = { bg: anim.color, text: anim.fontColor };
-            return acc;
-        }, {} as Record<string, { bg: string, text: string }>);
-    }, [animations]);
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formState);
+    };
 
-    const bookingsByDate = useMemo(() => {
-        return bookings.reduce((acc, booking) => {
-            const date = booking.date;
-            if (!acc[date]) {
-                acc[date] = [];
+    const handleCancel = () => {
+        const hasChanges = JSON.stringify(formState) !== JSON.stringify({
+            ...animation,
+            fontColor: animation.fontColor || '#ffffff'
+        });
+        if (hasChanges) {
+            if (window.confirm("Vous avez des modifications non enregistrées sur cette fiche d'animation. Voulez-vous vraiment annuler ?")) {
+                onCancel();
             }
-            acc[date].push(booking);
-            return acc;
-        }, {} as Record<string, Booking[]>);
-    }, [bookings]);
-
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-    
-    const firstDayOfMonth = new Date(year, month, 1).getDay();
-    const startingDay = (firstDayOfMonth === 0 || firstDayOfMonth === 1) ? 0 : firstDayOfMonth - 2;
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    const changeMonth = (offset: number) => {
-        const newDate = new Date(currentDate);
-        newDate.setDate(1); 
-        newDate.setMonth(currentDate.getMonth() + offset);
-
-        if (newDate.getFullYear() === startYear && newDate.getMonth() < 9) return;
-        if (newDate.getFullYear() === endYear && newDate.getMonth() > 5) return;
-        if (newDate.getFullYear() < startYear || newDate.getFullYear() > endYear) return;
-
-        setCurrentDate(newDate);
+        } else {
+            onCancel();
+        }
     };
-    
-    const todayStr = toYYYYMMDD(new Date());
 
     return (
-        <div className="bg-white rounded-xl shadow border border-gray-200">
-            {/* Header section */}
-            <div className="bg-white z-20 p-4 border-b rounded-t-xl">
-                <div className="flex justify-between items-center mb-6">
-                    <button 
-                        onClick={() => changeMonth(-1)} 
-                        className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-gray-600 disabled:opacity-30"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
-                    </button>
-                    <div className="text-center">
-                        <h3 className="text-2xl font-bold text-gray-800 tracking-tight">{monthNames[month]} {year}</h3>
-                    </div>
-                    <button 
-                        onClick={() => changeMonth(1)} 
-                        className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-gray-600 disabled:opacity-30"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                    </button>
+        <div className="bg-gray-50 p-6 rounded-lg mb-6 border shadow-sm">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{isExisting ? "Modifier l'animation" : "Nouvelle animation"}</h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Titre de l'animation</label>
+                    <input type="text" name="title" value={formState.title} onChange={handleChange} placeholder="Titre de l'animation" className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none" required />
                 </div>
-                
-                <div className="grid grid-cols-5 text-center font-bold text-gray-400 uppercase text-xs tracking-widest">
-                    {['Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'].map(day => 
-                        <div key={day} className="pb-2">{day}</div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea name="description" value={formState.description || ''} onChange={handleChange} placeholder="Description détaillée..." rows={3} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Animateur référent</label>
+                        <select
+                            name="animator"
+                            value={formState.animator || ''}
+                            onChange={handleChange}
+                            className="w-full p-2 border rounded bg-white"
+                        >
+                            <option value="">-- Non assigné --</option>
+                            {animators.map(animator => (
+                                <option key={animator.name} value={animator.name}>{animator.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Niveaux scolaires</label>
+                        <input type="text" name="classLevel" value={formState.classLevel} onChange={handleChange} placeholder="ex: CE1-CE2" className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none" required />
+                    </div>
+                </div>
+
+                <div className="flex flex-col md:flex-row gap-4 items-start">
+                    <div className="flex-grow w-full">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Illustration (Cloudinary)</label>
+                        <div className="flex gap-2">
+                            <input 
+                                type="url" 
+                                name="imageUrl" 
+                                value={formState.imageUrl || ''} 
+                                onChange={handleChange} 
+                                placeholder="https://res.cloudinary.com/..." 
+                                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-xs bg-gray-50" 
+                            />
+                            <input 
+                                type="file" 
+                                ref={fileInputRef}
+                                onChange={handleFileUpload}
+                                accept="image/*"
+                                className="hidden"
+                            />
+                            <button 
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploading}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-sm ${isUploading ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'}`}
+                            >
+                                {isUploading ? (
+                                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <SparklesIcon className="w-4 h-4" />
+                                )}
+                                {isUploading ? 'Upload...' : 'Uploader'}
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1 italic">L'image sera hébergée sur Cloudinary et optimisée automatiquement.</p>
+                    </div>
+                    {(formState.imageUrl || isUploading) && (
+                        <div className="flex-shrink-0">
+                            <div className="w-20 h-20 rounded-lg border-2 border-white shadow-md overflow-hidden bg-gray-100 flex items-center justify-center relative">
+                                {isUploading ? (
+                                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <img 
+                                        src={formState.imageUrl} 
+                                        alt="Aperçu" 
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            (e.target as HTMLImageElement).src = 'https://placehold.co/100x100?text=Erreur';
+                                        }}
+                                    />
+                                )}
+                                {formState.imageUrl && !isUploading && (
+                                    <button 
+                                        type="button"
+                                        onClick={() => setFormState(prev => ({ ...prev, imageUrl: '' }))}
+                                        className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl hover:bg-red-600 transition-colors"
+                                        title="Supprimer"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                        </svg>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                     )}
                 </div>
-            </div>
-
-            <div className="bg-gray-100">
-                <div className="grid grid-cols-5 gap-px">
-                    {Array.from({ length: startingDay }).map((_, i) => (
-                        <div key={`empty-${i}`} className="bg-gray-50/50 min-h-[140px]"></div>
-                    ))}
+                
+                <div className="flex flex-wrap gap-8 p-4 bg-white border rounded-lg">
+                    <div className="flex items-center gap-3">
+                        <label htmlFor="color" className="text-sm font-medium text-gray-700">Couleur de fond :</label>
+                        <input type="color" name="color" value={formState.color} onChange={handleChange} className="p-0.5 h-10 w-12 block bg-white border border-gray-200 cursor-pointer rounded-md shadow-sm" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <label htmlFor="fontColor" className="text-sm font-medium text-gray-700">Couleur de police :</label>
+                        <input type="color" name="fontColor" value={formState.fontColor} onChange={handleChange} className="p-0.5 h-10 w-12 block bg-white border border-gray-200 cursor-pointer rounded-md shadow-sm" />
+                    </div>
                     
-                    {Array.from({ length: daysInMonth }).map((_, dayIndex) => {
-                        const day = dayIndex + 1;
-                        const date = new Date(year, month, day);
-                        const dow = date.getDay();
-                        
-                        if (dow === 0 || dow === 1) return null;
-
-                        const dateStr = toYYYYMMDD(date);
-                        const dayBookings = (bookingsByDate[dateStr] || []).sort((a,b) => a.time - b.time);
-                        const isToday = dateStr === todayStr;
-
-                        return (
-                            <div 
-                                key={day} 
-                                className={`p-2 flex flex-col relative min-h-[140px] group transition-colors ${
-                                    isToday ? 'bg-blue-50/30' : 'bg-white hover:bg-gray-50'
-                                }`}
-                            >
-                                <span className={`text-sm font-bold self-end px-2 py-1 rounded-full ${
-                                    isToday ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400'
-                                }`}>
-                                    {day}
-                                </span>
-                                
-                                <div className="space-y-2 mt-2">
-                                    {dayBookings.map(booking => {
-                                        const colors = animationColorMap[booking.animationId] || { bg: '#E5E7EB', text: '#111827' };
-                                        return (
-                                            <div 
-                                                key={booking.id}
-                                                onClick={() => onEdit(booking)}
-                                                className="p-2.5 rounded-lg text-[12px] leading-snug cursor-pointer hover:brightness-95 active:scale-[0.98] transition-all shadow-sm border border-black/5"
-                                                style={{ backgroundColor: colors.bg, color: colors.text }}
-                                                title={`${booking.animationTitle} - ${booking.teacherName} (${booking.classLevel})`}
-                                            >
-                                                <p className="font-bold tracking-normal truncate mb-0.5">
-                                                    {booking.time}h • {booking.animationTitle}
-                                                </p>
-                                                <p className="truncate opacity-90 font-medium">
-                                                    {booking.teacherName} ({booking.classLevel})
-                                                </p>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </div>
-                        );
-                    })}
-                    
-                    {Array.from({ length: (5 - ((startingDay + daysInMonth - (Array.from({ length: daysInMonth }).filter((_, i) => {
-                         const d = new Date(year, month, i+1).getDay();
-                         return d === 0 || d === 1;
-                    }).length)) % 5)) % 5 }).map((_, i) => (
-                        <div key={`empty-end-${i}`} className="bg-gray-50/50 min-h-[140px]"></div>
-                    ))}
+                    <div className="flex-grow flex items-center justify-center border-l pl-8">
+                        <div 
+                            className="px-4 py-2 rounded-lg shadow-sm border text-center font-bold text-sm min-w-[150px]"
+                            style={{ backgroundColor: formState.color, color: formState.fontColor }}
+                        >
+                            Aperçu du texte
+                        </div>
+                    </div>
                 </div>
-            </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                    <button type="button" onClick={handleCancel} className="bg-gray-100 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-200 transition-colors">Annuler</button>
+                    <button type="submit" className="bg-green-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-green-700 shadow-md transition-all">Sauvegarder</button>
+                </div>
+            </form>
         </div>
     );
 };
 
-export default BookingsCalendar;
+export default AnimationForm;

@@ -209,6 +209,30 @@ export interface AppSettings {
   // Statut des réservations (Mode hybride / Test)
   enableBookingStatus?: boolean;
   emailAnimatorOnValidationEnabled?: boolean;
+
+  // Modèle Bon de Commande (BDC) Bus
+  bdcTemplate?: BdcTemplateConfig;
+}
+
+export interface BdcTemplateConfig {
+  siret?: string;
+  tvaNumber?: string;
+  paymentTerms?: string;
+  marketTitle?: string;
+  carrierName?: string;
+  carrierAddress?: string;
+  carrierPhone?: string;
+  carrierEmail?: string;
+  imputation?: string;
+  billingAddress?: string;
+  legalNotice?: string;
+  defaultScheduleInstructions?: string;
+  defaultMeetingInstructions?: string;
+  vatRatePercent?: number; // 10%
+  logoBase64?: string;
+  customDocxTemplateBase64?: string;
+  customDocxTemplateFileName?: string;
+  customDocxTemplateUpdatedAt?: string;
 }
 
 export enum View {

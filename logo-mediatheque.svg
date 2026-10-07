@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 190" width="280" height="190">
+  <defs>
+    <style>
+      .green-curve { fill: none; stroke: #99be2c; stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; }
+      .dark-dot { fill: #2c2834; }
+      .title-main { font-family: 'Arial Black', Impact, sans-serif; font-size: 25px; font-weight: 900; fill: #2c2834; letter-spacing: 0.5px; }
+      .sub-main { font-family: 'Arial Black', Impact, sans-serif; font-size: 21px; font-weight: 900; fill: #2c2834; letter-spacing: 0.5px; }
+      .lime-accent { fill: #99be2c; }
+      .script-name { font-family: 'Brush Script MT', 'Segoe Script', cursive, sans-serif; font-size: 21px; font-style: italic; fill: #99be2c; font-weight: bold; }
+      .green-line { stroke: #99be2c; stroke-width: 3.5; stroke-linecap: round; }
+    </style>
+  </defs>
+  
+  <!-- Stylized M curve -->
+  <path class="green-curve" d="M 32 120 C 35 75, 70 30, 105 18 C 145 5, 172 65, 182 105 C 190 60, 215 28, 250 58" />
+  
+  <!-- Dot -->
+  <circle class="dark-dot" cx="265" cy="58" r="8" />
+
+  <!-- MÉDIATHÈQUE -->
+  <text x="56" y="128" class="title-main">MÉDIATHÈQUE</text>
+
+  <!-- DU GRAND LONGWY -->
+  <text x="56" y="152" class="sub-main">DU GRAND <tspan class="lime-accent">L</tspan>ONGWY</text>
+
+  <!-- Underline & Jean-Paul Durieux -->
+  <line x1="56" y1="168" x2="98" y2="168" class="green-line" />
+  <text x="103" y="174" class="script-name">Jean-Paul Durieux</text>
+</svg>

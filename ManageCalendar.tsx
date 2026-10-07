@@ -1,512 +1,1758 @@
 
-import React, { useState, useContext, useEffect, useMemo } from 'react';
+import React, { useState, useContext, useMemo, useEffect, useRef } from 'react';
 import { AppContext } from '../../AppContext';
-import { AdminUser, UserRole, UserPermissions } from '../../types';
+import { AnimatorSettings, Holiday } from '../../types';
 import { AdminSubComponentProps } from './types';
-import { TrashIcon, CogIcon, PlusIcon, CheckIcon, ShieldCheckIcon, UserIcon, LockIcon, UserGroupIcon, ShieldIcon } from '../Icons';
-import { validatePassword } from '../../utils/validators';
-import PasswordPolicy from './PasswordPolicy';
-import { dataService } from '../../services/dataService';
-import { db } from '../../services/firebase';
-import { collection, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
+import { toYYYYMMDD } from '../../utils/date';
+import { PencilIcon, TrashIcon, CalendarDaysIcon, CheckIcon, XIcon } from '../Icons';
 import ConfirmationModal from '../shared/ConfirmationModal';
+import HolidayEditModal from './HolidayEditModal';
 
-const ManageUsers: React.FC<AdminSubComponentProps> = ({ showNotification }) => {
-    const { settings, updateSettings } = useContext(AppContext);
+const ManageCalendar: React.FC<AdminSubComponentProps> = ({ 
+    showNotification, 
+    setHasUnsavedChanges: setParentUnsavedChanges, 
+    registerSave,
+    registerCancel 
+}) => {
+    const { settings, updateSettings, currentUser } = useContext(AppContext);
+    const animators = useMemo(() => settings.animators || [], [settings.animators]);
+    const [holidayToDelete, setHolidayToDelete] = useState<string | null>(null);
     
-    const [isAdding, setIsAdding] = useState(false);
-    const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
-    const [admins, setAdmins] = useState<{id: string, email: string}[]>([]);
-    const [isAddingAdmin, setIsAddingAdmin] = useState(false);
-    const [newAdminEmail, setNewAdminEmail] = useState('');
-    const [newAdminUid, setNewAdminUid] = useState('');
-    const [userToDelete, setUserToDelete] = useState<string | null>(null);
-    
-    // Sort local users alphabetically by username
-    const sortedUsers = useMemo(() => {
-        return [...(settings.users || [])].sort((a, b) => 
-            a.username.toLocaleLowerCase().localeCompare(b.username.toLocaleLowerCase())
-        );
-    }, [settings.users]);
+    // Scoping for user role
+    const isRestrictedUser = currentUser?.role === 'user';
+    const linkedAnimator = currentUser?.animatorName;
+    const canManageVacations = currentUser?.role === 'admin' || currentUser?.permissions.canManageVacations;
 
-    useEffect(() => {
-        const unsub = onSnapshot(collection(db, 'admins'), (snapshot) => {
-            const adminList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                email: doc.data().email
-            })).sort((a, b) => a.email.toLocaleLowerCase().localeCompare(b.email.toLocaleLowerCase()));
-            setAdmins(adminList);
-        });
-        return () => unsub();
-    }, []);
-
-    const handleAddAdmin = async () => {
-        if (!newAdminUid || !newAdminEmail) return;
-        try {
-            await dataService.addAdmin(newAdminUid, newAdminEmail);
-            showNotification('Admin Google ajouté avec succès');
-            setNewAdminUid('');
-            setNewAdminEmail('');
-            setIsAddingAdmin(false);
-        } catch (err) {
-            showNotification('Erreur lors de l\'ajout de l\'admin', 'error');
-        }
-    };
-
-    const initialPermissions: UserPermissions = {
-        canModifySettings: false,
-        canManageVacations: false,
-        canManageAnimations: false
-    };
-
-    const [formData, setFormData] = useState<Omit<AdminUser, 'id'>>({
-        username: '',
-        password: '',
-        role: UserRole.USER,
-        animatorName: '',
-        permissions: { ...initialPermissions }
+    const [selectedAnimatorName, setSelectedAnimatorName] = useState<string>(() => {
+        if (isRestrictedUser && linkedAnimator) return linkedAnimator;
+        return (animators[0] && animators[0].name) || '';
     });
+    const [selectedDates, setSelectedDates] = useState<string[]>([]);
+    const [unavailableReasons, setUnavailableReasons] = useState<Record<string, string>>({});
+    const [unavailableHalfDays, setUnavailableHalfDays] = useState<Record<string, 'morning' | 'afternoon'>>({});
+    const [inactiveSlots, setInactiveSlots] = useState<number[]>([]);
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+    
+    const [noLimit, setNoLimit] = useState<boolean>(true);
+    const [monthlyBookingLimit, setMonthlyBookingLimit] = useState<number | undefined>(undefined);
+    
+    // Modal states for editing reason and period
+    const [editingReasonDates, setEditingReasonDates] = useState<string[] | null>(null);
+    const [reasonInput, setReasonInput] = useState<string>('');
+    const [periodInput, setPeriodInput] = useState<'morning' | 'afternoon' | 'full' | 'unchanged'>('full');
 
-    const handleSave = async () => {
-        const complexityError = validatePassword(formData.password);
-        if (complexityError) {
-            showNotification(complexityError, 'error');
-            return;
+    // Context menu state for right-clicking calendar days
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; dateStr: string } | null>(null);
+    
+    const canEditCurrentAnimatorSettings = useMemo(() => {
+        if (currentUser?.role === 'admin') return true;
+        if (currentUser?.role === 'user') {
+            const linked = currentUser.animatorName;
+            if (!linked) return false; // Non-linked users can only view, not edit
+            return selectedAnimatorName === linked; // Linked users can modify only their own
         }
+        return false;
+    }, [currentUser, selectedAnimatorName]);
 
-        try {
-            const currentUsers = settings.users || [];
-            let newUsers;
-
-            if (editingUser) {
-                const isPasswordChanged = formData.password !== editingUser.password;
-                newUsers = currentUsers.map(u => u.id === editingUser.id ? { 
-                    ...formData, 
-                    id: u.id,
-                    passwordLastChanged: isPasswordChanged ? new Date().toISOString() : u.passwordLastChanged,
-                    mustChangePassword: isPasswordChanged ? true : u.mustChangePassword
-                } : u);
-            } else {
-                const newUser: AdminUser = {
-                    ...formData,
-                    id: Date.now().toString(),
-                    passwordLastChanged: new Date().toISOString(),
-                    mustChangePassword: true
-                };
-                newUsers = [...currentUsers, newUser];
-            }
-
-            await updateSettings({ ...settings, users: newUsers });
-            setIsAdding(false);
-            setEditingUser(null);
-            setFormData({
-                username: '',
-                password: '',
-                role: UserRole.USER,
-                animatorName: '',
-                permissions: { ...initialPermissions }
-            });
-            showNotification(editingUser ? 'Utilisateur mis à jour !' : 'Utilisateur créé !');
-        } catch (err) {
-            console.error("Error saving user:", err);
-            showNotification('Erreur lors de la sauvegarde de l\'utilisateur', 'error');
+    const [startYear, endYear] = useMemo(() => {
+        const years = settings.activeYear.split('-').map(Number);
+        if (years.length !== 2 || isNaN(years[0]) || isNaN(years[1])) {
+            const currentY = new Date().getFullYear();
+            return [currentY, currentY + 1]; // Fallback
         }
+        return [years[0], years[1]];
+    }, [settings.activeYear]);
+
+    const getCleanHolidayName = (name: string): string => {
+        return name.replace(/\s*\(\d{4}-\d{4}\)$/, '').trim();
     };
 
-    const handleDelete = (id: string) => {
-        if (!id) return;
-        console.log("Delete triggered for user ID:", id);
-        setUserToDelete(id);
+    const VACATION_ORDER = [
+        'Vacances de la Toussaint',
+        'Vacances de Noël',
+        "Vacances d'hiver",
+        'Vacances de Printemps'
+    ];
+
+    const PUBLIC_HOLIDAYS_ORDER = [
+        'Toussaint',
+        'Armistice',
+        'Travail',
+        'Ascension',
+        'Victoire'
+    ];
+
+    const formatHolidayDate = (startDate?: string, endDate?: string): string => {
+        if (!startDate && !endDate) return '';
+        const s = startDate || endDate;
+        const e = endDate || startDate;
+        if (s === e) {
+            return new Date(s!.replace(/-/g, '/')).toLocaleDateString('fr-FR');
+        }
+        const d1 = new Date(s!.replace(/-/g, '/'));
+        const d2 = new Date(e!.replace(/-/g, '/'));
+        return `${d1.toLocaleDateString('fr-FR')} - ${d2.toLocaleDateString('fr-FR')}`;
     };
 
-    const confirmDelete = async () => {
-        if (!userToDelete) return;
-        const id = userToDelete;
+    const getHolidayForDate = (date: Date, holidays: Holiday[]): Holiday | undefined => {
+        const checkDate = new Date(date);
+        checkDate.setHours(0, 0, 0, 0);
+        const checkTime = checkDate.getTime();
+        return (holidays || []).find(h => {
+            if (!h.startDate && !h.endDate) return false;
+            const startStr = h.startDate || h.endDate;
+            const endStr = h.endDate || h.startDate;
+            const startDate = new Date(startStr.replace(/-/g, '/'));
+            startDate.setHours(0, 0, 0, 0);
+            const endDate = new Date(endStr.replace(/-/g, '/'));
+            endDate.setHours(0, 0, 0, 0);
+            return checkTime >= startDate.getTime() && checkTime <= endDate.getTime();
+        });
+    };
+
+    const isHolidayInActiveYear = (h: Holiday, activeYear: string): boolean => {
+        if (!activeYear) return false;
+        if (h.name.includes(activeYear)) return true;
+
+        // Si le nom contient un autre tag d'année scolaire (ex: "(2024-2025)")
+        const yearMatch = h.name.match(/\((\d{4}-\d{4})\)/);
+        if (yearMatch && yearMatch[1] !== activeYear) return false;
+
+        // Si aucune date renseignée et pas d'autre année spécifiée
+        if (!h.startDate && !h.endDate) {
+            const clean = getCleanHolidayName(h.name);
+            return VACATION_ORDER.includes(clean) || PUBLIC_HOLIDAYS_ORDER.includes(clean);
+        }
         
         try {
-            console.log("Starting deletion process for ID:", id);
-            const currentUsers = settings.users || [];
-            // Comparison as strings to avoid type mismatches (number vs string)
-            const newUsers = currentUsers.filter(u => String(u.id) !== String(id));
+            const years = activeYear.split('-').map(Number);
+            if (years.length !== 2) return false;
+            const [sY, eY] = years;
             
-            if (newUsers.length === currentUsers.length) {
-                showNotification('Utilisateur non trouvé ou déjà supprimé.', 'error');
-                console.warn(`Could not find user with id ${id} among`, currentUsers);
-                setUserToDelete(null);
-                return;
-            }
-
-            console.log("Updating settings with the filtered user list...");
-            await updateSettings({ ...settings, users: newUsers });
-            showNotification('Utilisateur supprimé avec succès.');
-        } catch (err) {
-            console.error("Error deleting user:", err);
-            showNotification('Erreur lors de la suppression de l\'utilisateur. Vérifiez votre connexion.', 'error');
-        } finally {
-            setUserToDelete(null);
+            const startLimit = new Date(sY, 9, 1); // 1er Octobre startYear
+            const endLimit = new Date(eY, 5, 30); // 30 Juin endYear
+            
+            const startStr = h.startDate || h.endDate;
+            const endStr = h.endDate || h.startDate;
+            const hStart = new Date(startStr.replace(/-/g, '/'));
+            const hEnd = new Date(endStr.replace(/-/g, '/'));
+            
+            return (hStart >= startLimit && hStart <= endLimit) || 
+                   (hEnd >= startLimit && hEnd <= endLimit);
+        } catch (e) {
+            return false;
         }
     };
 
-    const togglePermission = (key: keyof UserPermissions) => {
-        setFormData(prev => ({
-            ...prev,
-            permissions: {
-                ...prev.permissions,
-                [key]: !prev.permissions[key]
+    const activeHolidays = useMemo(() => {
+        return (settings.holidays || []).filter(h => isHolidayInActiveYear(h, settings.activeYear));
+    }, [settings.holidays, settings.activeYear]);
+
+    const { vacationHolidays, publicHolidays, customHolidays } = useMemo(() => {
+        const vacations: Holiday[] = [];
+        const publicHols: Holiday[] = [];
+        const customHols: Holiday[] = [];
+
+        // 1. Les 4 périodes de vacances dans l'ordre chronologique scolaire exact
+        VACATION_ORDER.forEach(name => {
+            const found = activeHolidays.find(h => getCleanHolidayName(h.name) === name);
+            if (found) {
+                vacations.push(found);
+            } else {
+                vacations.push({ name: `${name} (${settings.activeYear})`, startDate: '', endDate: '' });
             }
-        }));
+        });
+
+        // 2. Les 5 jours fériés dans l'ordre exact demandé
+        PUBLIC_HOLIDAYS_ORDER.forEach(name => {
+            const found = activeHolidays.find(h => getCleanHolidayName(h.name) === name);
+            if (found) {
+                publicHols.push(found);
+            } else {
+                publicHols.push({ name: `${name} (${settings.activeYear})`, startDate: '', endDate: '' });
+            }
+        });
+
+        // 3. Autres périodes personnalisées éventuelles
+        activeHolidays.forEach(h => {
+            const clean = getCleanHolidayName(h.name);
+            if (!VACATION_ORDER.includes(clean) && !PUBLIC_HOLIDAYS_ORDER.includes(clean)) {
+                customHols.push(h);
+            }
+        });
+
+        return {
+            vacationHolidays: vacations,
+            publicHolidays: publicHols,
+            customHolidays: customHols
+        };
+    }, [activeHolidays, settings.activeYear]);
+
+    const [currentDate, setCurrentDate] = useState(() => {
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        
+        // On initialise par défaut sur le mois actuel si on est dans l'année scolaire active
+        // L'année scolaire va d'Octobre (9) de startYear à Juin (5) de endYear
+        const years = settings.activeYear.split('-').map(Number);
+        const sY = years[0];
+        const eY = years[1];
+        
+        const isWithinRange = (currentYear === sY && currentMonth >= 9) || 
+                             (currentYear === eY && currentMonth <= 5);
+        
+        if (isWithinRange) {
+            return new Date(currentYear, currentMonth, 1);
+        }
+        return new Date(sY || now.getFullYear(), 9, 1);
+    });
+    const [checkedDates, setCheckedDates] = useState<Set<string>>(new Set());
+    const [newHoliday, setNewHoliday] = useState({ name: '', startDate: '', endDate: ''});
+    const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
+
+    const selectedAnimatorSettings = useMemo<AnimatorSettings>(() => {
+        return settings.animatorSettings?.[selectedAnimatorName] || { unavailableDates: [], inactiveSlots: [] };
+    }, [settings.animatorSettings, selectedAnimatorName]);
+
+    const timeSlots = useMemo(() => {
+        return settings.availableTimeSlots || [9, 10, 14, 15];
+    }, [settings.availableTimeSlots]);
+
+    useEffect(() => {
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        
+        const isWithinRange = (currentYear === startYear && currentMonth >= 9) || 
+                             (currentYear === endYear && currentMonth <= 5);
+        
+        if (isWithinRange) {
+            setCurrentDate(new Date(currentYear, currentMonth, 1));
+        } else {
+            setCurrentDate(new Date(startYear, 9, 1));
+        }
+    }, [startYear, endYear]);
+
+    useEffect(() => {
+        const activeYear = settings.activeYear;
+        if (!activeYear) return;
+
+        const defaultVacationNames = [
+            `Vacances de la Toussaint (${activeYear})`,
+            `Vacances de Noël (${activeYear})`,
+            `Vacances d'hiver (${activeYear})`,
+            `Vacances de Printemps (${activeYear})`
+        ];
+
+        const defaultPublicHolidayNames = [
+            `Toussaint (${activeYear})`,
+            `Armistice (${activeYear})`,
+            `Travail (${activeYear})`,
+            `Ascension (${activeYear})`,
+            `Victoire (${activeYear})`
+        ];
+
+        const currentHolidays = settings.holidays || [];
+
+        const missingVacationNames = defaultVacationNames.filter(defName => {
+            const clean = getCleanHolidayName(defName);
+            return !currentHolidays.some(h => 
+                (h.name === defName || getCleanHolidayName(h.name) === clean) && 
+                isHolidayInActiveYear(h, activeYear)
+            );
+        });
+
+        const missingPublicHolidayNames = defaultPublicHolidayNames.filter(defName => {
+            const clean = getCleanHolidayName(defName);
+            return !currentHolidays.some(h => 
+                (h.name === defName || getCleanHolidayName(h.name) === clean) && 
+                isHolidayInActiveYear(h, activeYear)
+            );
+        });
+
+        const allMissing = [...missingVacationNames, ...missingPublicHolidayNames];
+
+        if (allMissing.length > 0) {
+            const newHolidays = [
+                ...currentHolidays,
+                ...allMissing.map(name => ({
+                    name,
+                    startDate: '',
+                    endDate: ''
+                }))
+            ];
+            updateSettings({ holidays: newHolidays });
+        }
+    }, [settings.activeYear, settings.holidays, updateSettings]);
+    
+    useEffect(() => {
+        if (selectedAnimatorName) {
+            const animSettings = settings.animatorSettings?.[selectedAnimatorName] || { unavailableDates: [], inactiveSlots: [] };
+            setInactiveSlots(animSettings.inactiveSlots || []);
+            setSelectedDates(animSettings.unavailableDates || []);
+            setUnavailableReasons(animSettings.unavailableReasons || {});
+            setUnavailableHalfDays(animSettings.unavailableHalfDays || {});
+            const limit = animSettings.monthlyBookingLimit;
+            setMonthlyBookingLimit(limit);
+            setNoLimit(limit === undefined);
+            setHasUnsavedChanges(false);
+            setCheckedDates(new Set());
+        } else {
+            setInactiveSlots([]);
+            setSelectedDates([]);
+            setUnavailableReasons({});
+            setUnavailableHalfDays({});
+            setMonthlyBookingLimit(undefined);
+            setNoLimit(true);
+            setHasUnsavedChanges(false);
+            setCheckedDates(new Set());
+        }
+    }, [selectedAnimatorName, settings.animatorSettings]);
+
+    const schoolYears = useMemo(() => {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        
+        // Détection de l'année scolaire pivot
+        // Si on est entre Janvier (0) et Juin (5), l'année scolaire en cours a démarré l'année dernière.
+        // Sinon (Juillet à Décembre), l'année scolaire en cours démarre cette année.
+        const baseYear = currentMonth < 6 ? currentYear - 1 : currentYear;
+        
+        const years = [];
+        // On propose l'année scolaire en cours et les 5 années suivantes
+        for (let i = 0; i <= 5; i++) {
+            const startYear = baseYear + i;
+            const endYear = startYear + 1;
+            years.push(`${startYear}-${endYear}`);
+        }
+
+        // Sécurité : Si l'année enregistrée dans les settings est plus ancienne que notre pivot, 
+        // on l'ajoute quand même pour qu'elle reste sélectionnée et visible.
+        if (!years.includes(settings.activeYear)) {
+            years.push(settings.activeYear);
+            years.sort();
+        }
+        return years;
+    }, [settings.activeYear]);
+
+    const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const newActiveYear = e.target.value;
+        updateSettings({ activeYear: newActiveYear });
+        showNotification("Année scolaire active mise à jour !");
     };
 
+    const handleDateClick = (dateStr: string) => {
+        if (!canEditCurrentAnimatorSettings) return;
+        if (!selectedAnimatorName) return;
+        
+        const isCurrentlyUnavailable = selectedDates.includes(dateStr);
+        if (isCurrentlyUnavailable) {
+            setSelectedDates(prev => prev.filter(d => d !== dateStr));
+            setUnavailableReasons(prev => {
+                const next = { ...prev };
+                delete next[dateStr];
+                return next;
+            });
+            setUnavailableHalfDays(prev => {
+                const next = { ...prev };
+                delete next[dateStr];
+                return next;
+            });
+            setCheckedDates(prev => {
+                const next = new Set(prev);
+                next.delete(dateStr);
+                return next;
+            });
+        } else {
+            // Left click defaults to full day
+            setSelectedDates(prev => [...prev, dateStr].sort());
+            setUnavailableHalfDays(prev => {
+                const next = { ...prev };
+                delete next[dateStr];
+                return next;
+            });
+        }
+        setHasUnsavedChanges(true);
+    };
+
+    const handleDateContextMenu = (e: React.MouseEvent, dateStr: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!canEditCurrentAnimatorSettings || !selectedAnimatorName) return;
+
+        const menuWidth = 240;
+        const menuHeight = 260;
+        const x = Math.min(e.clientX, window.innerWidth - menuWidth - 16);
+        const y = Math.min(e.clientY, window.innerHeight - menuHeight - 16);
+
+        setContextMenu({ x, y, dateStr });
+    };
+
+    const setDatePeriodType = (dateStr: string, period: 'morning' | 'afternoon' | 'full') => {
+        if (!canEditCurrentAnimatorSettings || !selectedAnimatorName) return;
+
+        setSelectedDates(prev => {
+            if (!prev.includes(dateStr)) {
+                return [...prev, dateStr].sort();
+            }
+            return prev;
+        });
+
+        setUnavailableHalfDays(prev => {
+            const next = { ...prev };
+            if (period === 'full') {
+                delete next[dateStr];
+            } else {
+                next[dateStr] = period;
+            }
+            return next;
+        });
+
+        setHasUnsavedChanges(true);
+        setContextMenu(null);
+
+        const dateFormatted = new Date(dateStr.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+        showNotification(
+            period === 'morning'
+                ? `Matinée bloquée pour le ${dateFormatted}.`
+                : period === 'afternoon'
+                ? `Après-midi bloqué pour le ${dateFormatted}.`
+                : `Journée complète bloquée pour le ${dateFormatted}.`
+        );
+    };
+
+    const toggleCheckDate = (dateStr: string) => {
+        if (!canEditCurrentAnimatorSettings) return;
+        const newChecked = new Set(checkedDates);
+        if (newChecked.has(dateStr)) newChecked.delete(dateStr);
+        else newChecked.add(dateStr);
+        setCheckedDates(newChecked);
+    };
+
+    const toggleSelectAllDates = () => {
+        if (!canEditCurrentAnimatorSettings) return;
+        if (checkedDates.size === selectedDates.length) {
+            setCheckedDates(new Set());
+        } else {
+            setCheckedDates(new Set(selectedDates));
+        }
+    };
+
+    const handleOpenEditReasonModal = (dates: string[]) => {
+        if (!canEditCurrentAnimatorSettings || dates.length === 0) return;
+        setEditingReasonDates(dates);
+        if (dates.length === 1) {
+            const d = dates[0];
+            setReasonInput(unavailableReasons[d] || '');
+            setPeriodInput(unavailableHalfDays[d] || 'full');
+        } else {
+            const firstReason = unavailableReasons[dates[0]] || '';
+            const allSameReason = dates.every(d => (unavailableReasons[d] || '') === firstReason);
+            setReasonInput(allSameReason ? firstReason : '');
+
+            const firstPeriod = unavailableHalfDays[dates[0]] || 'full';
+            const allSamePeriod = dates.every(d => (unavailableHalfDays[d] || 'full') === firstPeriod);
+            setPeriodInput(allSamePeriod ? firstPeriod : 'unchanged');
+        }
+    };
+
+    const handleSaveReasonAndPeriod = (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!editingReasonDates || editingReasonDates.length === 0) return;
+
+        const trimmed = reasonInput.trim();
+        setUnavailableReasons(prev => {
+            const next = { ...prev };
+            editingReasonDates.forEach(d => {
+                if (trimmed) {
+                    next[d] = trimmed;
+                } else {
+                    delete next[d];
+                }
+            });
+            return next;
+        });
+
+        if (periodInput !== 'unchanged') {
+            setUnavailableHalfDays(prev => {
+                const next = { ...prev };
+                editingReasonDates.forEach(d => {
+                    if (periodInput === 'full') {
+                        delete next[d];
+                    } else {
+                        next[d] = periodInput;
+                    }
+                });
+                return next;
+            });
+        }
+
+        setHasUnsavedChanges(true);
+        showNotification(
+            `Indisponibilité mise à jour pour ${editingReasonDates.length} date${editingReasonDates.length > 1 ? 's' : ''}.`
+        );
+        setEditingReasonDates(null);
+        setReasonInput('');
+    };
+
+    const handleClearReason = () => {
+        if (!editingReasonDates || editingReasonDates.length === 0) return;
+        setUnavailableReasons(prev => {
+            const next = { ...prev };
+            editingReasonDates.forEach(d => {
+                delete next[d];
+            });
+            return next;
+        });
+        setHasUnsavedChanges(true);
+        showNotification(`Motif effacé pour ${editingReasonDates.length} date${editingReasonDates.length > 1 ? 's' : ''}.`);
+        setEditingReasonDates(null);
+        setReasonInput('');
+    };
+
+    const deleteCheckedDates = () => {
+        if (!canEditCurrentAnimatorSettings) return;
+        if (!selectedAnimatorName || checkedDates.size === 0) return;
+        
+        const newUnavailabilities = selectedDates.filter(d => !checkedDates.has(d));
+        setSelectedDates(newUnavailabilities);
+        setUnavailableReasons(prev => {
+            const next = { ...prev };
+            checkedDates.forEach(d => {
+                delete next[d];
+            });
+            return next;
+        });
+        setUnavailableHalfDays(prev => {
+            const next = { ...prev };
+            checkedDates.forEach(d => {
+                delete next[d];
+            });
+            return next;
+        });
+        setCheckedDates(new Set());
+        setHasUnsavedChanges(true);
+    };
+
+    const groupedUnavailabilities = useMemo(() => {
+        const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+        
+        const sortedDates = [...selectedDates].sort();
+        
+        const grouped: Record<string, { label: string, dates: string[], sortKey: number }> = {};
+        
+        sortedDates.forEach(dateStr => {
+            const date = new Date(dateStr.replace(/-/g, '/'));
+            const m = date.getMonth();
+            const y = date.getFullYear();
+            const key = `${y}-${m.toString().padStart(2, '0')}`;
+            
+            if (!grouped[key]) {
+                grouped[key] = {
+                    label: `${monthNames[m]} ${y}`,
+                    dates: [],
+                    sortKey: y * 100 + m
+                };
+            }
+            grouped[key].dates.push(dateStr);
+        });
+        
+        return Object.values(grouped).sort((a, b) => a.sortKey - b.sortKey);
+    }, [selectedDates]);
+
+    const removeUnavailability = (dateStr: string) => {
+        if (!canEditCurrentAnimatorSettings) return;
+        if (!selectedAnimatorName) return;
+        setSelectedDates(prev => prev.filter(d => d !== dateStr));
+        setUnavailableReasons(prev => {
+            const next = { ...prev };
+            delete next[dateStr];
+            return next;
+        });
+        setUnavailableHalfDays(prev => {
+            const next = { ...prev };
+            delete next[dateStr];
+            return next;
+        });
+        setCheckedDates(prev => {
+            const next = new Set(prev);
+            next.delete(dateStr);
+            return next;
+        });
+        setHasUnsavedChanges(true);
+    };
+    
+    const handleSlotToggle = (slot: number) => {
+        const slotNum = Number(slot);
+        setInactiveSlots(currentSlots => {
+            const normalized = currentSlots.map(Number);
+            if (normalized.includes(slotNum)) {
+                return normalized.filter(s => s !== slotNum);
+            } else {
+                return [...normalized, slotNum];
+            }
+        });
+    };
+    
+    const handleSaveAnimatorSettings = () => {
+        if (!canEditCurrentAnimatorSettings) {
+            showNotification("Vous n'avez pas l'autorisation de modifier les paramètres de cet animateur.", "error");
+            return;
+        }
+        if (!selectedAnimatorName) return;
+
+        const updatedAnimatorSettings: AnimatorSettings = {
+            ...selectedAnimatorSettings,
+            inactiveSlots: inactiveSlots,
+            unavailableDates: selectedDates,
+            unavailableReasons: unavailableReasons,
+            unavailableHalfDays: unavailableHalfDays
+        };
+
+        if (noLimit) {
+            delete updatedAnimatorSettings.monthlyBookingLimit;
+        } else {
+            updatedAnimatorSettings.monthlyBookingLimit = monthlyBookingLimit === undefined || isNaN(monthlyBookingLimit) ? 0 : monthlyBookingLimit;
+        }
+
+        const newAnimatorSettings = { ...(settings.animatorSettings || {}) };
+        newAnimatorSettings[selectedAnimatorName] = updatedAnimatorSettings;
+    
+        updateSettings({ animatorSettings: newAnimatorSettings });
+        setHasUnsavedChanges(false);
+        showNotification("Paramètres de l'animateur (dates, créneaux et motifs) enregistrés !");
+    };
+
+    useEffect(() => {
+        if (setParentUnsavedChanges) {
+            setParentUnsavedChanges(hasUnsavedChanges);
+        }
+    }, [hasUnsavedChanges, setParentUnsavedChanges]);
+
+    // Keep save handle reference stable
+    const saveHandleRef = useRef(handleSaveAnimatorSettings);
+    saveHandleRef.current = handleSaveAnimatorSettings;
+
+    const handleCancelAnimatorSettings = () => {
+        if (selectedAnimatorName) {
+            const animSettings = settings.animatorSettings?.[selectedAnimatorName] || { unavailableDates: [], inactiveSlots: [] };
+            setInactiveSlots(animSettings.inactiveSlots || []);
+            setSelectedDates(animSettings.unavailableDates || []);
+            setUnavailableReasons(animSettings.unavailableReasons || {});
+            setUnavailableHalfDays(animSettings.unavailableHalfDays || {});
+            const limit = animSettings.monthlyBookingLimit;
+            setMonthlyBookingLimit(limit);
+            setNoLimit(limit === undefined);
+            setHasUnsavedChanges(false);
+            setCheckedDates(new Set());
+        } else {
+            setInactiveSlots([]);
+            setSelectedDates([]);
+            setUnavailableReasons({});
+            setUnavailableHalfDays({});
+            setMonthlyBookingLimit(undefined);
+            setNoLimit(true);
+            setHasUnsavedChanges(false);
+            setCheckedDates(new Set());
+        }
+        showNotification("Modifications du calendrier annulées.");
+    };
+
+    const cancelHandleRef = useRef(handleCancelAnimatorSettings);
+    cancelHandleRef.current = handleCancelAnimatorSettings;
+
+    useEffect(() => {
+        if (registerSave) {
+            registerSave(() => {
+                saveHandleRef.current();
+            });
+        }
+    }, [registerSave]);
+
+    useEffect(() => {
+        if (registerCancel) {
+            registerCancel(() => {
+                cancelHandleRef.current();
+            });
+        }
+    }, [registerCancel]);
+
+    const handleAddHoliday = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (newHoliday.name && newHoliday.startDate) {
+            const end = newHoliday.endDate || newHoliday.startDate;
+            const nameWithYear = settings.activeYear && !newHoliday.name.includes(settings.activeYear)
+                ? `${newHoliday.name.trim()} (${settings.activeYear})`
+                : newHoliday.name.trim();
+
+            updateSettings({ holidays: [...(settings.holidays || []), { ...newHoliday, name: nameWithYear, endDate: end }] });
+            setNewHoliday({ name: '', startDate: '', endDate: ''});
+            showNotification('Période ou jour férié ajouté.');
+        }
+    };
+
+    const handleUpdateHoliday = (updatedHoliday: Holiday) => {
+        const originalHolidayName = editingHoliday!.name;
+        let found = false;
+        const newHolidays = (settings.holidays || []).map(h => {
+            if (h.name === originalHolidayName) {
+                found = true;
+                return updatedHoliday;
+            }
+            return h;
+        });
+        if (!found) {
+            newHolidays.push(updatedHoliday);
+        }
+        updateSettings({ holidays: newHolidays });
+        setEditingHoliday(null);
+        showNotification("Période ou jour férié mis à jour.");
+    };
+    
+    const handleDeleteHoliday = (holidayNameToDelete: string) => {
+        setHolidayToDelete(holidayNameToDelete);
+    };
+
+    const confirmDeleteHoliday = () => {
+        if (!holidayToDelete) return;
+        updateSettings({ holidays: (settings.holidays || []).filter(h => h.name !== holidayToDelete) });
+        showNotification('Suppression effectuée.');
+        setHolidayToDelete(null);
+    };
+
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const startingDay = firstDayOfMonth === 0 ? 6 : firstDayOfMonth -1;
+
+    const changeMonth = (offset: number) => {
+        setCurrentDate(prev => {
+            const newDate = new Date(prev);
+            newDate.setDate(1); // Avoid month skipping issues
+            newDate.setMonth(prev.getMonth() + offset);
+
+            const newYear = newDate.getFullYear();
+            const newMonth = newDate.getMonth(); // 0 = Jan, 9 = Oct, 5 = June
+
+            // School year starts in October (month 9)
+            if (newYear < startYear || (newYear === startYear && newMonth < 9)) {
+                return prev; // Do not go before October of start year
+            }
+
+            // School year ends in June (month 5)
+            if (newYear > endYear || (newYear === endYear && newMonth > 5)) {
+                return prev; // Do not go after June of end year
+            }
+            
+            return newDate;
+        });
+    };
+    
+    const isAtFirstMonth = year === startYear && month === 9; // October
+    const isAtLastMonth = year === endYear && month === 5; // June
+
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-800">Gestion des comptes Utilisateurs</h2>
-                    <p className="text-sm text-gray-500 mt-1">Créez et gérez les accès restreints pour les animateurs.</p>
-                </div>
-                <button 
-                    type="button"
-                    onClick={() => setIsAdding(true)}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
-                >
-                    <PlusIcon className="w-5 h-5" /> Nouvel utilisateur
-                </button>
-            </div>
+        <div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">Gérer le calendrier</h2>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50/50">
-                        <tr>
-                            <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Identifiant</th>
-                            <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Compte / Animateur</th>
-                            <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Permissions</th>
-                            <th className="px-6 py-4 text-right text-xs font-black text-gray-400 uppercase tracking-widest">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {sortedUsers.map(user => (
-                            <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center">
-                                            <UserIcon className="w-5 h-5" />
-                                        </div>
-                                        <span className="font-bold text-gray-800">{user.username}</span>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex flex-col">
-                                        <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full w-fit ${user.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                                            {user.role === UserRole.ADMIN ? 'Administrateur' : 'Compte Utilisateur'}
-                                        </span>
-                                        {user.animatorName && (
-                                            <span className="text-xs text-gray-500 mt-1 font-medium">Lié à : {user.animatorName}</span>
-                                        )}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {user.permissions.canModifySettings && <span className="text-[9px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded border border-green-100 font-bold uppercase">Paramètres</span>}
-                                        {user.permissions.canManageVacations && <span className="text-[9px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded border border-green-100 font-bold uppercase">Vacances</span>}
-                                        {user.permissions.canManageAnimations && <span className="text-[9px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded border border-green-100 font-bold uppercase">Animations</span>}
-                                        {!Object.values(user.permissions).some(v => v) && <span className="text-[9px] bg-gray-50 text-gray-400 px-1.5 py-0.5 rounded border border-gray-100 font-bold uppercase italic">Aucune</span>}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex justify-end gap-3">
-                                        <button 
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                console.log("Edit button clicked for:", user.username);
-                                                setEditingUser(user);
-                                                setFormData({ 
-                                                    username: user.username,
-                                                    password: user.password || '',
-                                                    role: user.role,
-                                                    animatorName: user.animatorName || '',
-                                                    permissions: { ...user.permissions }
-                                                 });
-                                                setIsAdding(true);
-                                            }}
-                                            className="p-2.5 text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 rounded-xl border border-gray-200 hover:border-blue-200 transition-all cursor-pointer relative z-[20]"
-                                            title="Modifier"
-                                        >
-                                            <CogIcon className="w-5 h-5" />
-                                        </button>
-                                        <button 
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                console.log("Delete button clicked for ID:", user.id);
-                                                handleDelete(user.id);
-                                            }}
-                                            className="p-2.5 text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 rounded-xl border border-gray-200 hover:border-red-200 transition-all cursor-pointer relative z-[20]"
-                                            title="Supprimer"
-                                        >
-                                            <TrashIcon className="w-5 h-5" />
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                        {sortedUsers.length === 0 && (
-                            <tr>
-                                <td colSpan={4} className="px-6 py-12 text-center text-gray-400 italic">
-                                    Aucun compte utilisateur créé pour le moment.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
-                    <div className="flex items-center gap-2">
-                        <ShieldIcon className="w-5 h-5 text-blue-600" />
-                        <h3 className="font-bold text-gray-800">Comptes Admin (Google OAuth)</h3>
+            <div className="mx-auto max-w-2xl bg-gradient-to-r from-indigo-600/10 via-indigo-600/5 to-transparent p-3 rounded-2xl border border-indigo-200/60 shadow-sm mb-8 flex flex-row items-center justify-between gap-4 px-5">
+                <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-indigo-100 shrink-0">
+                        <CalendarDaysIcon className="w-5 h-5" />
                     </div>
-                    <button 
-                        type="button"
-                        onClick={() => setIsAddingAdmin(true)}
-                        className="text-xs font-bold text-blue-600 hover:text-blue-700 bg-white px-3 py-1.5 rounded-lg border border-blue-100 shadow-sm"
-                    >
-                        + Ajouter un administrateur
-                    </button>
+                    <div>
+                        <h3 className="text-xs font-black text-indigo-950 uppercase tracking-tight">Paramètres du calendrier</h3>
+                        <p className="hidden sm:block text-[10px] text-indigo-900/60 font-medium">Déterminez l'année active pour les créneaux.</p>
+                    </div>
                 </div>
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50/50">
-                        <tr>
-                            <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">E-mail</th>
-                            <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Google UID</th>
-                            <th className="px-6 py-4 text-right text-xs font-black text-gray-400 uppercase tracking-widest">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {admins.map(admin => (
-                            <tr key={admin.id} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
-                                            <ShieldCheckIcon className="w-4 h-4" />
+                <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-xl border border-indigo-200 shadow-sm shrink-0">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest whitespace-nowrap">Année active :</span>
+                    {!canManageVacations ? (
+                        <span className="text-indigo-950 font-black text-xs px-2 py-1">{settings.activeYear}</span>
+                    ) : (
+                        <select
+                            id="activeYear"
+                            value={settings.activeYear}
+                            onChange={handleYearChange}
+                            className="text-center py-1 px-2 border-0 text-indigo-950 font-black rounded bg-white text-xs outline-none transition-all cursor-pointer focus:ring-0"
+                        >
+                            {schoolYears.map(year => (
+                                <option key={year} value={year}>
+                                    {year}
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                </div>
+            </div>
+            
+            {/* GRILLE DU HAUT : PARAMÈTRES ANIMATEURS ET VACANCES */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                {/* Bloc Paramètres généraux de l'animateur (slots et limit) */}
+                <div className="bg-white p-6 rounded-lg shadow flex flex-col justify-between">
+                    <div>
+                        <h3 className="text-xl font-semibold mb-4">Gérer les créneaux et limites par animateur</h3>
+                        <select 
+                            value={selectedAnimatorName} 
+                            onChange={e => setSelectedAnimatorName(e.target.value)} 
+                            className="w-full p-2 border rounded mb-4 bg-white font-semibold text-gray-700"
+                        >
+                            {animators.length > 0 ? (
+                               animators.map(animator => <option key={animator.name} value={animator.name}>{animator.name}</option>)
+                            ) : (
+                               <option value="">-- Aucun animateur configuré --</option>
+                            )}
+                        </select>
+
+                        {selectedAnimatorName ? (
+                            <div className="p-4 border rounded-lg bg-gray-50">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <h4 className="font-semibold mb-2 text-gray-700">Créneaux désactivés pour "{selectedAnimatorName}" :</h4>
+                                        <div className="flex gap-4">
+                                            {timeSlots.map(slot => (
+                                                <label key={slot} className={`flex items-center space-x-2 ${canEditCurrentAnimatorSettings ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'}`}>
+                                                    <input
+                                                        type="checkbox"
+                                                        disabled={!canEditCurrentAnimatorSettings}
+                                                        checked={inactiveSlots.map(Number).includes(Number(slot))}
+                                                        onChange={() => {
+                                                            if (!canEditCurrentAnimatorSettings) return;
+                                                            handleSlotToggle(Number(slot));
+                                                            setHasUnsavedChanges(true);
+                                                        }}
+                                                        className={`h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 ${!canEditCurrentAnimatorSettings ? 'cursor-not-allowed opacity-60' : ''}`}
+                                                    />
+                                                    <span>{slot}h</span>
+                                                </label>
+                                            ))}
                                         </div>
-                                        <span className="font-bold text-gray-700">{admin.email}</span>
                                     </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <code className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500">{admin.id}</code>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <button 
-                                        type="button"
-                                        onClick={async () => {
-                                            if (window.confirm('Supprimer cet accès Admin ?')) {
-                                                try {
-                                                    await deleteDoc(doc(db, 'admins', admin.id));
-                                                    showNotification('Accès supprimé');
-                                                } catch (e) {
-                                                    showNotification('Erreur suppression', 'error');
-                                                }
-                                            }
-                                        }}
-                                        className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
-                                    >
-                                        <TrashIcon className="w-4 h-4" />
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                        {admins.length === 0 && (
-                            <tr>
-                                <td colSpan={3} className="px-6 py-8 text-center text-gray-400 italic">
-                                    Aucun compte admin Google configuré.
-                                </td>
-                            </tr>
+                                    <div>
+                                        <h4 className="font-semibold mb-2 text-gray-700">Limite mensuelle :</h4>
+                                        <div className="space-y-3">
+                                            <label className={`flex items-center gap-2 group ${canEditCurrentAnimatorSettings ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+                                                <input 
+                                                    type="checkbox"
+                                                    disabled={!canEditCurrentAnimatorSettings}
+                                                    checked={noLimit}
+                                                    onChange={(e) => {
+                                                        if (!canEditCurrentAnimatorSettings) return;
+                                                        const checked = e.target.checked;
+                                                        setNoLimit(checked);
+                                                        if (checked) setMonthlyBookingLimit(undefined);
+                                                        else if (monthlyBookingLimit === undefined) setMonthlyBookingLimit(0);
+                                                        setHasUnsavedChanges(true);
+                                                    }}
+                                                    className={`h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 ${!canEditCurrentAnimatorSettings ? 'cursor-not-allowed' : ''}`}
+                                                />
+                                                <span className="text-sm font-medium text-gray-600 group-hover:text-gray-900 transition-colors">Pas de limite</span>
+                                            </label>
+                                            
+                                            {!noLimit && (
+                                                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-1 duration-200">
+                                                    <input 
+                                                        type="number" 
+                                                        min="0"
+                                                        disabled={!canEditCurrentAnimatorSettings}
+                                                        value={monthlyBookingLimit ?? 0}
+                                                        onChange={(e) => {
+                                                            if (!canEditCurrentAnimatorSettings) return;
+                                                            setMonthlyBookingLimit(parseInt(e.target.value) || 0);
+                                                            setHasUnsavedChanges(true);
+                                                        }}
+                                                        className="w-20 p-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm disabled:opacity-60 disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
+                                                    />
+                                                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-tight">réservations / mois</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-gray-500 italic text-center p-4 bg-gray-50 rounded-xl border border-dashed">
+                                Veuillez sélectionner un animateur pour configurer ses créneaux et limites.
+                            </p>
                         )}
-                    </tbody>
-                </table>
+                    </div>
+                </div>
+
+                {/* Section Vacances (située à droite, en haut) */}
+                <div className="bg-white p-6 rounded-lg shadow flex flex-col justify-between">
+                    <div>
+                        <h3 className="text-xl font-semibold mb-4 text-gray-900">Gérer les périodes de vacances et les jours fériés</h3>
+                        {canManageVacations ? (
+                            <>
+                                <form onSubmit={handleAddHoliday} className="space-y-3 p-3.5 border rounded-xl bg-gray-50/80 mb-4 shadow-2xs">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-gray-700">Ajouter une période ou un jour férié personnalisé</span>
+                                    </div>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Nom (ex: Vacances d'été, Pont...)" 
+                                        value={newHoliday.name} 
+                                        onChange={e => setNewHoliday({...newHoliday, name: e.target.value})} 
+                                        className="w-full p-2 border rounded-lg text-sm bg-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                        required
+                                    />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input 
+                                            type="date" 
+                                            value={newHoliday.startDate} 
+                                            onChange={e => setNewHoliday({...newHoliday, startDate: e.target.value, endDate: newHoliday.endDate || e.target.value})} 
+                                            className="p-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                            required 
+                                            title="Date de début"
+                                        />
+                                        <input 
+                                            type="date" 
+                                            value={newHoliday.endDate} 
+                                            onChange={e => setNewHoliday({...newHoliday, endDate: e.target.value})} 
+                                            className="p-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                            title="Date de fin"
+                                        />
+                                    </div>
+                                    <button 
+                                        type="submit" 
+                                        className="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 text-sm font-semibold transition-colors shadow-2xs cursor-pointer"
+                                    >
+                                        Ajouter la période
+                                    </button>
+                                </form>
+                                
+                                <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1 custom-scrollbar">
+                                    {/* 1. Les 4 périodes de vacances existantes (2 colonnes -> 2 lignes de 2) */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        {vacationHolidays.map(h => {
+                                            const cleanName = getCleanHolidayName(h.name);
+                                            const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                            return (
+                                                <div 
+                                                    key={h.name} 
+                                                    className="flex justify-between items-center p-2.5 bg-yellow-100/70 border border-yellow-200 rounded-lg shadow-2xs hover:border-yellow-300 transition-all"
+                                                >
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="font-semibold text-xs text-yellow-900 truncate" title={cleanName}>
+                                                            {cleanName}
+                                                        </p>
+                                                        <p className="text-[10px] text-gray-600 mt-0.5 whitespace-nowrap">
+                                                            {dateText ? (
+                                                                dateText
+                                                            ) : (
+                                                                <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center shrink-0 ml-1.5 gap-0.5">
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setEditingHoliday(h)} 
+                                                            className="text-gray-500 hover:text-indigo-600 p-1 rounded hover:bg-yellow-200/50 transition-colors cursor-pointer" 
+                                                            aria-label={`Modifier ${cleanName}`}
+                                                            title={`Modifier ${cleanName}`}
+                                                        >
+                                                            <PencilIcon className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => handleDeleteHoliday(h.name)} 
+                                                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-yellow-200/50 transition-colors cursor-pointer" 
+                                                            aria-label={`Supprimer ${cleanName}`}
+                                                            title={`Supprimer ${cleanName}`}
+                                                        >
+                                                            <TrashIcon className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* 2. Les 5 jours fériés apparaissant TOUS sur une seule ligne sous les vacances d'hiver et de printemps */}
+                                    <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+                                        {publicHolidays.map(h => {
+                                            const cleanName = getCleanHolidayName(h.name);
+                                            const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                            const hasDates = !!dateText;
+                                            return (
+                                                <div 
+                                                    key={h.name}
+                                                    onClick={() => setEditingHoliday(h)}
+                                                    className={`p-1.5 sm:p-2 rounded-lg border text-center transition-all flex flex-col justify-between min-h-[58px] cursor-pointer hover:shadow-md hover:border-indigo-400 ${
+                                                        hasDates 
+                                                            ? 'bg-sky-50/80 border-sky-200 text-sky-950 hover:bg-sky-100/70' 
+                                                            : 'bg-amber-50/80 border-amber-200 text-amber-950 hover:bg-amber-100/70'
+                                                    }`}
+                                                    title={`Cliquer pour modifier la date de ${cleanName}`}
+                                                >
+                                                    <div className="flex items-center justify-between gap-0.5">
+                                                        <span className="font-bold text-[11px] sm:text-xs text-gray-800 truncate flex-1 text-center" title={cleanName}>
+                                                            {cleanName}
+                                                        </span>
+                                                        <span className="text-gray-400 hover:text-indigo-600 p-0.5 shrink-0">
+                                                            <PencilIcon className="w-3 h-3" />
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[10px] mt-1 whitespace-nowrap overflow-hidden text-ellipsis">
+                                                        {hasDates ? (
+                                                            <span className="text-gray-700 font-semibold">{dateText}</span>
+                                                        ) : (
+                                                            <span className="text-amber-600 italic font-medium">Non renseigné ⚠️</span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* 3. Autres périodes personnalisées si existantes */}
+                                    {customHolidays.length > 0 && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 border-t border-gray-100">
+                                            {customHolidays.map(h => {
+                                                const cleanName = getCleanHolidayName(h.name);
+                                                const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                                return (
+                                                    <div key={h.name} className="flex justify-between items-center p-2 bg-gray-50 border border-gray-200 rounded-lg shadow-2xs">
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="font-semibold text-xs text-gray-800 truncate" title={cleanName}>{cleanName}</p>
+                                                            <p className="text-[10px] text-gray-500 mt-0.5 whitespace-nowrap">
+                                                                {dateText || <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center shrink-0 ml-1.5 gap-0.5">
+                                                            <button onClick={() => setEditingHoliday(h)} className="text-gray-500 hover:text-indigo-600 p-1 cursor-pointer" title={`Modifier ${cleanName}`}>
+                                                                <PencilIcon className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button onClick={() => handleDeleteHoliday(h.name)} className="text-red-600 hover:text-red-800 p-1 cursor-pointer" title={`Supprimer ${cleanName}`}>
+                                                                <TrashIcon className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs font-semibold">
+                                    ℹ️ Mode lecture seule: Vous pouvez consulter les périodes de vacances scolaires et les jours fériés ci-dessous, mais vous n'avez pas l'autorisation de les modifier.
+                                </div>
+                                <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1 custom-scrollbar">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        {vacationHolidays.map(h => {
+                                            const cleanName = getCleanHolidayName(h.name);
+                                            const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                            return (
+                                                <div key={h.name} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg border border-gray-100 shadow-2xs">
+                                                    <div className="min-w-0">
+                                                        <p className="font-semibold text-gray-800 text-xs truncate" title={cleanName}>{cleanName}</p>
+                                                        <p className="text-[10px] text-gray-500 mt-1 whitespace-nowrap">
+                                                            {dateText || <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+                                        {publicHolidays.map(h => {
+                                            const cleanName = getCleanHolidayName(h.name);
+                                            const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                            return (
+                                                <div key={h.name} className="p-1.5 sm:p-2 rounded-lg border border-gray-100 bg-gray-50 text-center min-h-[58px] flex flex-col justify-between">
+                                                    <span className="font-bold text-[11px] sm:text-xs text-gray-800 truncate" title={cleanName}>
+                                                        {cleanName}
+                                                    </span>
+                                                    <p className="text-[10px] mt-1 whitespace-nowrap overflow-hidden text-ellipsis text-gray-600">
+                                                        {dateText || <span className="text-amber-600 italic">Non renseigné ⚠️</span>}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {customHolidays.length > 0 && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 border-t border-gray-100">
+                                            {customHolidays.map(h => {
+                                                const cleanName = getCleanHolidayName(h.name);
+                                                const dateText = formatHolidayDate(h.startDate, h.endDate);
+                                                return (
+                                                    <div key={h.name} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg border border-gray-100 shadow-2xs">
+                                                        <div className="min-w-0">
+                                                            <p className="font-semibold text-gray-800 text-xs truncate" title={cleanName}>{cleanName}</p>
+                                                            <p className="text-[10px] text-gray-500 mt-0.5 whitespace-nowrap">
+                                                                {dateText || <span className="text-amber-600 italic font-medium">Dates non renseignées ⚠️</span>}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
             </div>
 
-            {isAddingAdmin && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70]" onClick={() => setIsAddingAdmin(false)}>
-                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight mb-6">Ajouter un Admin Google</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">E-mail Google</label>
-                                <input 
-                                    type="email"
-                                    value={newAdminEmail}
-                                    onChange={(e) => setNewAdminEmail(e.target.value)}
-                                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none"
-                                    placeholder="exemple@gmail.com"
-                                />
+            {/* GRILLE DU BAS : CALENDRIER DES INDISPONIBILITÉS (GAUCHE) ET LISTE (DROITE) ALIGNÉS */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Calendrier de sélection (à gauche) */}
+                <div className="bg-white p-6 rounded-lg shadow">
+                    <h3 className="text-xl font-semibold mb-2">Jours d'indisponibilité de l'animateur</h3>
+                    {!selectedAnimatorName ? (
+                        <p className="text-sm text-gray-500 italic text-center p-6 bg-gray-50 rounded-xl border border-dashed">
+                            Veuillez sélectionner un animateur dans la section du haut pour gérer ses indisponibilités.
+                        </p>
+                    ) : (
+                        <>
+                            {canEditCurrentAnimatorSettings ? (
+                                <p className="text-xs text-gray-500 mb-4 italic">Cliquez sur une date dans le calendrier pour l'ajouter ou la supprimer des indisponibilités de <strong className="text-indigo-600 font-bold">{selectedAnimatorName}</strong>.</p>
+                            ) : (
+                                <p className="text-xs text-amber-600 mb-4 font-semibold italic">👁️ Mode lecture seule : Vous visualisez les indisponibilités de {selectedAnimatorName}.</p>
+                            )}
+
+                            {/* Mini Calendar for selection */}
+                            <div className="flex justify-between items-center mb-4">
+                                <button 
+                                    type="button"
+                                    onClick={() => changeMonth(-1)}
+                                    disabled={isAtFirstMonth}
+                                    className="px-3 py-1 text-lg rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                    aria-label="Mois précédent"
+                                >&lt;</button>
+                                <span className="font-semibold text-lg text-gray-700">{monthNames[month]} {year}</span>
+                                <button 
+                                    type="button"
+                                    onClick={() => changeMonth(1)}
+                                    disabled={isAtLastMonth}
+                                    className="px-3 py-1 text-lg rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                    aria-label="Mois suivant"
+                                >&gt;</button>
                             </div>
-                            <div>
-                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Google UID</label>
-                                <input 
-                                    type="text"
-                                    value={newAdminUid}
-                                    onChange={(e) => setNewAdminUid(e.target.value)}
-                                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none"
-                                    placeholder="UID du compte Google"
-                                />
-                                <p className="text-[10px] text-gray-400 mt-1 italic">L'UID est disponible dans la console Firebase Auth ou via le profil utilisateur lors d'une première tentative de connexion.</p>
+                            <div className="grid grid-cols-7 gap-1 text-center text-sm mb-4">
+                                {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => <div key={`${d}-${i}`} className="font-semibold text-xs text-gray-500 py-1">{d}</div>)}
+                                {Array.from({ length: startingDay }).map((_, i) => <div key={`e-${i}`}></div>)}
+                                {Array.from({ length: daysInMonth }).map((_, dayIndex) => {
+                                    const day = dayIndex + 1;
+                                    const date = new Date(year, month, day);
+                                    const dateStr = toYYYYMMDD(date);
+                                    const isUnavailable = selectedDates.includes(dateStr);
+                                    const halfDay = isUnavailable ? unavailableHalfDays[dateStr] : undefined;
+                                    const reason = unavailableReasons[dateStr];
+                                    const holiday = getHolidayForDate(date, settings.holidays || []);
+                                    const isHoliday = !!holiday;
+
+                                    let containerClasses = "relative p-1 rounded-xl transition-all flex flex-col items-center justify-center min-h-[42px] select-none border overflow-hidden ";
+                                    if (canEditCurrentAnimatorSettings) {
+                                        containerClasses += "cursor-pointer hover:shadow-sm ";
+                                    } else {
+                                        containerClasses += "cursor-not-allowed ";
+                                    }
+
+                                    const isPublicHoliday = holiday ? PUBLIC_HOLIDAYS_ORDER.includes(getCleanHolidayName(holiday.name)) : false;
+                                    const holidayDisplayLabel = holiday 
+                                        ? (isPublicHoliday ? `Jour férié : ${getCleanHolidayName(holiday.name)}` : `Vacances : ${getCleanHolidayName(holiday.name)}`)
+                                        : '';
+
+                                    let periodLabel = isHoliday ? `Disponible (${holidayDisplayLabel})` : "Disponible";
+                                    if (isUnavailable) {
+                                        if (halfDay === 'morning') periodLabel = `Matin indisponible (9h, 10h)${isHoliday ? ` • ${holidayDisplayLabel}` : ''}`;
+                                        else if (halfDay === 'afternoon') periodLabel = `Après-midi indisponible (14h, 15h)${isHoliday ? ` • ${holidayDisplayLabel}` : ''}`;
+                                        else periodLabel = `Journée complète indisponible${isHoliday ? ` • ${holidayDisplayLabel}` : ''}`;
+                                    }
+
+                                    const tooltipText = isUnavailable 
+                                        ? `${dateStr} : ${periodLabel}${reason ? ` (Motif: ${reason})` : ''} • Clic gauche: Supprimer / Clic droit: Modifier`
+                                        : `${dateStr} : ${periodLabel} • Clic gauche: Bloquer journée • Clic droit: Bloquer demi-journée`;
+
+                                    if (!isUnavailable) {
+                                        if (isHoliday) {
+                                            // Période de vacances scolaire / férié
+                                            containerClasses += "text-amber-950 bg-amber-100 hover:bg-amber-200/80 border-amber-300 hover:border-amber-400";
+                                        } else {
+                                            containerClasses += "text-gray-700 bg-gray-50/60 hover:bg-indigo-50/60 border-gray-200/80 hover:border-indigo-300";
+                                        }
+                                    } else if (!halfDay) {
+                                        // Journée complète
+                                        containerClasses += "bg-red-500 text-white font-bold border-red-600 shadow-xs";
+                                    } else {
+                                        // Demi-journée
+                                        containerClasses += `${isHoliday ? 'bg-amber-100 border-amber-300' : 'bg-white border-red-300'} text-gray-900 font-bold shadow-xs`;
+                                    }
+
+                                    return (
+                                        <div 
+                                            key={day} 
+                                            className={containerClasses} 
+                                            onClick={() => canEditCurrentAnimatorSettings && handleDateClick(dateStr)}
+                                            onContextMenu={(e) => canEditCurrentAnimatorSettings && handleDateContextMenu(e, dateStr)}
+                                            title={tooltipText}
+                                        >
+                                            {/* Rendu visuel demi-rectangle pour demi-journée */}
+                                            {isUnavailable && halfDay === 'morning' && (
+                                                <div className="absolute inset-x-0 top-0 h-1/2 bg-red-500/90 pointer-events-none" />
+                                            )}
+                                            {isUnavailable && halfDay === 'afternoon' && (
+                                                <div className="absolute inset-x-0 bottom-0 h-1/2 bg-red-500/90 pointer-events-none" />
+                                            )}
+
+                                            {/* Badge demi-journée */}
+                                            {isUnavailable && halfDay === 'morning' && (
+                                                <span className="absolute top-0.5 right-1 z-10 text-[7px] font-black text-white leading-none tracking-tighter drop-shadow-xs">
+                                                    MAT
+                                                </span>
+                                            )}
+                                            {isUnavailable && halfDay === 'afternoon' && (
+                                                <span className="absolute bottom-0.5 right-1 z-10 text-[7px] font-black text-white leading-none tracking-tighter drop-shadow-xs">
+                                                    AM
+                                                </span>
+                                            )}
+
+                                            {/* Numéro du jour */}
+                                            <span className={`relative z-10 text-xs font-bold ${
+                                                !isUnavailable 
+                                                    ? (isHoliday ? 'text-amber-950 font-extrabold' : 'text-gray-800')
+                                                    : !halfDay 
+                                                    ? 'text-white' 
+                                                    : halfDay === 'morning'
+                                                    ? 'text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)] translate-y-[-2px]'
+                                                    : (isHoliday ? 'text-amber-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)] translate-y-[2px]' : 'text-gray-900 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)] translate-y-[2px]')
+                                            }`}>
+                                                {day}
+                                            </span>
+
+                                            {/* Indicateur de motif */}
+                                            {isUnavailable && reason && (
+                                                <span 
+                                                    className="w-2 h-2 rounded-full bg-amber-300 border border-amber-500 absolute top-1 left-1 z-20 shadow-xs" 
+                                                    title={`Motif: ${reason}`} 
+                                                />
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
-                            <div className="flex gap-3 pt-4">
-                                <button type="button" onClick={() => setIsAddingAdmin(false)} className="flex-grow py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-100 transition-colors">Annuler</button>
-                                <button type="button" onClick={handleAddAdmin} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg shadow-blue-100">Ajouter</button>
+
+                            {/* Légende du calendrier */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <div className="flex items-center gap-1.5" title="Journée entière bloquée">
+                                        <span className="w-3.5 h-3.5 rounded-md bg-red-500 border border-red-600 shrink-0" />
+                                        <span className="text-[11px] font-medium text-gray-600">Journée</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5" title="Matinée bloquée (9h, 10h)">
+                                        <span className="w-3.5 h-3.5 rounded-md border border-red-300 bg-white relative overflow-hidden shrink-0 shadow-2xs">
+                                            <span className="absolute inset-x-0 top-0 h-1/2 bg-red-500" />
+                                        </span>
+                                        <span className="text-[11px] font-medium text-gray-600">Matin (MAT)</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5" title="Après-midi bloqué (14h, 15h)">
+                                        <span className="w-3.5 h-3.5 rounded-md border border-red-300 bg-white relative overflow-hidden shrink-0 shadow-2xs">
+                                            <span className="absolute inset-x-0 bottom-0 h-1/2 bg-red-500" />
+                                        </span>
+                                        <span className="text-[11px] font-medium text-gray-600">Après-midi (AM)</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5" title="Période de vacances scolaires ou jour férié">
+                                        <span className="w-3.5 h-3.5 rounded-md bg-amber-100 border border-amber-300 shrink-0" />
+                                        <span className="text-[11px] font-medium text-amber-900">Vacances / Fériés</span>
+                                    </div>
+                                </div>
+                                <div className="text-[10px] text-gray-400 font-medium">
+                                    🖱️ Clic gauche: Journée • Clic droit: Demi-journée
+                                </div>
+                            </div>
+
+                            {canEditCurrentAnimatorSettings && (
+                                <div className="mt-4">
+                                    <button 
+                                        onClick={handleSaveAnimatorSettings} 
+                                        className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-3 ${
+                                            hasUnsavedChanges 
+                                            ? 'bg-blue-600 text-white hover:bg-blue-700 animate-pulse' 
+                                            : 'bg-green-500 text-white hover:bg-green-600'
+                                        }`}
+                                    >
+                                        {hasUnsavedChanges ? (
+                                            <>💾 Sauvegarder les modifications</>
+                                        ) : (
+                                            <>✅ Paramètres à jour</>
+                                        )}
+                                    </button>
+                                    {hasUnsavedChanges && (
+                                        <p className="text-center text-amber-600 text-sm font-bold mt-2 animate-bounce">
+                                            ⚠️ Pensez à enregistrer vos modifications avant de quitter !
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+
+                {/* Section Liste des Indisponibilités (à droite) */}
+                <div className="bg-white p-6 rounded-lg shadow flex flex-col justify-between min-h-[460px]">
+                    <div>
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className="text-xl font-semibold">Jours d'indisponibilité de l'animateur</h3>
+                                {selectedAnimatorName && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Liste des dates verrouillées pour <strong className="text-indigo-600 font-bold">{selectedAnimatorName}</strong>
+                                    </p>
+                                )}
                             </div>
                         </div>
+
+                        {!selectedAnimatorName ? (
+                            <p className="text-sm text-gray-500 italic text-center p-6 bg-gray-50 rounded-xl border border-dashed">
+                                Veuillez sélectionner un animateur pour voir et gérer ses indisponibilités.
+                            </p>
+                        ) : selectedDates.length === 0 ? (
+                            <p className="text-sm text-gray-500 italic text-center p-6 bg-gray-50 rounded-xl border border-dashed">
+                                Aucune date d'indisponibilité enregistrée pour "{selectedAnimatorName}".
+                            </p>
+                        ) : (
+                            <div>
+                                <div className="flex flex-wrap justify-between items-center gap-2 mb-4 pb-2 border-b border-gray-100">
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="font-bold text-gray-800 text-sm">
+                                            Dates indisponibles ({selectedDates.length}) :
+                                        </h4>
+                                        {canEditCurrentAnimatorSettings && selectedDates.length > 0 && (
+                                            <button 
+                                                type="button"
+                                                onClick={toggleSelectAllDates}
+                                                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline ml-1 cursor-pointer"
+                                            >
+                                                {checkedDates.size === selectedDates.length ? "Tout désélectionner" : "Tout cocher"}
+                                            </button>
+                                        )}
+                                    </div>
+                                    {canEditCurrentAnimatorSettings && checkedDates.size > 0 && (
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                type="button"
+                                                onClick={() => handleOpenEditReasonModal(Array.from(checkedDates))}
+                                                className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                                                title="Définir un motif ou modifier la période pour toutes les dates cochées"
+                                            >
+                                                <PencilIcon className="w-3.5 h-3.5 text-indigo-600" />
+                                                <span>Période / Motif ({checkedDates.size})</span>
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={deleteCheckedDates}
+                                                className="bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                                                title="Supprimer les dates cochées"
+                                            >
+                                                <TrashIcon className="w-3.5 h-3.5 text-red-600" />
+                                                <span>Supprimer ({checkedDates.size})</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="space-y-5 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                                    {groupedUnavailabilities.map(group => (
+                                        <div key={group.label} className="space-y-2">
+                                            <div className="flex items-center justify-between bg-gray-50/80 py-1 px-2.5 rounded-lg border border-gray-100">
+                                                <h5 className="text-[11px] font-black text-gray-500 uppercase tracking-wider">
+                                                    {group.label}
+                                                </h5>
+                                                <span className="text-[10px] font-bold text-gray-400">
+                                                    {group.dates.length} date{group.dates.length > 1 ? 's' : ''}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {group.dates.map(d => {
+                                                    const reason = unavailableReasons[d];
+                                                    const halfDay = unavailableHalfDays[d];
+                                                    const isChecked = checkedDates.has(d);
+                                                    const formattedDate = new Date(d.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+                                                    const fullDate = new Date(d.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+                                                    return (
+                                                        <div 
+                                                            key={d} 
+                                                            className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+                                                                isChecked 
+                                                                    ? 'bg-indigo-50/70 border-indigo-200 shadow-xs' 
+                                                                    : 'bg-white border-gray-100 hover:border-indigo-100 hover:shadow-xs'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                {canEditCurrentAnimatorSettings ? (
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={isChecked}
+                                                                        onChange={() => toggleCheckDate(d)}
+                                                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+                                                                        title="Sélectionner"
+                                                                    />
+                                                                ) : (
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                                                                )}
+                                                                <div className="min-w-0 flex-1">
+                                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                                        <p className="text-xs font-bold text-gray-800 truncate capitalize" title={fullDate}>
+                                                                            {formattedDate}
+                                                                        </p>
+                                                                        {halfDay === 'morning' ? (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-0.5 shrink-0" title="Matin indisponible (9h, 10h)">
+                                                                                <span>☀️</span> MAT
+                                                                            </span>
+                                                                        ) : halfDay === 'afternoon' ? (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-purple-50 text-purple-800 border border-purple-300 flex items-center gap-0.5 shrink-0" title="Après-midi indisponible (14h, 15h)">
+                                                                                <span>🌙</span> AM
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 flex items-center gap-0.5 shrink-0" title="Journée complète indisponible">
+                                                                                <span>📅</span> Jour
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    {reason ? (
+                                                                        <p 
+                                                                            className="text-[10px] font-medium text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80 truncate mt-1 max-w-full inline-block"
+                                                                            title={`Motif : ${reason}`}
+                                                                        >
+                                                                            <span className="mr-0.5">💬</span> {reason}
+                                                                        </p>
+                                                                    ) : (
+                                                                        <p className="text-[10px] text-gray-400 italic mt-0.5">
+                                                                            Aucun motif
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {canEditCurrentAnimatorSettings && (
+                                                                <div className="flex items-center gap-0.5 shrink-0 ml-1.5">
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => handleOpenEditReasonModal([d])} 
+                                                                        className="text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+                                                                        title="Modifier la période ou le motif"
+                                                                    >
+                                                                        <PencilIcon className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => removeUnavailability(d)} 
+                                                                        className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+                                                                        title="Supprimer cette indisponibilité"
+                                                                    >
+                                                                        <TrashIcon className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
+            </div>
+
+            {/* Menu contextuel lors du clic droit sur un jour du calendrier */}
+            {contextMenu && (
+                <>
+                    <div 
+                        className="fixed inset-0 z-[90] bg-transparent" 
+                        onClick={() => setContextMenu(null)}
+                        onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+                    />
+                    <div 
+                        className="fixed z-[95] bg-white rounded-2xl shadow-2xl border border-gray-200 py-2 w-60 animate-in fade-in zoom-in-95 duration-150 overflow-hidden"
+                        style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-3.5 py-2 border-b border-gray-100 bg-gray-50/80">
+                            <p className="text-xs font-bold text-gray-900 capitalize">
+                                📅 {new Date(contextMenu.dateStr.replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                            <p className="text-[10px] text-gray-500 font-medium mt-0.5">
+                                {selectedDates.includes(contextMenu.dateStr) ? (
+                                    unavailableHalfDays[contextMenu.dateStr] === 'morning' ? (
+                                        <span className="text-amber-700 font-semibold">Actuellement : Matin (MAT)</span>
+                                    ) : unavailableHalfDays[contextMenu.dateStr] === 'afternoon' ? (
+                                        <span className="text-purple-700 font-semibold">Actuellement : Après-midi (AM)</span>
+                                    ) : (
+                                        <span className="text-red-700 font-semibold">Actuellement : Journée entière</span>
+                                    )
+                                ) : (
+                                    <span className="text-emerald-600 font-semibold">Actuellement : Disponible</span>
+                                )}
+                            </p>
+                        </div>
+
+                        <div className="p-1 space-y-0.5 text-xs">
+                            <button
+                                type="button"
+                                onClick={() => setDatePeriodType(contextMenu.dateStr, 'morning')}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-left cursor-pointer ${
+                                    selectedDates.includes(contextMenu.dateStr) && unavailableHalfDays[contextMenu.dateStr] === 'morning'
+                                        ? 'bg-amber-50 text-amber-900 font-bold'
+                                        : 'hover:bg-gray-100 text-gray-700'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <span>☀️</span>
+                                    <span>Matin (9h, 10h)</span>
+                                </span>
+                                <span className="text-[10px] font-black text-amber-700 bg-amber-100 px-1 py-0.2 rounded">MAT</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setDatePeriodType(contextMenu.dateStr, 'afternoon')}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-left cursor-pointer ${
+                                    selectedDates.includes(contextMenu.dateStr) && unavailableHalfDays[contextMenu.dateStr] === 'afternoon'
+                                        ? 'bg-purple-50 text-purple-900 font-bold'
+                                        : 'hover:bg-gray-100 text-gray-700'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <span>🌙</span>
+                                    <span>Après-midi (14h, 15h)</span>
+                                </span>
+                                <span className="text-[10px] font-black text-purple-700 bg-purple-100 px-1 py-0.2 rounded">AM</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setDatePeriodType(contextMenu.dateStr, 'full')}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-left cursor-pointer ${
+                                    selectedDates.includes(contextMenu.dateStr) && !unavailableHalfDays[contextMenu.dateStr]
+                                        ? 'bg-red-50 text-red-900 font-bold'
+                                        : 'hover:bg-gray-100 text-gray-700'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <span>📅</span>
+                                    <span>Journée entière</span>
+                                </span>
+                                <span className="text-[10px] font-black text-red-700 bg-red-100 px-1 py-0.2 rounded">JOUR</span>
+                            </button>
+
+                            {selectedDates.includes(contextMenu.dateStr) && (
+                                <>
+                                    <div className="my-1 border-t border-gray-100" />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const d = contextMenu.dateStr;
+                                            setContextMenu(null);
+                                            handleOpenEditReasonModal([d]);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-indigo-50 text-indigo-700 font-medium transition-colors text-left cursor-pointer"
+                                    >
+                                        <PencilIcon className="w-3.5 h-3.5" />
+                                        <span>Définir / modifier motif...</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            removeUnavailability(contextMenu.dateStr);
+                                            setContextMenu(null);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-red-50 text-red-600 font-medium transition-colors text-left cursor-pointer"
+                                    >
+                                        <TrashIcon className="w-3.5 h-3.5" />
+                                        <span>Rendre disponible (Supprimer)</span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </>
             )}
 
-            {isAdding && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => { setIsAdding(false); setEditingUser(null); }}>
-                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">
-                                {editingUser ? 'Modifier le compte' : 'Nouveau compte utilisateur'}
-                            </h2>
-                            <button type="button" onClick={() => { setIsAdding(false); setEditingUser(null); }} className="text-gray-400 hover:text-gray-600">
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+            {/* Modal de motif & période d'indisponibilité (unitaire ou groupé) */}
+            {editingReasonDates && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-4">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
+                                    <PencilIcon className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <h4 className="text-base font-bold text-gray-900">
+                                        {editingReasonDates.length === 1 
+                                            ? "Paramètres d'indisponibilité" 
+                                            : `Modifier ${editingReasonDates.length} dates`}
+                                    </h4>
+                                    <p className="text-xs text-gray-500 capitalize">
+                                        {editingReasonDates.length === 1 
+                                            ? new Date(editingReasonDates[0].replace(/-/g, '/')).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+                                            : `${editingReasonDates.length} dates sélectionnées`}
+                                    </p>
+                                </div>
+                            </div>
+                            <button 
+                                type="button" 
+                                onClick={() => setEditingReasonDates(null)}
+                                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                            >
+                                <XIcon className="w-5 h-5" />
                             </button>
                         </div>
 
-                        <div className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Identifiant</label>
-                                    <div className="relative">
-                                        <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                        <input 
-                                            type="text" 
-                                            required 
-                                            value={formData.username}
-                                            onChange={(e) => setFormData({...formData, username: e.target.value})}
-                                            className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none transition-all"
-                                            placeholder="Nom d'utilisateur"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Mot de passe</label>
-                                    <div className="relative">
-                                        <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                        <input 
-                                            type="text" 
-                                            required 
-                                            value={formData.password}
-                                            onChange={(e) => setFormData({...formData, password: e.target.value})}
-                                            className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none transition-all"
-                                            placeholder="Mot de passe"
-                                        />
-                                    </div>
-                                    <div className="mt-2">
-                                        <PasswordPolicy password={formData.password} />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-1">
-                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Animateur relié</label>
-                                <div className="relative">
-                                    <UserGroupIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                    <select 
-                                        value={formData.animatorName}
-                                        onChange={(e) => setFormData({...formData, animatorName: e.target.value})}
-                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none appearance-none"
+                        <form onSubmit={handleSaveReasonAndPeriod} className="space-y-4">
+                            {/* Choix de la période (Journée entière, Matin, Après-midi) */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                                    Période d'absence
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPeriodInput('full')}
+                                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                                            periodInput === 'full'
+                                                ? 'bg-red-500 text-white border-red-600 shadow-sm'
+                                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                        }`}
                                     >
-                                        <option value="">-- Aucun (Accès non lié) --</option>
-                                        {settings.animators.map(a => (
-                                            <option key={a.name} value={a.name}>{a.name}</option>
-                                        ))}
-                                    </select>
+                                        <span className="text-sm">📅</span>
+                                        <span>Journée</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPeriodInput('morning')}
+                                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                                            periodInput === 'morning'
+                                                ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        <span className="text-sm">☀️</span>
+                                        <span>Matin (MAT)</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPeriodInput('afternoon')}
+                                        className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                                            periodInput === 'afternoon'
+                                                ? 'bg-purple-600 text-white border-purple-700 shadow-sm'
+                                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        <span className="text-sm">🌙</span>
+                                        <span>Après-midi (AM)</span>
+                                    </button>
+                                </div>
+                                {editingReasonDates.length > 1 && (
+                                    <div className="mt-1.5 text-right">
+                                        <button
+                                            type="button"
+                                            onClick={() => setPeriodInput('unchanged')}
+                                            className={`text-[11px] font-semibold underline ${periodInput === 'unchanged' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'}`}
+                                        >
+                                            Ne pas modifier les périodes actuelles
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                                    Motif (facultatif)
+                                </label>
+                                <input 
+                                    type="text"
+                                    autoFocus
+                                    value={reasonInput}
+                                    onChange={(e) => setReasonInput(e.target.value)}
+                                    placeholder="Ex: Congés, Formation, Rendez-vous médical..."
+                                    className="w-full p-2.5 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                    maxLength={100}
+                                />
+                            </div>
+
+                            {/* Suggestions rapides */}
+                            <div>
+                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
+                                    Suggestions rapides :
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {['Congés', 'Formation', 'Rendez-vous médical', 'Réunion', 'Déplacement', 'Maladie', 'Autre'].map((suggestion) => (
+                                        <button
+                                            key={suggestion}
+                                            type="button"
+                                            onClick={() => setReasonInput(suggestion)}
+                                            className={`text-xs px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                                                reasonInput === suggestion
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                                    : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200 hover:border-gray-300'
+                                            }`}
+                                        >
+                                            {suggestion}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
-                            <div className="space-y-4 p-6 bg-gray-50 rounded-2xl border border-gray-100">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <ShieldCheckIcon className="w-5 h-5 text-indigo-600" />
-                                    <h4 className="text-sm font-black text-gray-800 uppercase tracking-widest">Permissions & Limitations</h4>
+                            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                                <div>
+                                    {editingReasonDates.some(d => !!unavailableReasons[d]) && (
+                                        <button
+                                            type="button"
+                                            onClick={handleClearReason}
+                                            className="text-xs text-red-600 hover:text-red-700 font-semibold hover:underline cursor-pointer"
+                                        >
+                                            Effacer le motif
+                                        </button>
+                                    )}
                                 </div>
-                                <p className="text-xs text-gray-500 italic mb-4">Cochez pour autoriser l'accès à ces fonctionnalités.</p>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 transition-all">
-                                        <div className="flex flex-col">
-                                            <span className="text-xs font-bold text-gray-700">Modifier les Paramètres</span>
-                                            <span className="text-[10px] text-gray-400">Accès complet à l'onglet Paramètres</span>
-                                        </div>
-                                        <input 
-                                            type="checkbox" 
-                                            checked={formData.permissions.canModifySettings}
-                                            onChange={() => togglePermission('canModifySettings')}
-                                            className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
-                                        />
-                                    </label>
-                                    <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 transition-all">
-                                        <div className="flex flex-col">
-                                            <span className="text-xs font-bold text-gray-700">Gérer les Vacances</span>
-                                            <span className="text-[10px] text-gray-400">Ajouter des périodes de vacances</span>
-                                        </div>
-                                        <input 
-                                            type="checkbox" 
-                                            checked={formData.permissions.canManageVacations}
-                                            onChange={() => togglePermission('canManageVacations')}
-                                            className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
-                                        />
-                                    </label>
-                                    <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 transition-all">
-                                        <div className="flex flex-col">
-                                            <span className="text-xs font-bold text-gray-700">Gérer les Animations</span>
-                                            <span className="text-[10px] text-gray-400">Ajouter animations et animateurs</span>
-                                        </div>
-                                        <input 
-                                            type="checkbox" 
-                                            checked={formData.permissions.canManageAnimations}
-                                            onChange={() => togglePermission('canManageAnimations')}
-                                            className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
-                                        />
-                                    </label>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditingReasonDates(null)}
+                                        className="px-3.5 py-2 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                                    >
+                                        Annuler
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                        <CheckIcon className="w-3.5 h-3.5" />
+                                        <span>Valider</span>
+                                    </button>
                                 </div>
                             </div>
-
-                            <div className="flex gap-3 pt-4">
-                                <button 
-                                    type="button" 
-                                    onClick={() => { setIsAdding(false); setEditingUser(null); }}
-                                    className="flex-grow py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-100 transition-colors"
-                                >
-                                    Annuler
-                                </button>
-                                <button 
-                                    type="button" 
-                                    onClick={handleSave}
-                                    className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg shadow-blue-100 transform active:scale-95 transition-all"
-                                >
-                                    {editingUser ? 'Enregistrer les modifications' : 'Créer le compte'}
-                                </button>
-                            </div>
-                        </div>
+                        </form>
                     </div>
                 </div>
             )}
-            <ConfirmationModal 
-                isOpen={!!userToDelete}
-                title="Supprimer l'utilisateur"
-                message="Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action supprimera définitivement ses accès à la plateforme."
-                confirmLabel="Supprimer définitivement"
+
+             {editingHoliday && <HolidayEditModal holiday={editingHoliday} onSave={handleUpdateHoliday} onCancel={() => setEditingHoliday(null)} />}
+             <ConfirmationModal 
+                isOpen={!!holidayToDelete}
+                title="Supprimer la période ou le jour férié"
+                message={`Êtes-vous sûr de vouloir supprimer "${getCleanHolidayName(holidayToDelete || '')}" ?`}
+                confirmLabel="Supprimer"
                 isDanger={true}
-                onConfirm={confirmDelete}
-                onCancel={() => setUserToDelete(null)}
+                onConfirm={confirmDeleteHoliday}
+                onCancel={() => setHolidayToDelete(null)}
             />
         </div>
     );
 };
 
-export default ManageUsers;
+export default ManageCalendar;

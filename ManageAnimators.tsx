@@ -1,297 +1,302 @@
 
-import React, { useState, useEffect, useContext } from 'react';
-import { AppSettings, UserRole, AdminUser } from '../types';
-import { AppContext } from '../AppContext';
-import { auth, db } from '../services/firebase';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { LockIcon } from './Icons';
-import { validatePassword } from '../utils/validators';
-import PasswordPolicy from './admin/PasswordPolicy';
+import { storageService } from '../../services/storageService';
+import React, { useState, useContext, useMemo, useEffect } from 'react';
+import { AppContext } from '../../AppContext';
+import { Animator } from '../../types';
+import { AdminSubComponentProps } from './types';
+import { PencilIcon, CheckIcon, XIcon, TrashIcon } from '../Icons';
 
-interface AdminLoginProps {
-  settings: AppSettings;
-  onLoginSuccess: () => void;
-  onBackToHome: () => void;
-}
+import ConfirmationModal from '../shared/ConfirmationModal';
 
-const AdminLogin: React.FC<AdminLoginProps> = ({ settings, onLoginSuccess, onBackToHome }) => {
-  const { setCurrentUser, updateSettings } = useContext(AppContext);
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [loggedUser, setLoggedUser] = useState<any>(null);
-  const [loginMode, setLoginMode] = useState<'google' | 'password'>('password');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  
-  // States for mandatory password change
-  const [pendingUser, setPendingUser] = useState<AdminUser | null>(null);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+const ManageAnimators: React.FC<AdminSubComponentProps> = ({ showNotification, setHasUnsavedChanges }) => {
+    const { animations, updateAnimationsOrder, settings, updateSettings, currentUser, setCurrentUser } = useContext(AppContext);
+    const [newAnimatorName, setNewAnimatorName] = useState('');
+    const [editingAnimator, setEditingAnimator] = useState<{ original: Animator; current: Animator } | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [animatorToDelete, setAnimatorToDelete] = useState<Animator | null>(null);
 
-  const handleGoogleLogin = async () => {
-    setIsLoading(true);
-    setError('');
-    const provider = new GoogleAuthProvider();
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      setLoggedUser(user);
-      
-      const adminDoc = await getDoc(doc(db, "admins", user.uid));
-      
-      if (adminDoc.exists()) {
-        setCurrentUser({
-          id: user.uid,
-          username: user.email || user.displayName || 'Admin',
-          role: UserRole.ADMIN,
-          permissions: {
-            canModifySettings: true,
-            canManageVacations: true,
-            canManageAnimations: true
-          }
-        });
-        onLoginSuccess();
-      } else {
-        setError("Accès refusé. Votre compte Google n'est pas autorisé comme administrateur.");
-        await auth.signOut();
-      }
-    } catch (err: any) {
-      console.error("Détails de l'erreur de connexion:", err);
-      // Afficher le code d'erreur spécifique pour aider au diagnostic (ex: auth/unauthorized-domain)
-      const errorCode = err.code || "unknown";
-      const errorMessage = err.message || "Erreur inconnue";
-      setError(`Erreur Firebase (${errorCode}): ${errorMessage}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const handleCancelEdit = () => {
+        if (!editingAnimator) return;
+        const hasChanges = JSON.stringify(editingAnimator.current) !== JSON.stringify(editingAnimator.original);
+        if (hasChanges) {
+            if (window.confirm("Vous avez des modifications non enregistrées sur ce profil. Voulez-vous vraiment abandonner vos modifications ?")) {
+                setEditingAnimator(null);
+            }
+        } else {
+            setEditingAnimator(null);
+        }
+    };
 
-  const handlePasswordLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError('');
-
-    const user = (settings.users || []).find(u => u.username === username && u.password === password);
-
-    if (user) {
-      // Requis pour les nouveaux utilisateurs OU les anciens qui n'ont jamais changé (flag absent)
-      // Seulement pour les comptes "Utilisateur" (accès limité)
-      const isLimitedUser = user.role === UserRole.USER;
-      const needsChange = isLimitedUser && (user.mustChangePassword === true || user.mustChangePassword === undefined);
-
-      if (needsChange) {
-        setPendingUser(user);
-      } else {
-        setCurrentUser(user);
-        onLoginSuccess();
-      }
-    } else {
-      setError("Identifiant ou mot de passe incorrect.");
-    }
-    setIsLoading(false);
-  };
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pendingUser) return;
-
-    if (newPassword !== confirmPassword) {
-      setError("Les mots de passe ne correspondent pas.");
-      return;
-    }
-
-    const complexityError = validatePassword(newPassword);
-    if (complexityError) {
-      setError(complexityError);
-      return;
-    }
-
-    if (newPassword === pendingUser.password) {
-        setError("Le nouveau mot de passe doit être différent de l'actuel.");
-        return;
-    }
-
-    setIsLoading(true);
-    try {
-        const updatedUser = {
-            ...pendingUser,
-            password: newPassword,
-            mustChangePassword: false,
-            passwordLastChanged: new Date().toISOString()
+    useEffect(() => {
+        if (setHasUnsavedChanges) {
+            const hasChanges = editingAnimator 
+                ? JSON.stringify(editingAnimator.current) !== JSON.stringify(editingAnimator.original) 
+                : false;
+            setHasUnsavedChanges(hasChanges);
+        }
+        return () => {
+            if (setHasUnsavedChanges) {
+                setHasUnsavedChanges(false);
+            }
         };
+    }, [editingAnimator, setHasUnsavedChanges]);
+    
+    const canManage = currentUser?.role === 'admin' || currentUser?.permissions.canManageAnimations;
+    const animators = useMemo(() => settings.animators || [], [settings.animators]);
 
-        const updatedUsers = (settings.users || []).map(u => 
-            u.id === pendingUser.id ? updatedUser : u
-        );
+    const handleAddAnimator = () => {
+        const trimmedName = newAnimatorName.trim();
+        if (trimmedName && !animators.some(a => a.name === trimmedName)) {
+            const newAnimators = [...animators, { name: trimmedName, email: '', avatarUrl: '' }].sort((a, b) => a.name.localeCompare(b.name));
+            updateSettings({ animators: newAnimators });
+            setNewAnimatorName('');
+            showNotification(`Animateur "${trimmedName}" ajouté.`);
+        } else if (animators.some(a => a.name === trimmedName)) {
+            showNotification(`L'animateur "${trimmedName}" existe déjà.`);
+        }
+    };
+    
+    const handleUpdateAnimator = () => {
+        if (!editingAnimator) return;
+        const { original, current } = editingAnimator;
+        const newName = current.name.trim();
 
-        await updateSettings({ ...settings, users: updatedUsers });
-        setCurrentUser(updatedUser);
-        onLoginSuccess();
-    } catch (err) {
-        setError("Une erreur est survénue lors du changement de mot de passe.");
-    } finally {
-        setIsLoading(false);
-    }
-  };
+        if (!newName) {
+            showNotification("Le nom de l'animateur ne peut pas être vide.");
+            return;
+        }
+        if (newName !== original.name && animators.some(a => a.name === newName)) {
+            showNotification(`L'animateur "${newName}" existe déjà.`);
+            return;
+        }
 
-  if (pendingUser) {
+        const newAnimators = animators.map(anim => (anim.name === original.name ? current : anim)).sort((a, b) => a.name.localeCompare(b.name));
+        
+        if (original.name !== newName) {
+            const newAnimations = animations.map(anim => {
+                if (anim.animator === original.name) {
+                    return { ...anim, animator: newName };
+                }
+                return anim;
+            });
+            updateAnimationsOrder(newAnimations);
+
+            const newAnimatorSettings = { ...(settings.animatorSettings || {})};
+            if(newAnimatorSettings[original.name]) {
+                newAnimatorSettings[newName] = newAnimatorSettings[original.name];
+                delete newAnimatorSettings[original.name];
+            }
+
+            let newUsers = settings.users || [];
+            newUsers = newUsers.map(u => u.animatorName === original.name ? { ...u, animatorName: newName } : u);
+
+            if (currentUser && currentUser.animatorName === original.name && setCurrentUser) {
+                setCurrentUser({ ...currentUser, animatorName: newName });
+            }
+
+            updateSettings({ 
+                animators: newAnimators, 
+                animatorSettings: newAnimatorSettings,
+                users: newUsers
+            });
+        } else {
+            updateSettings({ animators: newAnimators });
+        }
+
+        setEditingAnimator(null);
+        showNotification(`Animateur "${newName}" mis à jour.`);
+    };
+
+    const handleRemoveAnimator = async (animatorToRemove: Animator) => {
+        const isAnimatorUsed = animations.some(anim => anim.animator === animatorToRemove.name);
+        if (isAnimatorUsed) {
+            showNotification(`Impossible de supprimer "${animatorToRemove.name}". Il est assigné à une ou plusieurs animations.`, 'error');
+            return;
+        }
+        setAnimatorToDelete(animatorToRemove);
+    };
+
+    const confirmRemoveAnimator = async () => {
+        if (!animatorToDelete) return;
+        try {
+            const newAnimators = animators.filter(animator => animator.name !== animatorToDelete.name);
+            const newAnimatorSettings = { ...(settings.animatorSettings || {})};
+            if(newAnimatorSettings[animatorToDelete.name]) {
+                delete newAnimatorSettings[animatorToDelete.name];
+            }
+            await updateSettings({ animators: newAnimators, animatorSettings: newAnimatorSettings });
+            showNotification(`Animateur "${animatorToDelete.name}" supprimé.`);
+        } catch (error) {
+            console.error("Delete animator error:", error);
+            showNotification(`Erreur lors de la suppression de l'animateur.`, 'error');
+        } finally {
+            setAnimatorToDelete(null);
+        }
+    };
+
+    const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0] && editingAnimator) {
+            const file = e.target.files[0];
+            
+            if (file.size > 5 * 1024 * 1024) {
+                alert("L'image est trop volumineuse (max 5 Mo).");
+                return;
+            }
+
+            setIsUploading(true);
+            try {
+                // Upload vers Cloudinary
+                const downloadURL = await storageService.uploadFile(file, `avatars`);
+                
+                setEditingAnimator(prev => prev ? ({
+                    ...prev,
+                    current: { ...prev.current, avatarUrl: downloadURL }
+                }) : null);
+                
+                showNotification("Image mise à jour !");
+            } catch (error) {
+                console.error(error);
+                alert("Erreur lors de l'upload. Avez-vous configuré votre cloud_name et upload_preset dans storageService.ts ?");
+            } finally {
+                setIsUploading(false);
+            }
+        }
+    };
+
+    const handleRemoveAvatar = () => {
+        if (editingAnimator) {
+            setEditingAnimator(prev => prev ? ({
+                ...prev,
+                current: { ...prev.current, avatarUrl: '' }
+            }) : null);
+            showNotification("Avatar supprimé.");
+        }
+    };
+
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4 py-12">
-            <div className="w-full max-w-md mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden p-8 sm:p-12">
-                <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <LockIcon className="w-8 h-8" />
-                    </div>
-                    <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight mb-2">Sécurité Requise</h2>
-                    <p className="text-gray-500 text-sm">C'est votre première connexion. Veuillez choisir un nouveau mot de passe personnel pour continuer.</p>
+        <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Gérer les animateurs</h2>
+            {canManage && (
+                <div className="flex gap-2 mb-6">
+                    <input
+                        type="text"
+                        value={newAnimatorName}
+                        onChange={(e) => setNewAnimatorName(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleAddAnimator()}
+                        placeholder="Nom de l'animateur"
+                        className="flex-grow min-w-0 p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                    <button onClick={handleAddAnimator} className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 whitespace-nowrap">Ajouter</button>
                 </div>
+            )}
+            <ul className="space-y-3">
+                {animators.length > 0 ? animators.map(animator => (
+                    <li key={animator.name}>
+                        {editingAnimator?.original.name === animator.name ? (
+                            <div className="w-full bg-indigo-50 p-4 rounded-lg border border-indigo-200 shadow-inner">
+                                <div className="flex gap-4 items-start">
+                                    <div className="flex-shrink-0 text-center">
+                                        <div className="relative group">
+                                            <img 
+                                                src={editingAnimator.current.avatarUrl || `https://ui-avatars.com/api/?name=${editingAnimator.current.name.replace(/\s/g, '+')}&background=random`} 
+                                                alt="Aperçu" 
+                                                className={`w-16 h-20 object-cover rounded-md mb-2 bg-gray-200 shadow-sm border border-indigo-100 ${isUploading ? 'opacity-50' : ''}`}
+                                            />
+                                            {isUploading && (
+                                                <div className="absolute inset-0 flex items-center justify-center">
+                                                    <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2 justify-center">
+                                            <label 
+                                                htmlFor="avatar-upload" 
+                                                className={`cursor-pointer text-[10px] font-bold ${isUploading ? 'text-gray-400' : 'text-blue-600 hover:underline'}`}
+                                            >
+                                                {isUploading ? 'Envoi...' : 'Modifier'}
+                                            </label>
+                                            {editingAnimator.current.avatarUrl && !isUploading && (
+                                                <button 
+                                                    type="button"
+                                                    onClick={handleRemoveAvatar}
+                                                    className="text-[10px] font-bold text-red-600 hover:underline"
+                                                >
+                                                    Effacer
+                                                </button>
+                                            )}
+                                        </div>
+                                        <input id="avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleAvatarFileChange} disabled={isUploading}/>
+                                    </div>
+                                    <div className="flex-grow space-y-3">
+                                        <input
+                                            type="text"
+                                            value={editingAnimator.current.name}
+                                            onChange={(e) => setEditingAnimator(prev => prev ? ({ ...prev, current: { ...prev.current, name: e.target.value }}) : null)}
+                                            className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none ${(!canManage && currentUser?.animatorName !== editingAnimator.original.name) ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                                            placeholder="Nom complet"
+                                            autoFocus={canManage || currentUser?.animatorName === editingAnimator.original.name}
+                                            disabled={!canManage && currentUser?.animatorName !== editingAnimator.original.name}
+                                            title={(!canManage && currentUser?.animatorName !== editingAnimator.original.name) ? "Seul un administrateur peut modifier le nom d'un animateur" : ""}
+                                        />
+                                        <input
+                                            type="email"
+                                            value={editingAnimator.current.email || ''}
+                                            onChange={(e) => setEditingAnimator(prev => prev ? ({ ...prev, current: { ...prev.current, email: e.target.value }}) : null)}
+                                            className="w-full p-2 border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            placeholder="Adresse e-mail"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex justify-end gap-3 mt-4 pt-3 border-t border-indigo-100">
+                                    <button onClick={handleCancelEdit} className="flex items-center gap-1 px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded" aria-label="Annuler" disabled={isUploading}>
+                                        <XIcon className="w-4 h-4" /> Annuler
+                                    </button>
+                                    <button onClick={handleUpdateAnimator} className="flex items-center gap-1 px-3 py-1 text-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded shadow-sm" aria-label="Sauvegarder" disabled={isUploading}>
+                                        <CheckIcon className="w-4 h-4" /> Enregistrer
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200 h-28 hover:bg-white hover:border-indigo-300 hover:shadow-md transition-all group">
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <img src={animator.avatarUrl || `https://ui-avatars.com/api/?name=${animator.name.replace(/\s/g, '+')}&background=random`} alt={`Avatar de ${animator.name}`} className="w-16 h-20 flex-shrink-0 object-cover rounded-md bg-gray-200 shadow-sm border border-gray-100" />
+                                    <div className="min-w-0">
+                                        <p className="font-bold text-gray-800 text-lg leading-tight truncate">{animator.name}</p>
+                                        <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1 truncate" title={animator.email}>
+                                            <span className="opacity-60 text-[10px] uppercase font-bold tracking-wider">Email:</span>
+                                            {animator.email || 'Non renseigné'}
+                                        </p>
+                                    </div>
+                                </div>
+                                { (canManage || (currentUser?.animatorName === animator.name)) && (
+                                    <div className="flex flex-col gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                                        <button onClick={() => setEditingAnimator({ original: animator, current: { ...animator } })} className="text-gray-400 hover:text-indigo-600 p-1.5 bg-white rounded-full border border-gray-100 shadow-sm hover:border-indigo-200" title="Modifier">
+                                            <PencilIcon className="w-4 h-4" />
+                                        </button>
+                                        {canManage && (
+                                            <button onClick={() => handleRemoveAnimator(animator)} className="text-gray-400 hover:text-red-600 p-1.5 bg-white rounded-full border border-gray-100 shadow-sm hover:border-red-200" title="Supprimer">
+                                                <TrashIcon className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </li>
+                )) : <p className="text-gray-500 italic text-center py-4">Aucun animateur ajouté.</p>}
+            </ul>
 
-                <form onSubmit={handleChangePassword} className="space-y-6">
-                    <div className="space-y-1">
-                        <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Nouveau mot de passe</label>
-                        <input 
-                            type="password" 
-                            required 
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none"
-                            placeholder="Nouveau mot de passe"
-                        />
-                        <div className="mt-2 text-left">
-                            <PasswordPolicy password={newPassword} />
-                        </div>
-                    </div>
-
-                    <div className="space-y-1">
-                        <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Confirmez le mot de passe</label>
-                        <input 
-                            type="password" 
-                            required 
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none"
-                            placeholder="Confirmez"
-                        />
-                    </div>
-
-                    {error && <p className="text-xs font-bold text-red-500 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
-
-                    <div className="flex flex-col gap-3 pt-2">
-                        <button
-                            type="submit"
-                            disabled={isLoading}
-                            className="w-full py-4 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all disabled:opacity-50 flex justify-center"
-                        >
-                            {isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : "Actualiser et se connecter"}
-                        </button>
-                        <button 
-                            type="button"
-                            onClick={() => setPendingUser(null)}
-                            className="text-sm text-gray-400 font-bold hover:text-gray-600 transition-colors"
-                        >
-                            Retour à la connexion
-                        </button>
-                    </div>
-                </form>
-            </div>
+            <ConfirmationModal 
+                isOpen={!!animatorToDelete}
+                title="Supprimer l'animateur"
+                message={`Êtes-vous sûr de vouloir supprimer l'animateur "${animatorToDelete?.name}" ? Cette action supprimera également ses réglages d'indisponibilité.`}
+                confirmLabel="Supprimer"
+                isDanger={true}
+                onConfirm={confirmRemoveAnimator}
+                onCancel={() => setAnimatorToDelete(null)}
+            />
         </div>
     );
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4 py-12">
-        <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden relative">
-            <div className="w-full p-8 sm:p-12 flex flex-col justify-center">
-                <div className="text-center">
-                    <h2 className="text-3xl font-bold text-gray-800 mb-4">Accès administrateur</h2>
-                    <p className="text-gray-600 mb-8 text-sm">Connectez-vous pour accéder au panneau de gestion.</p>
-
-                    <div className="flex bg-gray-100 p-1 rounded-xl mb-8">
-                        <button 
-                            onClick={() => { setLoginMode('password'); setError(''); }}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${loginMode === 'password' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            Compte Utilisateur
-                        </button>
-                        <button 
-                            onClick={() => { setLoginMode('google'); setError(''); }}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${loginMode === 'google' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            Compte Admin
-                        </button>
-                    </div>
-                    
-                    {loginMode === 'google' ? (
-                        <button
-                            onClick={handleGoogleLogin}
-                            disabled={isLoading}
-                            className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-lg shadow-sm text-lg font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:opacity-50"
-                        >
-                            {isLoading ? (
-                                <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                            ) : (
-                                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-                            )}
-                            Se connecter avec Google
-                        </button>
-                    ) : (
-                        <form onSubmit={handlePasswordLogin} className="space-y-4 text-left">
-                            <div>
-                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Identifiant</label>
-                                <input 
-                                    type="text" 
-                                    value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
-                                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none"
-                                    placeholder="Nom d'utilisateur"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Mot de passe</label>
-                                <input 
-                                    type="password" 
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none"
-                                    placeholder="••••••••"
-                                    required
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                disabled={isLoading}
-                                className="w-full py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all disabled:opacity-50 flex justify-center"
-                            >
-                                {isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : "Se connecter"}
-                            </button>
-                        </form>
-                    )}
-
-                    {error && (
-                        <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg text-left">
-                            <p className="text-red-700 text-sm font-bold mb-1">Accès refusé</p>
-                            <p className="text-red-600 text-xs mb-1">{error}</p>
-                            {loginMode === 'google' && loggedUser && (
-                                <div className="bg-white p-3 rounded border border-red-100 mt-2">
-                                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">Votre UID Google :</p>
-                                    <code className="text-[10px] font-mono break-all text-red-800 bg-red-50 px-1 py-0.5 rounded">{loggedUser.uid}</code>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    <div className="mt-8">
-                      <button onClick={onBackToHome} className="text-sm text-blue-600 hover:text-blue-500 hover:underline">
-                          ← Retour à l'accueil
-                      </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-  );
 };
 
-export default AdminLogin;
+export default ManageAnimators;

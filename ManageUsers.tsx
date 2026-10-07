@@ -1,49 +1,719 @@
-import React, { useState } from 'react';
-import { Holiday } from '../../types';
 
-const HolidayEditModal: React.FC<{
-    holiday: Holiday;
-    onSave: (holiday: Holiday) => void;
-    onCancel: () => void;
-}> = ({ holiday, onSave, onCancel }) => {
-    const [formState, setFormState] = useState(holiday);
+import React, { useState, useContext, useEffect, useMemo } from 'react';
+import { AppContext } from '../../AppContext';
+import { AdminUser, UserRole, UserPermissions } from '../../types';
+import { AdminSubComponentProps } from './types';
+import { TrashIcon, CogIcon, PlusIcon, CheckIcon, ShieldCheckIcon, UserIcon, LockIcon, UserGroupIcon, ShieldIcon, XIcon } from '../Icons';
+import { validatePassword } from '../../utils/validators';
+import PasswordPolicy from './PasswordPolicy';
+import { dataService } from '../../services/dataService';
+import { db } from '../../services/firebase';
+import { collection, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
+import ConfirmationModal from '../shared/ConfirmationModal';
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFormState({ ...formState, [e.target.name]: e.target.value });
+interface ManageUsersProps extends AdminSubComponentProps {
+    users?: AdminUser[];
+    setUsers?: (newUsers: AdminUser[]) => void;
+}
+
+const getMaskedPassword = (pwd: string | undefined, role?: UserRole): string => {
+    if (!pwd) return '';
+    if (role === UserRole.USER) {
+        return '********';
+    }
+    if (pwd === 'GrandLongwy@2026') return 'GrandLongwy@2026';
+    const len = pwd.length;
+    if (len <= 2) {
+        return '*'.repeat(len);
+    }
+    const lastTwo = pwd.slice(-2);
+    return '*'.repeat(len - 2) + lastTwo;
+};
+
+const ManageUsers: React.FC<ManageUsersProps> = ({ showNotification, users, setUsers }) => {
+    const { settings, updateSettings, currentUser } = useContext(AppContext);
+    
+    const [isAdding, setIsAdding] = useState(false);
+    const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+    const [admins, setAdmins] = useState<{id: string, email: string}[]>([]);
+    const [isAddingAdmin, setIsAddingAdmin] = useState(false);
+    const [newAdminEmail, setNewAdminEmail] = useState('');
+    const [newAdminUid, setNewAdminUid] = useState('');
+    const [userToDelete, setUserToDelete] = useState<string | null>(null);
+    
+    const usersList = users !== undefined ? users : (settings.users || []);
+
+    // Sort local users alphabetically by username
+    const sortedUsers = useMemo(() => {
+        return [...usersList].sort((a, b) => 
+            a.username.toLocaleLowerCase().localeCompare(b.username.toLocaleLowerCase())
+        );
+    }, [usersList]);
+
+    useEffect(() => {
+        if (!currentUser || currentUser.role !== 'admin') {
+            setAdmins([]);
+            return;
+        }
+        const unsub = onSnapshot(collection(db, 'admins'), (snapshot) => {
+            const adminList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                email: doc.data().email
+            })).sort((a, b) => a.email.toLocaleLowerCase().localeCompare(b.email.toLocaleLowerCase()));
+            setAdmins(adminList);
+        }, (error) => {
+            console.error("Erreur de chargement des admins:", error);
+        });
+        return () => unsub();
+    }, [currentUser]);
+
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (isAddingAdmin) setIsAddingAdmin(false);
+                else if (isAdding) { setIsAdding(false); setEditingUser(null); }
+            }
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [isAddingAdmin, isAdding]);
+
+    const handleAddAdmin = async () => {
+        if (!newAdminUid || !newAdminEmail) return;
+        try {
+            await dataService.addAdmin(newAdminUid, newAdminEmail);
+            showNotification('Admin Google ajouté avec succès');
+            setNewAdminUid('');
+            setNewAdminEmail('');
+            setIsAddingAdmin(false);
+        } catch (err) {
+            showNotification('Erreur lors de l\'ajout de l\'admin', 'error');
+        }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formState);
+    const initialPermissions: UserPermissions = {
+        canModifySettings: false,
+        canManageVacations: false,
+        canManageAnimations: false,
+        canManageBus: false
+    };
+
+    const [formData, setFormData] = useState<Omit<AdminUser, 'id'>>({
+        username: '',
+        password: '',
+        role: UserRole.USER,
+        animatorName: '',
+        permissions: { ...initialPermissions },
+        mustChangePassword: true,
+        forcePasswordExpiry: false,
+        passwordExpiryDaysInterval: 30
+    });
+
+    const handleResetToDefault = () => {
+        setFormData(prev => ({
+            ...prev,
+            password: 'GrandLongwy@2026',
+            mustChangePassword: true
+        }));
+        showNotification("L'utilisateur a été configuré avec le mot de passe par défaut 'GrandLongwy@2026'. L'état de première connexion est rétabli.", "success");
+    };
+
+    const handleSave = async () => {
+        let finalPassword = formData.password;
+        let isPasswordChanged = false;
+
+        if (editingUser) {
+            const masked = getMaskedPassword(editingUser.password, editingUser.role);
+            if (formData.password === masked) {
+                // Password was NOT saved/modified by the admin (left in its masked display state)
+                finalPassword = editingUser.password || '';
+                isPasswordChanged = false;
+            } else {
+                isPasswordChanged = true;
+            }
+        } else {
+            isPasswordChanged = true;
+        }
+
+        if (isPasswordChanged) {
+            const complexityError = validatePassword(finalPassword);
+            if (complexityError) {
+                showNotification(complexityError, 'error');
+                return;
+            }
+        }
+
+        try {
+            const currentUsers = usersList;
+            let newUsers;
+
+            if (editingUser) {
+                const finalMustChange = isPasswordChanged || formData.mustChangePassword || false;
+                newUsers = currentUsers.map(u => u.id === editingUser.id ? { 
+                    ...formData, 
+                    password: finalPassword,
+                    id: u.id,
+                    passwordLastChanged: isPasswordChanged ? new Date().toISOString() : u.passwordLastChanged,
+                    mustChangePassword: finalMustChange
+                } : u);
+            } else {
+                const newUser: AdminUser = {
+                    ...formData,
+                    password: finalPassword,
+                    id: Date.now().toString(),
+                    passwordLastChanged: new Date().toISOString(),
+                    mustChangePassword: true
+                };
+                newUsers = [...currentUsers, newUser];
+            }
+
+            if (setUsers) {
+                setUsers(newUsers);
+            } else {
+                await updateSettings({ users: newUsers });
+            }
+            setIsAdding(false);
+            setEditingUser(null);
+            setFormData({
+                username: '',
+                password: '',
+                role: UserRole.USER,
+                animatorName: '',
+                permissions: { ...initialPermissions },
+                mustChangePassword: true,
+                forcePasswordExpiry: false,
+                passwordExpiryDaysInterval: 30
+            });
+            showNotification(editingUser ? 'Utilisateur mis à jour !' : 'Utilisateur créé !');
+        } catch (err) {
+            console.error("Error saving user:", err);
+            showNotification('Erreur lors de la sauvegarde de l\'utilisateur', 'error');
+        }
+    };
+
+    const handleDelete = (id: string) => {
+        if (!id) return;
+        console.log("Delete triggered for user ID:", id);
+        setUserToDelete(id);
+    };
+
+    const confirmDelete = async () => {
+        if (!userToDelete) return;
+        const id = userToDelete;
+        
+        try {
+            console.log("Starting deletion process for ID:", id);
+            const currentUsers = usersList;
+            // Comparison as strings to avoid type mismatches (number vs string)
+            const newUsers = currentUsers.filter(u => String(u.id) !== String(id));
+            
+            if (newUsers.length === currentUsers.length) {
+                showNotification('Utilisateur non trouvé ou déjà supprimé.', 'error');
+                console.warn(`Could not find user with id ${id} among`, currentUsers);
+                setUserToDelete(null);
+                return;
+            }
+
+            console.log("Updating settings with the filtered user list...");
+            if (setUsers) {
+                setUsers(newUsers);
+            } else {
+                await updateSettings({ users: newUsers });
+            }
+            showNotification('Utilisateur supprimé avec succès.');
+        } catch (err) {
+            console.error("Error deleting user:", err);
+            showNotification('Erreur lors de la suppression de l\'utilisateur. Vérifiez votre connexion.', 'error');
+        } finally {
+            setUserToDelete(null);
+        }
+    };
+
+    const togglePermission = (key: keyof UserPermissions) => {
+        setFormData(prev => ({
+            ...prev,
+            permissions: {
+                ...prev.permissions,
+                [key]: !prev.permissions[key]
+            }
+        }));
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={onCancel}>
-            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-semibold mb-4">Modifier la période de vacances</h3>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label htmlFor="holiday-name" className="block text-sm font-medium text-gray-700">Nom de la période</label>
-                        <input type="text" id="holiday-name" name="name" value={formState.name} onChange={handleChange} className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
+        <div className="space-y-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
+                    <div className="flex items-center gap-2">
+                        <ShieldIcon className="w-5 h-5 text-blue-600" />
+                        <h3 className="font-bold text-gray-800">Comptes Admin (Google OAuth)</h3>
                     </div>
-                    <div className="flex gap-4">
-                        <div className="w-1/2">
-                            <label htmlFor="holiday-start" className="block text-sm font-medium text-gray-700">Date de début</label>
-                            <input type="date" id="holiday-start" name="startDate" value={formState.startDate} onChange={handleChange} className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
-                        </div>
-                        <div className="w-1/2">
-                            <label htmlFor="holiday-end" className="block text-sm font-medium text-gray-700">Date de fin</label>
-                            <input type="date" id="holiday-end" name="endDate" value={formState.endDate} onChange={handleChange} className="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-4">
-                        <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Annuler</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Sauvegarder</button>
-                    </div>
-                </form>
+                    {currentUser?.role === 'admin' && (
+                        <button 
+                            type="button"
+                            onClick={() => setIsAddingAdmin(true)}
+                            className="text-xs font-bold text-blue-600 hover:text-blue-700 bg-white px-3 py-1.5 rounded-lg border border-blue-100 shadow-sm cursor-pointer"
+                        >
+                            + Ajouter un administrateur
+                        </button>
+                    )}
+                </div>
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50/50">
+                        <tr>
+                            <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">E-mail</th>
+                            <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Google UID</th>
+                            <th className="px-6 py-4 text-right text-xs font-black text-gray-400 uppercase tracking-widest">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {admins.map(admin => (
+                            <tr key={admin.id} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                                            <ShieldCheckIcon className="w-4 h-4" />
+                                        </div>
+                                        <span className="font-bold text-gray-700">{admin.email}</span>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <code className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500">{admin.id}</code>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <button 
+                                        type="button"
+                                        onClick={async () => {
+                                            if (window.confirm('Supprimer cet accès Admin ?')) {
+                                                try {
+                                                    await deleteDoc(doc(db, 'admins', admin.id));
+                                                    showNotification('Accès supprimé');
+                                                } catch (e) {
+                                                    showNotification('Erreur suppression', 'error');
+                                                }
+                                            }
+                                        }}
+                                        className="p-1.5 text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
+                                    >
+                                        <TrashIcon className="w-4 h-4" />
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                        {admins.length === 0 && (
+                            <tr>
+                                <td colSpan={3} className="px-6 py-8 text-center text-gray-400 italic">
+                                    {currentUser?.role === 'admin' ? "Aucun compte admin Google configuré." : "Paramètre restreint."}
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
             </div>
+
+            <div className="pt-4 border-t border-gray-100/60">
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-800">Gestion des comptes Utilisateurs</h2>
+                        <p className="text-sm text-gray-500 mt-1">Créez et gérez les accès restreints pour les animateurs.</p>
+                    </div>
+                    <button 
+                        type="button"
+                        onClick={() => setIsAdding(true)}
+                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 cursor-pointer"
+                    >
+                        <PlusIcon className="w-5 h-5" /> Nouvel utilisateur
+                    </button>
+                </div>
+
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50/50">
+                            <tr>
+                                <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Identifiant</th>
+                                <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Compte / Animateur</th>
+                                <th className="px-6 py-4 text-right text-xs font-black text-gray-400 uppercase tracking-widest">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {sortedUsers.map(user => (
+                                <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center">
+                                                <UserIcon className="w-5 h-5" />
+                                            </div>
+                                            <span className="font-bold text-gray-800">{user.username}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-col gap-1">
+                                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full w-fit ${user.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                {user.role === UserRole.ADMIN ? 'Administrateur' : 'Compte Utilisateur'}
+                                            </span>
+                                            {user.animatorName && (
+                                                <span className="text-xs text-gray-500 font-medium">Lié à : {user.animatorName}</span>
+                                            )}
+                                            {user.password && (
+                                                <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium my-0.5">
+                                                    <span>Mot de passe :</span>
+                                                    <code className="text-[11px] bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200 font-semibold font-mono text-gray-700">
+                                                        {getMaskedPassword(user.password, user.role)}
+                                                    </code>
+                                                </div>
+                                            )}
+                                            {user.forcePasswordExpiry && (
+                                                <span className="text-[9px] text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded font-bold w-fit uppercase tracking-wide">
+                                                    🔄 Expire tous les {user.passwordExpiryDaysInterval || 30} jours
+                                                </span>
+                                            )}
+                                            {user.mustChangePassword && (
+                                                <span className="text-[9px] text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded font-bold w-fit uppercase tracking-wide">
+                                                    🔑 Première connexion requise
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <div className="flex justify-end gap-3">
+                                            <button 
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    console.log("Edit button clicked for:", user.username);
+                                                    setEditingUser(user);
+                                                    setFormData({ 
+                                                        username: user.username,
+                                                        password: getMaskedPassword(user.password || '', user.role),
+                                                        role: user.role,
+                                                        animatorName: user.animatorName || '',
+                                                        permissions: { canManageBus: false, ...user.permissions },
+                                                        mustChangePassword: user.mustChangePassword !== undefined ? user.mustChangePassword : true,
+                                                        forcePasswordExpiry: user.forcePasswordExpiry || false,
+                                                        passwordExpiryDaysInterval: user.passwordExpiryDaysInterval || 30
+                                                    });
+                                                    setIsAdding(true);
+                                                }}
+                                                className="p-2.5 text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 rounded-xl border border-gray-200 hover:border-blue-200 transition-all cursor-pointer relative z-10"
+                                                title="Modifier"
+                                            >
+                                                <CogIcon className="w-5 h-5" />
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    console.log("Delete button clicked for ID:", user.id);
+                                                    handleDelete(user.id);
+                                                }}
+                                                className="p-2.5 text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 rounded-xl border border-gray-200 hover:border-red-200 transition-all cursor-pointer relative z-10"
+                                                title="Supprimer"
+                                            >
+                                                <TrashIcon className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                            {sortedUsers.length === 0 && (
+                                <tr>
+                                    <td colSpan={3} className="px-6 py-12 text-center text-gray-400 italic">
+                                        Aucun compte utilisateur créé pour le moment.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {isAddingAdmin && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70]">
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md relative" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                            type="button" 
+                            onClick={() => setIsAddingAdmin(false)} 
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <XIcon className="w-6 h-6" />
+                        </button>
+                        <h3 className="text-xl font-black text-gray-800 uppercase tracking-tight mb-6">Ajouter un Admin Google</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">E-mail Google</label>
+                                <input 
+                                    type="email"
+                                    value={newAdminEmail}
+                                    onChange={(e) => setNewAdminEmail(e.target.value)}
+                                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none"
+                                    placeholder="exemple@gmail.com"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Google UID</label>
+                                <input 
+                                    type="text"
+                                    value={newAdminUid}
+                                    onChange={(e) => setNewAdminUid(e.target.value)}
+                                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none"
+                                    placeholder="UID du compte Google"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1 italic">L'UID est disponible dans la console Firebase Auth ou via le profil utilisateur lors d'une première tentative de connexion.</p>
+                            </div>
+                            <div className="flex gap-3 pt-4">
+                                <button type="button" onClick={() => setIsAddingAdmin(false)} className="flex-grow py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-100 transition-colors">Annuler</button>
+                                <button type="button" onClick={handleAddAdmin} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg shadow-blue-100">Ajouter</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isAdding && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tight">
+                                {editingUser ? 'Modifier le compte' : 'Nouveau compte utilisateur'}
+                            </h2>
+                            <button type="button" onClick={() => { setIsAdding(false); setEditingUser(null); }} className="text-gray-400 hover:text-gray-600">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest text-left">Identifiant</label>
+                                    <div className="relative">
+                                        <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                        <input 
+                                            type="text" 
+                                            required 
+                                            value={formData.username}
+                                            onChange={(e) => setFormData({...formData, username: e.target.value})}
+                                            className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none transition-all"
+                                            placeholder="Nom d'utilisateur"
+                                            autoComplete="new-username"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest text-left">Mot de passe</label>
+                                    <div className="relative">
+                                        <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                        <input 
+                                            type="text" 
+                                            required 
+                                            value={formData.password}
+                                            onChange={(e) => setFormData({...formData, password: e.target.value})}
+                                            className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none transition-all"
+                                            placeholder="Mot de passe"
+                                            autoComplete="new-password"
+                                        />
+                                    </div>
+                                </div>
+                                {editingUser && formData.password === getMaskedPassword(editingUser.password, formData.role) ? (
+                                    <div className="md:col-span-2 mt-1 text-xs text-gray-500 bg-gray-50 px-4 py-3 rounded-xl border border-gray-100 flex items-center gap-2">
+                                        <LockIcon className="w-4 h-4 text-blue-500" />
+                                        <span>Le mot de passe actuel est conservé et masqué de manière sécurisée. Saisissez un nouveau mot de passe pour le modifier.</span>
+                                    </div>
+                                ) : (
+                                    <div className="md:col-span-2 mt-1">
+                                        <PasswordPolicy password={formData.password} singleLine={true} />
+                                    </div>
+                                )}
+                            </div>
+
+                            {editingUser && (
+                                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+                                    <div>
+                                        <p className="text-xs font-bold text-amber-900">Rétablir l'état par défaut (Première connexion)</p>
+                                        <p className="text-[10px] text-amber-700/80 mt-1 leading-snug">
+                                            Réinitialise le mot de passe sur <code className="font-mono bg-white/70 px-1 py-0.5 rounded border border-amber-200 font-bold">GrandLongwy@2026</code> et force l'utilisateur à définir un nouveau mot de passe lors de sa prochaine connexion (Première connexion).
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleResetToDefault}
+                                        className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black uppercase shadow-sm transition-colors whitespace-nowrap self-start sm:self-center cursor-pointer"
+                                    >
+                                        Rétablir par défaut
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1 text-left">
+                                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Rôle de l'utilisateur</label>
+                                    <div className="relative">
+                                        <ShieldIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                        <select 
+                                            value={formData.role}
+                                            onChange={(e) => {
+                                                const newRole = e.target.value as UserRole;
+                                                setFormData(prev => {
+                                                    let updatedPassword = prev.password;
+                                                    if (editingUser) {
+                                                        const currentMasked = getMaskedPassword(editingUser.password, prev.role);
+                                                        if (prev.password === currentMasked) {
+                                                            updatedPassword = getMaskedPassword(editingUser.password, newRole);
+                                                        }
+                                                    }
+                                                    return {
+                                                        ...prev,
+                                                        role: newRole,
+                                                        password: updatedPassword,
+                                                        // Administrators shouldn't need a specific animator linkage
+                                                        animatorName: newRole === UserRole.ADMIN ? '' : prev.animatorName,
+                                                        // Admins have all permissions preset, restricted users are all false
+                                                        permissions: newRole === UserRole.ADMIN ? {
+                                                            canModifySettings: true,
+                                                            canManageVacations: true,
+                                                            canManageAnimations: true,
+                                                            canManageBus: true
+                                                        } : {
+                                                            canModifySettings: false,
+                                                            canManageVacations: false,
+                                                            canManageAnimations: false,
+                                                            canManageBus: false
+                                                        }
+                                                    };
+                                                });
+                                            }}
+                                            className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none appearance-none"
+                                        >
+                                            <option value={UserRole.USER}>Compte Utilisateur (Accès restreint)</option>
+                                            <option value={UserRole.ADMIN}>Administrateur (Accès complet)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1 text-left">
+                                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Animateur relié</label>
+                                    <div className="relative">
+                                        <UserGroupIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                        <select 
+                                            value={formData.animatorName}
+                                            disabled={formData.role === UserRole.ADMIN}
+                                            onChange={(e) => setFormData({...formData, animatorName: e.target.value})}
+                                            className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl font-bold focus:border-blue-500 outline-none appearance-none disabled:opacity-50"
+                                        >
+                                            <option value="">-- Aucun (Accès non lié) --</option>
+                                            {settings.animators.map(a => (
+                                                <option key={a.name} value={a.name}>{a.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {formData.role === UserRole.USER && (
+                                <div className="space-y-4 p-6 bg-gray-50 rounded-2xl border border-gray-100 text-left">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <ShieldCheckIcon className="w-5 h-5 text-blue-600" />
+                                        <h4 className="text-sm font-black text-gray-800 uppercase tracking-widest">Droits d'accès spécifiques</h4>
+                                    </div>
+                                    <p className="text-xs text-gray-500 italic mb-4">Gérez les accès spécifiques pour ce compte utilisateur.</p>
+                                    <div className="flex flex-col gap-4">
+                                        <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 transition-all">
+                                            <div className="flex flex-col pr-4">
+                                                <span className="text-xs font-bold text-gray-700">Gestion du bus (Modification)</span>
+                                                <span className="text-[10px] text-gray-400">Permet à ce compte d'apporter des modifications dans la gestion du bus au lieu d'un accès en lecture seule.</span>
+                                            </div>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={formData.permissions?.canManageBus || false}
+                                                onChange={(e) => setFormData(prev => ({
+                                                    ...prev,
+                                                    permissions: {
+                                                        ...prev.permissions,
+                                                        canManageBus: e.target.checked
+                                                    }
+                                                }))}
+                                                className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="space-y-4 p-6 bg-gray-50 rounded-2xl border border-gray-100 text-left">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <LockIcon className="w-5 h-5 text-blue-600" />
+                                    <h4 className="text-sm font-black text-gray-800 uppercase tracking-widest">Sécurité & Expiration</h4>
+                                </div>
+                                <p className="text-xs text-gray-500 italic mb-4">Gérez la politique de renouvellement obligatoire du mot de passe périodique.</p>
+                                
+                                <div className="flex flex-col gap-4">
+                                    <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 transition-all">
+                                        <div className="flex flex-col pr-4">
+                                            <span className="text-xs font-bold text-gray-700">Forcer le changement de mot de passe périodiquement</span>
+                                            <span className="text-[10px] text-gray-400">Le mot de passe expirera automatiquement après l'intervalle sélectionné</span>
+                                        </div>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={formData.forcePasswordExpiry || false}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, forcePasswordExpiry: e.target.checked }))}
+                                            className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"
+                                        />
+                                    </label>
+
+                                    {formData.forcePasswordExpiry && (
+                                        <div className="p-4 bg-white rounded-xl border border-gray-100 space-y-2">
+                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Intervalle de jours choisi</label>
+                                            <div className="flex items-center gap-3">
+                                                <input 
+                                                    type="number"
+                                                    min={1}
+                                                    max={365}
+                                                    required
+                                                    value={formData.passwordExpiryDaysInterval || 30}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value) || 30;
+                                                        setFormData(prev => ({ ...prev, passwordExpiryDaysInterval: val }));
+                                                    }}
+                                                    className="w-24 px-3 py-2 bg-gray-50 border-2 border-gray-100 rounded-lg font-bold text-sm focus:border-blue-500 outline-none"
+                                                />
+                                                <span className="text-xs text-gray-500 font-medium">jours avant obligation de changement.</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                                <button 
+                                    type="button" 
+                                    onClick={() => { setIsAdding(false); setEditingUser(null); }}
+                                    className="flex-grow py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-100 transition-colors"
+                                >
+                                    Annuler
+                                </button>
+                                <button 
+                                    type="button" 
+                                    onClick={handleSave}
+                                    className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm uppercase hover:bg-blue-700 shadow-lg shadow-blue-100 transform active:scale-95 transition-all"
+                                >
+                                    {editingUser ? 'Enregistrer les modifications' : 'Créer le compte'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            <ConfirmationModal 
+                isOpen={!!userToDelete}
+                title="Supprimer l'utilisateur"
+                message="Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action supprimera définitivement ses accès à la plateforme."
+                confirmLabel="Supprimer définitivement"
+                isDanger={true}
+                onConfirm={confirmDelete}
+                onCancel={() => setUserToDelete(null)}
+            />
         </div>
     );
 };
 
-export default HolidayEditModal;
+export default ManageUsers;

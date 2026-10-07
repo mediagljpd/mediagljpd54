@@ -1,80 +1,219 @@
 
-import React, { useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { XIcon } from '../Icons';
+import { Animation, Booking, AppSettings } from '../types';
+import { db, handleFirestoreError } from './firebase';
+import { 
+  collection, 
+  setDoc, 
+  doc, 
+  deleteDoc,
+  runTransaction
+} from "firebase/firestore";
 
-interface ConfirmationModalProps {
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmLabel: string;
-    cancelLabel?: string;
-    onConfirm: () => void;
-    onCancel: () => void;
-    isDanger?: boolean;
-}
+export const dataService = {
+  saveAnimation: async (animation: Animation) => {
+    if (!db) return;
+    try {
+        await setDoc(doc(db, "animations", animation.id), animation);
+    } catch (e) {
+        handleFirestoreError(e, 'write', `animations/${animation.id}`);
+    }
+  },
 
-const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ 
-    isOpen, 
-    title, 
-    message, 
-    confirmLabel, 
-    cancelLabel = "Annuler", 
-    onConfirm, 
-    onCancel,
-    isDanger = false
-}) => {
-    useEffect(() => {
-        if (isOpen) {
-            console.log("ConfirmationModal is now OPEN:", title);
+  removeAnimation: async (id: string) => {
+    if (!db) return;
+    try {
+        await deleteDoc(doc(db, "animations", id));
+    } catch (e) {
+        handleFirestoreError(e, 'delete', `animations/${id}`);
+    }
+  },
+  
+  saveBooking: async (booking: Booking, animatorName?: string, currentBookings?: Booking[], animations?: Animation[]) => {
+    if (!db) return;
+    const bookingRef = doc(db, "bookings", booking.id);
+    const dayLocksRef = doc(db, "dayLocks", booking.date);
+    
+    try {
+        await runTransaction(db, async (transaction) => {
+            // 1. ALL READS FIRST (Firestore requires all reads before any writes)
+            const bookingSnap = await transaction.get(bookingRef);
+            const isUpdate = bookingSnap.exists();
+            const oldBooking = isUpdate ? (bookingSnap.data() as Booking) : null;
+            
+            const dayLocksSnap = await transaction.get(dayLocksRef);
+            
+            const isDateChanged = isUpdate && oldBooking && oldBooking.date !== booking.date;
+            let oldDayLocksRef: any = null;
+            let oldDayLocksSnap: any = null;
+            if (isDateChanged && oldBooking) {
+                oldDayLocksRef = doc(db, "dayLocks", oldBooking.date);
+                oldDayLocksSnap = await transaction.get(oldDayLocksRef);
+            }
+            
+            // 2. Récupérer ou reconstruire les verrous du jour cible
+            let existingDayBookings: any[] = [];
+            if (dayLocksSnap.exists()) {
+                existingDayBookings = dayLocksSnap.data().bookings || [];
+            } else if (currentBookings && animations) {
+                const animMap = new Map<string, string>();
+                animations.forEach(a => {
+                    if (a.animator) animMap.set(a.id, a.animator);
+                });
+                existingDayBookings = currentBookings
+                    .filter(b => b.date === booking.date)
+                    .map(b => ({
+                        id: b.id,
+                        time: Number(b.time),
+                        animator: animMap.get(b.animationId) || "",
+                        animationId: b.animationId
+                    }));
+            }
+            
+            // 3. Exclure la réservation actuelle en cas de mise à jour pour éviter l'auto-conflit sur la même date
+            let filteredDayBookings = existingDayBookings;
+            if (isUpdate) {
+                filteredDayBookings = existingDayBookings.filter(b => b.id !== booking.id);
+            }
+            
+            // 4. Contrôles de concurrence et d'intégrité
+            // Conflit d'horaire exact
+            const slotConflict = filteredDayBookings.find(b => Number(b.time) === Number(booking.time));
+            if (slotConflict) {
+                throw new Error("Ce créneau horaire est déjà réservé par un autre enseignant.");
+            }
+            
+            // Limite d'après-midi (un seul atelier l'après-midi, soit à 14h soit à 15h)
+            const timeVal = Number(booking.time);
+            const isAfternoonSlot = timeVal === 14 || timeVal === 15;
+            if (isAfternoonSlot) {
+                const afternoonConflict = filteredDayBookings.find(b => Number(b.time) === 14 || Number(b.time) === 15);
+                if (afternoonConflict) {
+                    throw new Error("L'après-midi est déjà réservé par un autre enseignant.");
+                }
+            }
+            
+            // Conflit d'animateur (un animateur ne peut avoir qu'une animation par jour)
+            if (animatorName && animatorName.trim() !== "") {
+                const cleanAnimator = animatorName.trim().toLowerCase();
+                const animatorConflict = filteredDayBookings.find(b => b.animator?.trim().toLowerCase() === cleanAnimator);
+                if (animatorConflict) {
+                    throw new Error(`L'animateur ${animatorName} a déjà une animation réservée ce jour-là.`);
+                }
+            }
+            
+            // 5. ALL WRITES
+            // 5a. Mettre à jour les verrous de la date cible
+            const newLockItem = {
+                id: booking.id,
+                time: Number(booking.time),
+                animator: animatorName || "",
+                animationId: booking.animationId
+            };
+            const updatedDayBookings = [...filteredDayBookings, newLockItem];
+            transaction.set(dayLocksRef, { bookings: updatedDayBookings }, { merge: true });
+            
+            // 5b. Nettoyer les verrous de l'ancienne date si la date a été modifiée
+            if (isDateChanged && oldDayLocksRef && oldDayLocksSnap && oldDayLocksSnap.exists()) {
+                const oldExisting = oldDayLocksSnap.data().bookings || [];
+                const updatedOldExisting = oldExisting.filter((b: any) => b.id !== booking.id);
+                transaction.set(oldDayLocksRef, { bookings: updatedOldExisting }, { merge: true });
+            }
+            
+            // 5c. Enregistrer le document de réservation
+            transaction.set(bookingRef, booking, { merge: true });
+        });
+    } catch (e: any) {
+        console.error("Erreur de transaction dans saveBooking:", e);
+        handleFirestoreError(e, 'write', `bookings/${booking.id}`);
+        throw e;
+    }
+  },
+
+  saveBookings: async (bookings: Booking[], animations?: Animation[]) => {
+    if (!db) return;
+    try {
+        const bookingsByDate: Record<string, Booking[]> = {};
+        bookings.forEach(b => {
+            if (!bookingsByDate[b.date]) bookingsByDate[b.date] = [];
+            bookingsByDate[b.date].push(b);
+        });
+
+        const animMap = new Map<string, string>();
+        if (animations) {
+            animations.forEach(a => {
+                if (a.animator) animMap.set(a.id, a.animator);
+            });
         }
-    }, [isOpen, title]);
 
-    if (!isOpen) return null;
+        for (const [date, dateBookings] of Object.entries(bookingsByDate)) {
+            const dayLocksRef = doc(db, "dayLocks", date);
+            const lockItems = dateBookings.map(b => ({
+                id: b.id,
+                time: Number(b.time),
+                animator: animMap.get(b.animationId) || "",
+                animationId: b.animationId
+            }));
 
-    const modalContent = (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                    <h3 className="text-xl font-bold text-gray-800">{title}</h3>
-                    <button 
-                        type="button"
-                        onClick={onCancel} 
-                        className="text-gray-400 hover:text-gray-600 transition-colors p-1"
-                    >
-                        <XIcon className="w-6 h-6" />
-                    </button>
-                </div>
-                <div className="p-8">
-                    <p className="text-gray-600 leading-relaxed mb-8">{message}</p>
-                    <div className="flex flex-col sm:flex-row gap-3 justify-end">
-                        <button
-                            type="button"
-                            onClick={onCancel}
-                            className="w-full sm:w-auto px-6 py-2.5 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition-colors"
-                        >
-                            {cancelLabel}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                console.log("ConfirmationModal CONFIRMED");
-                                onConfirm();
-                                onCancel();
-                            }}
-                            className={`w-full sm:w-auto px-10 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider text-white shadow-lg transition-all transform hover:scale-[1.02] active:scale-[0.98] ${
-                                isDanger ? 'bg-red-600 hover:bg-red-700 shadow-red-100' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
-                            }`}
-                        >
-                            {confirmLabel}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+            await runTransaction(db, async (transaction) => {
+                const snap = await transaction.get(dayLocksRef);
+                let existingLocks: any[] = [];
+                if (snap.exists()) {
+                    existingLocks = snap.data().bookings || [];
+                }
+                const existingIds = new Set(existingLocks.map(l => l.id));
+                const newLocks = lockItems.filter(l => !existingIds.has(l.id));
+                transaction.set(dayLocksRef, { bookings: [...existingLocks, ...newLocks] }, { merge: true });
+            });
+        }
 
-    return createPortal(modalContent, document.body);
+        const promises = bookings.map(b => setDoc(doc(db, "bookings", b.id), b));
+        await Promise.all(promises);
+    } catch (e) {
+        handleFirestoreError(e, 'write', 'bookings (batch)');
+    }
+  },
+  
+  removeBooking: async (id: string) => {
+    if (!db) return;
+    const bookingRef = doc(db, "bookings", id);
+    try {
+        await runTransaction(db, async (transaction) => {
+            const bookingSnap = await transaction.get(bookingRef);
+            if (bookingSnap.exists()) {
+                const booking = bookingSnap.data() as Booking;
+                const dayLocksRef = doc(db, "dayLocks", booking.date);
+                const dayLocksSnap = await transaction.get(dayLocksRef);
+                if (dayLocksSnap.exists()) {
+                    const dayLocksData = dayLocksSnap.data();
+                    const existingDayBookings: any[] = dayLocksData.bookings || [];
+                    const updatedDayBookings = existingDayBookings.filter(b => b.id !== id);
+                    transaction.set(dayLocksRef, { bookings: updatedDayBookings }, { merge: true });
+                }
+            }
+            transaction.delete(bookingRef);
+        });
+    } catch (e) {
+        handleFirestoreError(e, 'delete', `bookings/${id}`);
+    }
+  },
+
+  saveSettings: async (settings: AppSettings) => {
+    if (!db) return;
+    try {
+        console.log("Saving settings to Firestore...", settings);
+        await setDoc(doc(db, "settings", "global"), settings);
+        console.log("Settings saved successfully.");
+    } catch (e) {
+        handleFirestoreError(e, 'write', 'settings/global');
+    }
+  },
+  
+  addAdmin: async (uid: string, email: string) => {
+    if (!db) return;
+    try {
+        await setDoc(doc(db, "admins", uid), { email, role: 'admin' });
+    } catch (e) {
+        handleFirestoreError(e, 'write', `admins/${uid}`);
+    }
+  }
 };
-
-export default ConfirmationModal;

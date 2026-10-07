@@ -1,109 +1,92 @@
+import { Holiday } from '../types';
 
-import { collection, getDocs, writeBatch, doc, query } from 'firebase/firestore';
-import { db } from './firebase';
-import { AppSettings, Booking, Animation } from '../types';
+/**
+ * Converts a Date object to a 'YYYY-MM-DD' string based on local date parts.
+ * This avoids timezone conversion issues associated with `toISOString()`.
+ */
+export const toYYYYMMDD = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
-export interface AppBackup {
-    version: string;
-    timestamp: string;
-    data: {
-        settings: AppSettings | null;
-        bookings: Booking[];
-        animations: Animation[];
+/**
+ * Vérifie si une date donnée est comprise dans une période de vacances scolaires.
+ */
+export const isDateInHoliday = (date: Date | string, holidays?: Holiday[]): boolean => {
+  if (!holidays || holidays.length === 0) return false;
+  const d = typeof date === 'string' ? new Date(date.replace(/-/g, '/')) : new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const time = d.getTime();
+
+  return holidays.some(h => {
+    if (!h.startDate && !h.endDate) return false;
+    const startStr = h.startDate || h.endDate;
+    const endStr = h.endDate || h.startDate;
+    const s = new Date(startStr.replace(/-/g, '/'));
+    s.setHours(0, 0, 0, 0);
+    const e = new Date(endStr.replace(/-/g, '/'));
+    e.setHours(0, 0, 0, 0);
+    return time >= s.getTime() && time <= e.getTime();
+  });
+};
+
+/**
+ * Calcule l'ensemble des dates (format YYYY-MM-DD) correspondant au tout premier jour
+ * ouvert à la réservation suivant immédiatement la fin de chaque période de vacances scolaires.
+ * Par exemple, si les vacances se terminent le dimanche 01/11/2026 et que les jours autorisés
+ * sont les mardis (2) et jeudis (4), le premier jour ouvert est le mardi 03/11/2026.
+ */
+export const getPostHolidayFirstDayStrings = (
+  holidays?: Holiday[],
+  allowedDays: number[] = [2, 4]
+): Set<string> => {
+  const dates = new Set<string>();
+  if (!holidays || holidays.length === 0) return dates;
+
+  const validAllowedDays = allowedDays && allowedDays.length > 0 ? allowedDays : [2, 4];
+
+  holidays.forEach(h => {
+    if (!h.endDate && !h.startDate) return;
+    // Les jours fériés d'une seule journée ne déclenchent pas la règle post-vacances
+    if (h.startDate && h.endDate && h.startDate === h.endDate) return;
+    const endStr = h.endDate || h.startDate;
+    const end = new Date(endStr.replace(/-/g, '/'));
+    end.setHours(0, 0, 0, 0);
+    if (isNaN(end.getTime())) return;
+
+    // On part du jour suivant la fin des vacances
+    const cur = new Date(end);
+    cur.setDate(cur.getDate() + 1);
+
+    // On recherche le premier jour qui n'est dans aucune période de vacances et qui fait partie des jours autorisés
+    for (let i = 0; i < 60; i++) {
+      if (!isDateInHoliday(cur, holidays)) {
+        if (validAllowedDays.includes(cur.getDay())) {
+          dates.add(toYYYYMMDD(cur));
+          break;
+        }
+      }
+      cur.setDate(cur.getDate() + 1);
     }
-}
+  });
 
-export const backupService = {
-    /**
-     * Export all app data to a JSON object
-     */
-    exportData: async (): Promise<AppBackup | null> => {
-        if (!db) return null;
+  return dates;
+};
 
-        try {
-            // Fetch everything
-            const settingsSnap = await getDocs(collection(db, "settings"));
-            const bookingsSnap = await getDocs(collection(db, "bookings"));
-            const animationsSnap = await getDocs(collection(db, "animations"));
-
-            const settings = settingsSnap.docs.find(d => d.id === 'global')?.data() as AppSettings || null;
-            const bookings = bookingsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
-            const animations = animationsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Animation));
-
-            return {
-                version: "1.0",
-                timestamp: new Date().toISOString(),
-                data: {
-                    settings,
-                    bookings,
-                    animations
-                }
-            };
-        } catch (error) {
-            console.error("Erreur lors de l'export des données:", error);
-            throw error;
-        }
-    },
-
-    /**
-     * Restore app data from a backup object
-     * WARNING: This overwrites or adds data. It does NOT delete existing data that is NOT in the backup.
-     * To do a full clean restoration, we would need to delete target collections first.
-     */
-    restoreData: async (backup: AppBackup, progressCallback?: (msg: string) => void): Promise<void> => {
-        if (!db) throw new Error("Base de données indisponible");
-
-        const batch = writeBatch(db);
-        const { settings, bookings, animations } = backup.data;
-
-        // 1. Restore Settings
-        if (settings) {
-            progressCallback?.("Restauration des paramètres...");
-            batch.set(doc(db, "settings", "global"), settings);
-        }
-
-        // 2. Restore Animations
-        if (animations && animations.length > 0) {
-            progressCallback?.(`Restauration de ${animations.length} animations...`);
-            animations.forEach(anim => {
-                const { id, ...data } = anim;
-                batch.set(doc(db, "animations", id), data);
-            });
-        }
-
-        // Commiting first batch for performance and size limits (max 500 writes per batch in Firestore)
-        // Note: we might have more than 500 bookings.
-        await batch.commit();
-
-        // 4. Restore Bookings (can be many, so we use batches of 400)
-        if (bookings && bookings.length > 0) {
-            const chunks = [];
-            for (let i = 0; i < bookings.length; i += 400) {
-                chunks.push(bookings.slice(i, i + 400));
-            }
-
-            for (let i = 0; i < chunks.length; i++) {
-                const chunk = chunks[i];
-                progressCallback?.(`Restauration des réservations (tranche ${i + 1}/${chunks.length})...`);
-                const bBatch = writeBatch(db);
-                chunk.forEach(booking => {
-                    const { id, ...data } = booking;
-                    bBatch.set(doc(db, "bookings", id), data);
-                });
-                await bBatch.commit();
-            }
-        }
-        
-        progressCallback?.("Restauration terminée avec succès !");
-    },
-
-    downloadBackup: (backup: AppBackup) => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup, null, 2));
-        const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", `backup_anim_${new Date().toISOString().split('T')[0]}.json`);
-        document.body.appendChild(downloadAnchorNode);
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
-    }
+/**
+ * Vérifie si un créneau (date et heure) correspond au premier créneau de 9h
+ * après une période de vacances scolaires.
+ */
+export const isPostHolidayFirstMorningSlot = (
+  date: Date | string,
+  time: number,
+  holidays?: Holiday[],
+  allowedDays: number[] = [2, 4]
+): boolean => {
+  if (Number(time) !== 9) return false;
+  const postHolidayDays = getPostHolidayFirstDayStrings(holidays, allowedDays);
+  const dateStr = typeof date === 'string' ? date : toYYYYMMDD(date);
+  return postHolidayDays.has(dateStr);
 };
