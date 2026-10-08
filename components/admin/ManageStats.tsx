@@ -1,8 +1,63 @@
 import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../../AppContext';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell, LabelList, Tooltip } from 'recharts';
 import * as XLSX from 'xlsx';
 import { DownloadIcon } from '../Icons';
+
+/**
+ * Formate et abrège si nécessaire les noms de communes trop longs pour l'axe du graphique
+ * - Retire le code postal superflu (ex: "(54860)")
+ * - Si le nom comporte un séparateur d'entité/quartier (ex: "HAUCOURTMOULAINE -SAINTCHARLES"), conserve la commune principale
+ * - Si le nom dépasse encore la longueur autorisée, tronque avec points de suspension
+ */
+const formatCommuneLabel = (rawName?: string, maxLength = 20): string => {
+    if (!rawName) return '';
+    // 1. Supprime le code postal éventuel à la fin, ex: " (54860)", "(54400)"
+    let clean = rawName.replace(/\s*\(\d{5}\)$/, '').trim();
+    
+    if (clean.length <= maxLength) {
+        return clean;
+    }
+    
+    // 2. Si le nom comporte un séparateur de quartier ou section (espace + tiret/slash ou tiret + espace)
+    // Ex: "HAUCOURTMOULAINE -SAINTCHARLES" ou "HAUCOURT-MOULAINE - SAINT-CHARLES"
+    const subParts = clean.split(/\s+[-/]\s*|\s*[-/]\s+/);
+    if (subParts.length > 1 && subParts[0].trim().length > 0) {
+        const primary = subParts[0].trim();
+        if (primary.length <= maxLength) {
+            return primary;
+        }
+    }
+
+    // 3. Troncature propre avec points de suspension
+    return clean.slice(0, maxLength - 1).trim() + '…';
+};
+
+/**
+ * Composant personnalisé pour le rendu des étiquettes de l'axe Y du Top 10
+ * avec infobulle native (balise SVG <title>) pour voir le nom complet au survol.
+ */
+const CommuneYAxisTick: React.FC<any> = ({ x, y, payload }) => {
+    if (!payload) return null;
+    const fullName = payload.value || '';
+    const displayName = formatCommuneLabel(fullName, 20);
+    return (
+        <g transform={`translate(${x},${y})`}>
+            <title>{fullName}</title>
+            <text
+                x={-8}
+                y={3}
+                textAnchor="end"
+                fill="#374151"
+                fontSize={10}
+                fontWeight={700}
+                className="select-none cursor-help"
+            >
+                {displayName}
+            </text>
+        </g>
+    );
+};
 
 const ManageStats: React.FC = () => {
     const { bookings, animations, settings } = useContext(AppContext);
@@ -184,15 +239,42 @@ const ManageStats: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[450px]">
-                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">Top 10 des Communes</h3>
-                    <div className="h-80 w-full" style={{ minHeight: '320px' }}>
+                <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[460px]">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Top 10 des Communes</h3>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Survoler pour détails</span>
+                    </div>
+                    <div className="h-[340px] w-full" style={{ minHeight: '340px' }}>
                         {stats.communeData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height={320}>
-                                <BarChart data={stats.communeData} layout="vertical" margin={{ left: 40, right: 30, top: 10, bottom: 10 }}>
+                            <ResponsiveContainer width="100%" height={340}>
+                                <BarChart data={stats.communeData} layout="vertical" margin={{ left: 10, right: 35, top: 10, bottom: 10 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f0f0f0" />
                                     <XAxis type="number" hide />
-                                    <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 10, fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                                    <YAxis 
+                                        dataKey="name" 
+                                        type="category" 
+                                        width={140} 
+                                        interval={0}
+                                        tick={<CommuneYAxisTick />} 
+                                        axisLine={false} 
+                                        tickLine={false} 
+                                    />
+                                    <Tooltip
+                                        formatter={(value: any) => [`${value} réservation${Number(value) > 1 ? 's' : ''}`, 'Fréquentation']}
+                                        labelFormatter={(label: any) => `Commune : ${label}`}
+                                        contentStyle={{
+                                            backgroundColor: '#1E293B',
+                                            borderColor: '#334155',
+                                            borderRadius: '0.75rem',
+                                            color: '#F8FAFC',
+                                            fontSize: '12px',
+                                            fontWeight: 'bold',
+                                            padding: '8px 12px',
+                                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2)'
+                                        }}
+                                        itemStyle={{ color: '#93C5FD', fontWeight: 800 }}
+                                        cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }}
+                                    />
                                     <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} barSize={20}>
                                         <LabelList dataKey="value" position="right" offset={10} style={{ fontSize: 10, fontWeight: '900', fill: '#3B82F6' }} />
                                     </Bar>
@@ -204,12 +286,29 @@ const ManageStats: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[450px]">
-                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-6">Répartition par Niveau</h3>
-                    <div className="h-80 w-full" style={{ minHeight: '320px' }}>
+                <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[460px]">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Répartition par Niveau</h3>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Survoler pour détails</span>
+                    </div>
+                    <div className="h-[340px] w-full" style={{ minHeight: '340px' }}>
                         {stats.levelData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height={320}>
+                            <ResponsiveContainer width="100%" height={340}>
                                 <PieChart margin={{ top: 20, right: 60, bottom: 20, left: 60 }}>
+                                    <Tooltip
+                                        formatter={(value: any) => [`${value} classe${Number(value) > 1 ? 's' : ''}`, 'Effectif']}
+                                        contentStyle={{
+                                            backgroundColor: '#1E293B',
+                                            borderColor: '#334155',
+                                            borderRadius: '0.75rem',
+                                            color: '#F8FAFC',
+                                            fontSize: '12px',
+                                            fontWeight: 'bold',
+                                            padding: '8px 12px',
+                                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2)'
+                                        }}
+                                        itemStyle={{ color: '#F3F4F6', fontWeight: 800 }}
+                                    />
                                     <Pie
                                         data={stats.levelData}
                                         cx="50%"

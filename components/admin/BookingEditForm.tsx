@@ -74,9 +74,19 @@ const BookingEditForm: React.FC<{
             return { available: true, reason: "" };
         }
 
-        // 1. Check if the date is marked as unavailable for this animator
+        // 1. Check if the date is marked as unavailable for this animator (considering half-days)
         if ((animatorSettings.unavailableDates || []).includes(dateString)) {
-            return { available: false, reason: "L'animateur est marqué comme indisponible à cette date." };
+            const halfDay = animatorSettings.unavailableHalfDays?.[dateString];
+            const timeNum = Number(timeVal);
+
+            if (!halfDay) {
+                // Whole day is unavailable
+                return { available: false, reason: "L'animateur est marqué comme indisponible à cette date." };
+            } else if (halfDay === 'morning' && timeNum < 13) {
+                return { available: false, reason: "L'animateur est indisponible le matin à cette date." };
+            } else if (halfDay === 'afternoon' && timeNum >= 13) {
+                return { available: false, reason: "L'animateur est indisponible l'après-midi à cette date." };
+            }
         }
 
         // 2. Check if the slot (time) is inactive for this animator
